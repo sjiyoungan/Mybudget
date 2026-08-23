@@ -65,9 +65,6 @@ export function IncomePage() {
   const yearStubs = stubsForYear(paystubs, selectedYear)
   const ytdNet = yearToDateNet(paystubs, selectedYear)
   const monthlyAverage = averageMonthlyNet(paystubs, selectedYear)
-  const monthsWithPay = yearStubs.length
-    ? new Set(yearStubs.map((stub) => stub.payDate.slice(5, 7))).size
-    : 0
   const monthRows = visibleMonthRows(paystubs, selectedYear)
   const activeMonth =
     selectedMonth != null && monthRows.some((row) => row.month === selectedMonth)
@@ -194,8 +191,8 @@ export function IncomePage() {
           </p>
         ) : null}
 
-        <section className="grid gap-4 md:grid-cols-2">
-          <Card>
+        <section className="flex max-w-xl flex-wrap gap-4">
+          <Card className="min-w-[14rem] flex-1">
             <CardHeader>
               <CardDescription>Year-to-date net pay</CardDescription>
               <div className="flex items-baseline justify-between gap-4">
@@ -211,17 +208,12 @@ export function IncomePage() {
             </CardHeader>
           </Card>
 
-          <Card>
+          <Card className="min-w-[14rem] flex-1">
             <CardHeader>
               <CardDescription>Average monthly net pay</CardDescription>
               <CardTitle className="text-2xl">
                 {formatUsd(monthlyAverage)}
               </CardTitle>
-              <CardDescription>
-                {monthsWithPay === 0
-                  ? 'Shown after a month has a paycheck'
-                  : `Across ${monthsWithPay} month${monthsWithPay === 1 ? '' : 's'} with pay`}
-              </CardDescription>
             </CardHeader>
           </Card>
         </section>
@@ -267,11 +259,7 @@ export function IncomePage() {
             </CardContent>
           </Card>
 
-          <MonthBreakdown
-            year={selectedYear}
-            month={activeMonth}
-            stubs={monthStubs}
-          />
+          <MonthBreakdown month={activeMonth} stubs={monthStubs} />
         </section>
       </main>
 
@@ -308,11 +296,9 @@ export function IncomePage() {
 }
 
 function MonthBreakdown({
-  year,
   month,
   stubs,
 }: {
-  year: number
   month: number | null
   stubs: Paystub[]
 }) {
@@ -333,9 +319,6 @@ function MonthBreakdown({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>
-            {monthName(month)} {year}
-          </CardTitle>
           <CardDescription>
             No paystubs uploaded for this month yet.
           </CardDescription>
@@ -346,9 +329,6 @@ function MonthBreakdown({
 
   return (
     <div className="grid gap-4">
-      <h2 className="font-heading text-xl font-medium">
-        {monthName(month)} {year}
-      </h2>
       {stubs.map((stub, index) => (
         <PaystubDetail
           key={stub.id}
