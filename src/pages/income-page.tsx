@@ -155,7 +155,7 @@ export function IncomePage() {
           />
         </section>
 
-        <section className="mt-8 grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
+        <section className="mt-6 grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
           <Card>
             <CardHeader>
               <CardTitle>Monthly net</CardTitle>
