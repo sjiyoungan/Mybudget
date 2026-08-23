@@ -175,8 +175,8 @@ export function IncomePage() {
             </Link>
           </Button>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-            <h1 className="font-heading text-3xl font-medium">Income</h1>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-heading text-3xl font-medium">Income</h1>
               <Select
                 value={String(selectedYear)}
                 onValueChange={(value) => {
@@ -195,6 +195,8 @@ export function IncomePage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
               <input
                 ref={inputRef}
                 type="file"
@@ -204,6 +206,7 @@ export function IncomePage() {
               />
               <Button
                 type="button"
+                variant="outline"
                 onClick={() => inputRef.current?.click()}
                 disabled={busy}
               >
@@ -220,20 +223,23 @@ export function IncomePage() {
           </p>
         ) : null}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard label="Year-to-date net pay" amount={ytdNet} />
-          <SummaryCard
+        <section className="grid grid-cols-2 xl:grid-cols-4">
+          <SummaryStat label="Year-to-date net pay" amount={ytdNet} />
+          <SummaryStat
             label="Average monthly net pay"
             amount={monthlyAverage}
+            className="border-l border-border"
           />
-          <SummaryCard
+          <SummaryStat
             label="Year-to-date tax"
             amount={ytdTax}
+            className="border-t border-border xl:border-t-0 xl:border-l"
             onClick={() => setDeductionDrawer('tax')}
           />
-          <SummaryCard
+          <SummaryStat
             label="Year-to-date healthcare"
             amount={ytdHealthcare}
+            className="border-t border-l border-border xl:border-t-0"
             onClick={() => setDeductionDrawer('healthcare')}
           />
         </section>
@@ -330,40 +336,40 @@ export function IncomePage() {
   )
 }
 
-function SummaryCard({
+function SummaryStat({
   label,
   amount,
   onClick,
+  className,
 }: {
   label: string
   amount: number
   onClick?: () => void
+  className?: string
 }) {
-  return (
-    <Card
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      className={cn(
-        onClick && 'cursor-pointer transition-colors hover:bg-muted/40',
-      )}
-      onClick={onClick}
-      onKeyDown={
-        onClick
-          ? (event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                onClick()
-              }
-            }
-          : undefined
-      }
-    >
-      <CardHeader className="gap-2">
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">{formatUsd(amount)}</CardTitle>
-      </CardHeader>
-    </Card>
+  const classes = cn(
+    'px-5 py-1 text-left',
+    onClick && 'cursor-pointer rounded-lg transition-colors hover:bg-muted/40',
+    className,
   )
+  const body = (
+    <>
+      <p className="text-muted-foreground text-sm">{label}</p>
+      <p className="mt-2 text-2xl font-normal tabular-nums">
+        {formatUsd(amount)}
+      </p>
+    </>
+  )
+
+  if (onClick) {
+    return (
+      <button type="button" className={classes} onClick={onClick}>
+        {body}
+      </button>
+    )
+  }
+
+  return <div className={classes}>{body}</div>
 }
 
 function DeductionDrawer({
@@ -541,11 +547,6 @@ function PaystubDetail({
           line={{ name: 'Gross pay', amount: paystub.grossPay }}
           emphasized
         />
-        <AmountRow
-          line={{ name: 'Net pay', amount: paystub.netPay }}
-          emphasized
-          keepForeground
-        />
         <div>
           <button
             type="button"
@@ -582,6 +583,12 @@ function PaystubDetail({
             </div>
           ) : null}
         </div>
+        <div className="border-border border-t" />
+        <AmountRow
+          line={{ name: 'Net pay', amount: paystub.netPay }}
+          emphasized
+          keepForeground
+        />
       </CardContent>
     </Card>
   )

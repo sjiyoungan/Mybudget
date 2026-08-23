@@ -1,14 +1,18 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
 
 import {
+  deleteRemotePaystub,
+  fetchRemotePaystubs,
   loadPaystubs,
   savePaystubs,
+  upsertRemotePaystub,
   type Paystub,
 } from '@/lib/paystub'
 
@@ -23,6 +27,27 @@ const PaystubContext = createContext<PaystubContextValue | null>(null)
 export function PaystubProvider({ children }: { children: ReactNode }) {
   const [paystubs, setPaystubs] = useState<Paystub[]>(() => loadPaystubs())
 
+  useEffect(() => {
+    let cancelled = false
+
+    void (async () => {
+      const remote = await fetchRemotePaystubs()
+      if (cancelled || remote == null) return
+
+      if (remote.length === 0) {
+        await Promise.all(loadPaystubs().map(upsertRemotePaystub))
+        return
+      }
+
+      savePaystubs(remote)
+      setPaystubs(remote)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const value = useMemo<PaystubContextValue>(
     () => ({
       paystubs,
@@ -35,6 +60,7 @@ export function PaystubProvider({ children }: { children: ReactNode }) {
           savePaystubs(next)
           return next
         })
+        void upsertRemotePaystub(paystub)
       },
       removePaystub(id) {
         setPaystubs((current) => {
@@ -42,6 +68,7 @@ export function PaystubProvider({ children }: { children: ReactNode }) {
           savePaystubs(next)
           return next
         })
+        void deleteRemotePaystub(id)
       },
     }),
     [paystubs],

@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabase'
+
 export type PayLine = {
   name: string
   amount: number
@@ -232,4 +234,38 @@ export function loadPaystubs(): Paystub[] {
 
 export function savePaystubs(paystubs: Paystub[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(paystubs))
+}
+
+type PaystubRow = {
+  data: Paystub
+}
+
+export async function fetchRemotePaystubs(): Promise<Paystub[] | null> {
+  if (!supabase) return null
+  const { data, error } = await supabase.from('paystubs').select('data')
+  if (error) {
+    console.error(error.message)
+    return null
+  }
+  return ((data ?? []) as PaystubRow[]).map((row) => stripPerk(row.data))
+}
+
+export async function upsertRemotePaystub(paystub: Paystub) {
+  if (!supabase) return
+  const { error } = await supabase.from('paystubs').upsert(
+    {
+      id: paystub.id,
+      pay_date: paystub.payDate,
+      data: paystub,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'pay_date' },
+  )
+  if (error) console.error(error.message)
+}
+
+export async function deleteRemotePaystub(id: string) {
+  if (!supabase) return
+  const { error } = await supabase.from('paystubs').delete().eq('id', id)
+  if (error) console.error(error.message)
 }
