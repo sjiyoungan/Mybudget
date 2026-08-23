@@ -184,7 +184,6 @@ export function IncomePage() {
           <Card>
             <CardHeader>
               <CardTitle>Monthly net</CardTitle>
-              <CardDescription>Select a month.</CardDescription>
               <CardAction>
                 <Select
                   value={String(selectedYear)}
@@ -297,8 +296,18 @@ function MonthBreakdown({
 
   return (
     <div className="grid gap-4">
-      {stubs.map((stub) => (
-        <PaystubDetail key={stub.id} paystub={stub} onDelete={() => onDelete(stub.id)} />
+      <h2 className="font-heading text-xl font-medium">
+        {monthName(month)} {year}
+      </h2>
+      {stubs.map((stub, index) => (
+        <PaystubDetail
+          key={stub.id}
+          paystub={stub}
+          paycheckLabel={
+            stubs.length > 1 ? `Paycheck ${index + 1}` : undefined
+          }
+          onDelete={() => onDelete(stub.id)}
+        />
       ))}
     </div>
   )
@@ -306,9 +315,11 @@ function MonthBreakdown({
 
 function PaystubDetail({
   paystub,
+  paycheckLabel,
   onDelete,
 }: {
   paystub: Paystub
+  paycheckLabel?: string
   onDelete: () => void
 }) {
   const deductionTotal = paystub.deductions.reduce(
@@ -322,7 +333,11 @@ function PaystubDetail({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <CardTitle>{formatLongDate(paystub.payDate)}</CardTitle>
+              <CardTitle>
+                {paycheckLabel
+                  ? `${paycheckLabel} · ${formatLongDate(paystub.payDate)}`
+                  : formatLongDate(paystub.payDate)}
+              </CardTitle>
               <Badge variant="secondary">ADP</Badge>
             </div>
             {paystub.periodBeginning && paystub.periodEnding ? (

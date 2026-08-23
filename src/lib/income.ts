@@ -65,7 +65,7 @@ export function stubsForMonth(
   const prefix = `${year}-${String(monthIndex + 1).padStart(2, '0')}-`
   return paystubs
     .filter((stub) => stub.payDate.startsWith(prefix))
-    .sort((left, right) => right.payDate.localeCompare(left.payDate))
+    .sort((left, right) => left.payDate.localeCompare(right.payDate))
 }
 
 export function visibleMonthRows(
