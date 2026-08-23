@@ -110,12 +110,15 @@ function findLabeledDate(items: PdfTextItem[], label: string) {
 }
 
 function prettyName(name: string) {
-  if (/pick your/i.test(name)) return 'Pick Your Perk'
   if (/^[A-Z]{2,4}$/.test(name)) return name
   if (name === name.toUpperCase() && /[A-Z]/.test(name)) {
     return name.toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase())
   }
   return name
+}
+
+function isPerkLabel(label: string) {
+  return /pick your/i.test(label)
 }
 
 function isDepositLabel(label: string) {
@@ -135,6 +138,7 @@ export function parseAdpPaystub(items: PdfTextItem[]): Omit<
   const rows = groupRows(items)
   const earnings: PayLine[] = []
   const deductions: PayLine[] = []
+  let perkAmount = 0
   let section: 'start' | 'earnings' | 'deductions' | 'done' = 'start'
   let grossPay = 0
   let netPay = 0
@@ -150,8 +154,8 @@ export function parseAdpPaystub(items: PdfTextItem[]): Omit<
       continue
     }
 
-    if (/pick your/i.test(label) && section === 'earnings' && amount != null && amount > 0) {
-      earnings.push({ name: 'Pick Your Perk', amount })
+    if (isPerkLabel(label) && amount != null) {
+      if (section === 'earnings' && amount > 0) perkAmount = amount
       continue
     }
 
@@ -172,7 +176,8 @@ export function parseAdpPaystub(items: PdfTextItem[]): Omit<
       amount != null &&
       amount !== 0 &&
       !isSectionHeader(label) &&
-      !isDepositLabel(label)
+      !isDepositLabel(label) &&
+      !isPerkLabel(label)
     ) {
       deductions.push({ name: prettyName(label), amount })
     }
@@ -190,7 +195,7 @@ export function parseAdpPaystub(items: PdfTextItem[]): Omit<
     periodBeginning: findLabeledDate(items, 'period beginning'),
     periodEnding: findLabeledDate(items, 'period ending'),
     earnings,
-    grossPay,
+    grossPay: grossPay - perkAmount,
     deductions,
     netPay,
   }
@@ -198,12 +203,28 @@ export function parseAdpPaystub(items: PdfTextItem[]): Omit<
 
 const STORAGE_KEY = 'mybudget.paystubs.v1'
 
+function stripPerk(paystub: Paystub): Paystub {
+  const perkTotal = paystub.earnings
+    .filter((line) => isPerkLabel(line.name))
+    .reduce((sum, line) => sum + line.amount, 0)
+
+  return {
+    ...paystub,
+    earnings: paystub.earnings.filter((line) => !isPerkLabel(line.name)),
+    deductions: paystub.deductions.filter((line) => !isPerkLabel(line.name)),
+    grossPay: paystub.grossPay - perkTotal,
+  }
+}
+
 export function loadPaystubs(): Paystub[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as Paystub[]) : []
+    if (!Array.isArray(parsed)) return []
+    const paystubs = (parsed as Paystub[]).map(stripPerk)
+    savePaystubs(paystubs)
+    return paystubs
   } catch {
     return []
   }

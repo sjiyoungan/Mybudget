@@ -20,7 +20,7 @@ npm run preview  # preview the production build
 
 ## Income
 
-Open the Income card to upload an ADP earnings statement PDF. The app reads pay date, regular pay, Pick Your Perk, gross pay, this-period deductions, and net pay. Year-to-date totals and employer-paid “other benefits” are omitted.
+Open the Income card to upload an ADP earnings statement PDF. The app reads pay date, regular pay, gross pay, this-period deductions, and net pay. Pick Your Perk, year-to-date totals, and employer-paid “other benefits” are omitted.
 
 Paystubs are stored in the browser (localStorage), not on a server.
 
