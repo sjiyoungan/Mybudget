@@ -129,77 +129,92 @@
     }
 }
 
-/* Solid grays — color-mix() was compiled to a near-white (or black) fallback. */
 .hover-fill {
-  transition: background-color 150ms ease;
+  background-image: none;
+  transition: background-color 150ms ease, background-image 150ms ease;
 }
 .hover-fill:hover,
 .hover-fill:focus-visible,
 .hover-fill:active {
-  background-color: #e8e8e8 !important;
+  background-color: #f4f4f4 !important;
+  background-image: linear-gradient(to bottom, #ececec, #ffffff) !important;
 }
 .hover-fill-active {
-  background-color: #f0f0f0;
+  background-color: #f6f6f6;
+  background-image: linear-gradient(to bottom, #f0f0f0, #ffffff);
 }
 .hover-fill-active:hover,
 .hover-fill-active:focus-visible,
 .hover-fill-active:active {
-  background-color: #e0e0e0 !important;
+  background-color: #f2f2f2 !important;
+  background-image: linear-gradient(to bottom, #e8e8e8, #ffffff) !important;
 }
 .dark .hover-fill:hover,
 .dark .hover-fill:focus-visible,
 .dark .hover-fill:active {
-  background-color: #2e2e2e !important;
+  background-color: #262626 !important;
+  background-image: linear-gradient(to bottom, #333333, #1a1a1a) !important;
 }
 .dark .hover-fill-active {
-  background-color: #262626;
+  background-color: #222222;
+  background-image: linear-gradient(to bottom, #2a2a2a, #171717);
 }
 .dark .hover-fill-active:hover,
 .dark .hover-fill-active:focus-visible,
 .dark .hover-fill-active:active {
-  background-color: #3a3a3a !important;
+  background-color: #2a2a2a !important;
+  background-image: linear-gradient(to bottom, #3a3a3a, #1a1a1a) !important;
 }
 
-/* Dividers sit in the middle of the 40px gaps, not on a cell edge. */
+/* Text is padded inside each cell; hover fill goes all the way to the strokes. */
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 2.5rem;
-  row-gap: 2.5rem;
-  background-image: linear-gradient(var(--border), var(--border));
-  background-size: 100% 1px;
-  background-position: center;
-  background-repeat: no-repeat;
 }
 .metric-grid > * {
   position: relative;
+  box-sizing: border-box;
   min-width: 0;
   width: 100%;
+  padding: 0.75rem 1.5rem;
 }
-.metric-grid > *:nth-child(odd)::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: -1.25rem;
-  width: 1px;
-  height: 100%;
-  background-color: var(--border);
+@media (width < 80rem) {
+  .metric-grid > *:nth-child(odd) {
+    padding-left: 0;
+  }
+  .metric-grid > *:nth-child(even) {
+    padding-right: 0;
+  }
+  .metric-grid > *:nth-child(even)::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 1px;
+    background-color: var(--border);
+  }
+  .metric-grid > *:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
 }
 @media (width >= 80rem) {
   .metric-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    background-image: none;
   }
-  .metric-grid > *:nth-child(odd)::after {
-    content: none;
+  .metric-grid > *:nth-child(4n + 1) {
+    padding-left: 0;
   }
-  .metric-grid > *:not(:nth-child(4n))::after {
+  .metric-grid > *:nth-child(4n) {
+    padding-right: 0;
+  }
+  .metric-grid > *:not(:nth-child(4n + 1))::before {
     content: "";
     position: absolute;
     top: 0;
-    right: -1.25rem;
+    bottom: 0;
+    left: 0;
     width: 1px;
-    height: 100%;
     background-color: var(--border);
   }
 }

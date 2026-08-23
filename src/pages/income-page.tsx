@@ -230,8 +230,8 @@ function SummaryStat({
   className?: string
 }) {
   const classes = cn(
-    'hover-fill w-full rounded-none py-1 text-left',
-    onClick && 'cursor-pointer',
+    'w-full rounded-none text-left',
+    onClick && 'hover-fill cursor-pointer',
     className,
   )
   const body = (
@@ -299,9 +299,8 @@ function DeductionDrawer({
                         setExpandedMonth(expanded ? null : row.month)
                       }
                       className={cn(
-                        'hover-fill grid w-full grid-cols-[1fr_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left',
-                        canExpand ? undefined : 'cursor-default',
-                        expanded && 'hover-fill-active',
+                        'grid w-full grid-cols-[1fr_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left',
+                        canExpand ? 'cursor-pointer' : 'cursor-default',
                       )}
                     >
                       <span className={expanded ? 'font-medium' : undefined}>
@@ -330,7 +329,6 @@ function DeductionDrawer({
                             key={`${line.name}-${line.amount}`}
                             line={line}
                             muted
-                            hoverable
                           />
                         ))}
                       </div>
@@ -380,26 +378,14 @@ function MonthBreakdown({
 
   return (
     <div className="grid gap-4">
-      {stubs.map((stub, index) => (
-        <PaystubDetail
-          key={stub.id}
-          paystub={stub}
-          paycheckLabel={
-            stubs.length > 1 ? `Paycheck ${index + 1}` : undefined
-          }
-        />
+      {stubs.map((stub) => (
+        <PaystubDetail key={stub.id} paystub={stub} />
       ))}
     </div>
   )
 }
 
-function PaystubDetail({
-  paystub,
-  paycheckLabel,
-}: {
-  paystub: Paystub
-  paycheckLabel?: string
-}) {
+function PaystubDetail({ paystub }: { paystub: Paystub }) {
   const [deductionsOpen, setDeductionsOpen] = useState(false)
   const deductionTotal = paystub.deductions.reduce(
     (sum, item) => sum + item.amount,
@@ -410,11 +396,7 @@ function PaystubDetail({
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <CardTitle>
-            {paycheckLabel
-              ? `${paycheckLabel} · ${formatDateWithoutYear(paystub.payDate)}`
-              : formatDateWithoutYear(paystub.payDate)}
-          </CardTitle>
+          <CardTitle>{formatDateWithoutYear(paystub.payDate)}</CardTitle>
           {paystub.periodBeginning && paystub.periodEnding ? (
             <CardDescription>
               Period {formatDateWithoutYear(paystub.periodBeginning, 'short')} –{' '}
@@ -436,7 +418,9 @@ function PaystubDetail({
             onClick={() => setDeductionsOpen((open) => !open)}
             className={cn(
               'flex w-full items-baseline justify-between gap-4 text-left',
-              paystub.deductions.length === 0 && 'cursor-default',
+              paystub.deductions.length === 0
+                ? 'cursor-default'
+                : 'cursor-pointer',
             )}
           >
             <span className="inline-flex items-center gap-1 font-medium">
@@ -481,22 +465,15 @@ function AmountRow({
   emphasized = false,
   keepForeground = false,
   muted = false,
-  hoverable = false,
 }: {
   line: PayLine
   emphasized?: boolean
   keepForeground?: boolean
   muted?: boolean
-  hoverable?: boolean
 }) {
   const negative = line.amount < 0 && !keepForeground && !muted
   return (
-    <div
-      className={cn(
-        '-mx-1 flex items-baseline justify-between gap-4 rounded-md px-1 py-0.5',
-        hoverable && 'hover-fill',
-      )}
-    >
+    <div className="-mx-1 flex items-baseline justify-between gap-4 rounded-md px-1 py-0.5">
       <span
         className={cn(
           emphasized && 'font-medium',
