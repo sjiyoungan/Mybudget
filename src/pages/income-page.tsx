@@ -1,18 +1,8 @@
-import { useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ChevronDown, Upload } from 'lucide-react'
+import { ArrowLeft, ChevronDown } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -36,7 +26,6 @@ import {
 } from '@/components/ui/select'
 import {
   formatDateWithoutYear,
-  formatLongDate,
   formatUsd,
 } from '@/lib/format'
 import {
@@ -54,15 +43,14 @@ import {
   yearToDateTax,
   type MonthlyDeductionRow,
 } from '@/lib/income'
-import { parseAdpPaystub, type PayLine, type Paystub } from '@/lib/paystub'
+import { type PayLine, type Paystub } from '@/lib/paystub'
 import { usePaystubs } from '@/lib/paystub-context'
 import { cn } from '@/lib/utils'
 
 type DeductionDrawerKind = 'tax' | 'healthcare'
 
 export function IncomePage() {
-  const { paystubs, upsertPaystub } = usePaystubs()
-  const inputRef = useRef<HTMLInputElement>(null)
+  const { paystubs } = usePaystubs()
   const years = useMemo(() => availableIncomeYears(paystubs), [paystubs])
   const [year, setYear] = useState(() =>
     years.includes(new Date().getFullYear())
@@ -72,9 +60,6 @@ export function IncomePage() {
   const [selectedMonth, setSelectedMonth] = useState<number | null>(
     new Date().getMonth(),
   )
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [pendingStub, setPendingStub] = useState<Paystub | null>(null)
   const [deductionDrawer, setDeductionDrawer] =
     useState<DeductionDrawerKind | null>(null)
 
@@ -103,64 +88,6 @@ export function IncomePage() {
       ? []
       : stubsForMonth(paystubs, selectedYear, activeMonth)
 
-  function saveStub(stub: Paystub) {
-    upsertPaystub(stub)
-    const stubYear = Number.parseInt(stub.payDate.slice(0, 4), 10)
-    const stubMonth = Number.parseInt(stub.payDate.slice(5, 7), 10) - 1
-    setYear(stubYear)
-    setSelectedMonth(stubMonth)
-  }
-
-  async function handleFile(file: File) {
-    setError(null)
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      setError('Upload the ADP earnings statement as a PDF.')
-      return
-    }
-
-    setBusy(true)
-    try {
-      const { extractPdfTextItems } = await import('@/lib/extract-pdf')
-      const items = await extractPdfTextItems(file)
-      const parsed = parseAdpPaystub(items)
-      const paystub: Paystub = {
-        ...parsed,
-        id: crypto.randomUUID(),
-        fileName: file.name,
-        uploadedAt: new Date().toISOString(),
-      }
-      const duplicate = paystubs.some((item) => item.payDate === paystub.payDate)
-      if (duplicate) {
-        setPendingStub(paystub)
-        return
-      }
-      saveStub(paystub)
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : 'Could not read that paystub PDF.',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  function onInputChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (file) void handleFile(file)
-    event.target.value = ''
-  }
-
-  function closeDuplicateDialog() {
-    setPendingStub(null)
-  }
-
-  function replaceDuplicate() {
-    if (pendingStub) saveStub(pendingStub)
-    setPendingStub(null)
-  }
-
   return (
     <div className="min-h-svh bg-background">
       <AppHeader />
@@ -173,10 +100,9 @@ export function IncomePage() {
               Dashboard
             </Link>
           </Button>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="font-heading text-3xl font-medium">Income</h1>
-              <Select
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="font-heading text-3xl font-medium">Income</h1>
+            <Select
                 value={String(selectedYear)}
                 onValueChange={(value) => {
                   setYear(Number(value))
@@ -208,33 +134,8 @@ export function IncomePage() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <input
-                ref={inputRef}
-                type="file"
-                accept="application/pdf,.pdf"
-                className="sr-only"
-                onChange={onInputChange}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => inputRef.current?.click()}
-                disabled={busy}
-              >
-                <Upload data-icon="inline-start" />
-                {busy ? 'Reading…' : 'Upload'}
-              </Button>
-            </div>
           </div>
         </div>
-
-        {error ? (
-          <p className="text-destructive text-sm" role="alert">
-            {error}
-          </p>
-        ) : null}
 
         <section className="mt-8 grid grid-cols-2 xl:grid-cols-4">
           <SummaryStat
@@ -320,35 +221,6 @@ export function IncomePage() {
           if (!open) setDeductionDrawer(null)
         }}
       />
-
-      <AlertDialog
-        open={pendingStub != null}
-        onOpenChange={(open) => {
-          if (!open) closeDuplicateDialog()
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Duplicate paycheck</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingStub
-                ? `A paycheck for ${formatLongDate(pendingStub.payDate)} is already saved. Skip this file, cancel, or replace the existing one.`
-                : 'This paycheck is already saved.'}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={closeDuplicateDialog}>
-              Cancel
-            </AlertDialogCancel>
-            <Button type="button" variant="outline" onClick={closeDuplicateDialog}>
-              Skip
-            </Button>
-            <AlertDialogAction onClick={replaceDuplicate}>
-              Replace
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

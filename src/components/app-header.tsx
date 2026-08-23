@@ -1,5 +1,6 @@
 import { ChevronDown } from 'lucide-react'
 
+import { PaystubUploadButton } from '@/components/paystub-upload'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -14,7 +15,7 @@ export function AppHeader() {
 
   return (
     <header className="border-b">
-      <div className="mx-auto flex max-w-5xl items-center px-6 py-4">
+      <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -37,6 +38,7 @@ export function AppHeader() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <PaystubUploadButton />
       </div>
     </header>
   )
