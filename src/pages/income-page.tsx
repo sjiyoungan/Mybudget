@@ -82,7 +82,7 @@ export function IncomePage() {
   const activeMonth =
     selectedMonth != null && monthRows.some((row) => row.month === selectedMonth)
       ? selectedMonth
-      : (monthRows.at(-1)?.month ?? null)
+      : (monthRows[0]?.month ?? null)
   const monthStubs =
     activeMonth == null
       ? []
@@ -181,8 +181,9 @@ export function IncomePage() {
                       type="button"
                       onClick={() => setSelectedMonth(row.month)}
                       className={cn(
-                        'grid grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg px-2.5 py-2 text-left transition-colors',
-                        selected ? 'bg-muted' : 'hover:bg-muted/50',
+                        'grid grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-0 text-left transition-colors',
+                        'hover:bg-muted/50',
+                        selected && 'bg-muted',
                       )}
                     >
                       <span className={selected ? 'font-medium' : undefined}>
@@ -238,7 +239,7 @@ function SummaryStat({
 }) {
   const classes = cn(
     'rounded-none py-1 text-left transition-colors',
-    'hover:bg-linear-to-b hover:from-neutral-200/45 hover:to-transparent',
+    'hover:bg-linear-to-b hover:from-muted hover:to-transparent',
     onClick && 'cursor-pointer',
     className,
   )

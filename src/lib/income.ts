@@ -86,6 +86,7 @@ export function visibleMonthRows(
       if (amount !== 0) return true
       return month === currentMonth
     })
+    .toReversed()
 }
 
 const TAX_DEDUCTION =
