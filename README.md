@@ -18,8 +18,15 @@ npm run preview  # preview the production build
 - Tailwind CSS v4
 - [shadcn/ui](https://ui.shadcn.com)
 
+## Income
+
+Open the Income card to upload an ADP earnings statement PDF. The app reads pay date, regular pay, Pick Your Perk, gross pay, this-period deductions, and net pay. Year-to-date totals and employer-paid “other benefits” are omitted.
+
+Paystubs are stored in the browser (localStorage), not on a server.
+
 ## Project layout
 
-- `src/App.tsx` — starter budget dashboard
+- `src/pages/dashboard-page.tsx` — home dashboard
+- `src/pages/income-page.tsx` — ADP paystub upload and breakdown
+- `src/lib/paystub.ts` — paystub parser and local storage
 - `src/components/ui` — shadcn components
-- `src/lib/utils.ts` — `cn()` helper
