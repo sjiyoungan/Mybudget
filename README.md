@@ -22,7 +22,7 @@ npm run preview  # preview the production build
 
 Open the Income card to upload an ADP earnings statement PDF. The app reads pay date, regular pay, gross pay, this-period deductions, and net pay. Pick Your Perk, year-to-date totals, and employer-paid “other benefits” are omitted.
 
-Paystubs are cached in the browser and synced to Supabase when `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set.
+Paystubs are cached in the browser and synced to your Supabase account after you sign in. Use the same email on every device. The session stays saved, so you are not asked to log in again on that device.
 
 ## Project layout
 

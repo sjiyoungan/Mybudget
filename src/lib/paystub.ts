@@ -240,8 +240,16 @@ type PaystubRow = {
   data: Paystub
 }
 
+async function currentUserId() {
+  if (!supabase) return null
+  const { data } = await supabase.auth.getUser()
+  return data.user?.id ?? null
+}
+
 export async function fetchRemotePaystubs(): Promise<Paystub[] | null> {
   if (!supabase) return null
+  const userId = await currentUserId()
+  if (!userId) return null
   const { data, error } = await supabase.from('paystubs').select('data')
   if (error) {
     console.error(error.message)
@@ -252,20 +260,25 @@ export async function fetchRemotePaystubs(): Promise<Paystub[] | null> {
 
 export async function upsertRemotePaystub(paystub: Paystub) {
   if (!supabase) return
+  const userId = await currentUserId()
+  if (!userId) return
   const { error } = await supabase.from('paystubs').upsert(
     {
       id: paystub.id,
+      user_id: userId,
       pay_date: paystub.payDate,
       data: paystub,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: 'pay_date' },
+    { onConflict: 'user_id,pay_date' },
   )
   if (error) console.error(error.message)
 }
 
 export async function deleteRemotePaystub(id: string) {
   if (!supabase) return
+  const userId = await currentUserId()
+  if (!userId) return
   const { error } = await supabase.from('paystubs').delete().eq('id', id)
   if (error) console.error(error.message)
 }

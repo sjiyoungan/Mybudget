@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 
+import { useAuth } from '@/lib/auth-context'
 import {
   deleteRemotePaystub,
   fetchRemotePaystubs,
@@ -24,29 +25,53 @@ type PaystubContextValue = {
 
 const PaystubContext = createContext<PaystubContextValue | null>(null)
 
+function mergePaystubs(remote: Paystub[], local: Paystub[]) {
+  const byDate = new Map<string, Paystub>()
+  for (const stub of remote) byDate.set(stub.payDate, stub)
+  const extra: Paystub[] = []
+  for (const stub of local) {
+    const existing = byDate.get(stub.payDate)
+    if (!existing) {
+      byDate.set(stub.payDate, stub)
+      extra.push(stub)
+      continue
+    }
+    if (stub.uploadedAt > existing.uploadedAt) {
+      byDate.set(stub.payDate, stub)
+      extra.push(stub)
+    }
+  }
+  return {
+    merged: [...byDate.values()].sort((left, right) =>
+      right.payDate.localeCompare(left.payDate),
+    ),
+    extra,
+  }
+}
+
 export function PaystubProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth()
   const [paystubs, setPaystubs] = useState<Paystub[]>(() => loadPaystubs())
 
   useEffect(() => {
+    if (authLoading || !user) return
+
     let cancelled = false
 
     void (async () => {
       const remote = await fetchRemotePaystubs()
       if (cancelled || remote == null) return
 
-      if (remote.length === 0) {
-        await Promise.all(loadPaystubs().map(upsertRemotePaystub))
-        return
-      }
-
-      savePaystubs(remote)
-      setPaystubs(remote)
+      const { merged, extra } = mergePaystubs(remote, loadPaystubs())
+      savePaystubs(merged)
+      setPaystubs(merged)
+      await Promise.all(extra.map(upsertRemotePaystub))
     })()
 
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [authLoading, user])
 
   const value = useMemo<PaystubContextValue>(
     () => ({

@@ -4,14 +4,17 @@ import { BrowserRouter } from 'react-router-dom'
 
 import './index.css'
 import App from './App.tsx'
+import { AuthProvider } from '@/lib/auth-context'
 import { PaystubProvider } from '@/lib/paystub-context'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <PaystubProvider>
-        <App />
-      </PaystubProvider>
+      <AuthProvider>
+        <PaystubProvider>
+          <App />
+        </PaystubProvider>
+      </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 )
