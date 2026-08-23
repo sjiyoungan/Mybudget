@@ -1,0 +1,16 @@
+---
+description: Commit and push project updates to GitHub automatically
+alwaysApply: true
+---
+
+# Auto-push to GitHub
+
+This project tracks https://github.com/sjiyoungan/Mybudget.git.
+
+After finishing a requested change:
+
+1. Commit the relevant files if the user asked to save, ship, or push the work, or if they asked to automatically push updates.
+2. Push to `origin` on the current branch (`git push -u origin HEAD` when the upstream is missing).
+3. Do not force-push unless the user explicitly asks.
+
+Never commit `.env` files, credentials, or secrets.
