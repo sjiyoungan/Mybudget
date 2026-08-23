@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from 'react'
-import { Wallet } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,43 +32,32 @@ export function LoginPage() {
   return (
     <div className="flex min-h-svh items-center justify-center bg-background px-6">
       <form className="grid w-full max-w-sm gap-4" onSubmit={onSubmit}>
-        <div className="grid justify-items-center gap-2 text-center">
-          <Wallet className="size-6" />
-          <h1 className="font-heading text-2xl font-medium">Mybudget</h1>
-          <p className="text-muted-foreground text-sm">
-            Sign in once. Stay signed in on this device, and use the same email
-            on any other device to see the same paystubs.
-          </p>
-        </div>
+        <h1 className="font-heading text-center text-2xl font-medium">
+          Mybudget
+        </h1>
 
-        <div className="grid gap-1.5">
-          <label htmlFor="email" className="text-sm font-medium">
-            Email
-          </label>
-          <Input
-            id="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </div>
+        <Input
+          id="email"
+          type="email"
+          autoComplete="email"
+          required
+          aria-label="Email"
+          placeholder="Email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
 
-        <div className="grid gap-1.5">
-          <label htmlFor="password" className="text-sm font-medium">
-            Password
-          </label>
-          <Input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            minLength={6}
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </div>
+        <Input
+          id="password"
+          type="password"
+          autoComplete="current-password"
+          minLength={6}
+          required
+          aria-label="Password"
+          placeholder="Password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
 
         {error ? (
           <p className="text-destructive text-sm" role="alert">
@@ -78,7 +66,7 @@ export function LoginPage() {
         ) : null}
 
         <Button type="submit" disabled={busy != null}>
-          {busy === 'in' ? 'Signing in…' : 'Sign in'}
+          {busy === 'in' ? 'Logging in…' : 'Login'}
         </Button>
         <Button
           type="button"
