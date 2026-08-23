@@ -166,7 +166,7 @@ export function IncomePage() {
     <div className="min-h-svh bg-background">
       <AppHeader />
 
-      <main className="mx-auto grid max-w-6xl px-6 py-8">
+      <main className="mx-auto grid max-w-5xl px-6 py-8">
         <div>
           <Button variant="ghost" size="sm" asChild>
             <Link to="/">

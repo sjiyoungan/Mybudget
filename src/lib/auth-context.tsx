@@ -16,6 +16,7 @@ type AuthContextValue = {
   loading: boolean
   signIn: (email: string, password: string) => Promise<string | null>
   signUp: (email: string, password: string) => Promise<string | null>
+  signOut: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -89,6 +90,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return 'Account created. Confirm the email link, then sign in. To skip that, turn off Confirm email in Supabase Auth settings.'
         }
         return null
+      },
+      async signOut() {
+        if (!supabase) return
+        await supabase.auth.signOut()
       },
     }),
     [loading, session],
