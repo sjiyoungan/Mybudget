@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ChevronDown, ChevronRight, Upload } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Upload } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
 import {
@@ -24,7 +24,6 @@ import {
 import {
   Drawer,
   DrawerContent,
-  DrawerDescription,
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer'
@@ -262,7 +261,7 @@ export function IncomePage() {
           />
         </section>
 
-        <section className="mt-6 grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
+        <section className="mt-12 grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
           <Card>
             <CardHeader>
               <CardTitle>Monthly net</CardTitle>
@@ -366,8 +365,9 @@ function SummaryStat({
   className?: string
 }) {
   const classes = cn(
-    'rounded-none py-1 text-left',
-    onClick && 'cursor-pointer transition-colors hover:bg-muted/40',
+    'rounded-none py-1 text-left transition-colors',
+    'hover:bg-linear-to-b hover:from-neutral-200/45 hover:to-transparent',
+    onClick && 'cursor-pointer',
     className,
   )
   const body = (
@@ -415,9 +415,6 @@ function DeductionDrawer({
       <DrawerContent className="data-[vaul-drawer-direction=right]:h-full sm:max-w-md">
         <DrawerHeader>
           <DrawerTitle>{title}</DrawerTitle>
-          <DrawerDescription>
-            Totals by month. Expand a month to see the breakdown.
-          </DrawerDescription>
         </DrawerHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
           {rows.length === 0 ? (
@@ -454,11 +451,11 @@ function DeductionDrawer({
                       >
                         {formatUsd(row.total)}
                       </span>
-                      <ChevronRight
+                      <ChevronDown
                         className={cn(
                           'size-4 text-muted-foreground transition-transform',
                           !canExpand && 'invisible',
-                          expanded && 'rotate-90',
+                          expanded && 'rotate-180',
                         )}
                       />
                     </button>
@@ -468,6 +465,7 @@ function DeductionDrawer({
                           <AmountRow
                             key={`${line.name}-${line.amount}`}
                             line={line}
+                            muted
                           />
                         ))}
                       </div>
@@ -630,7 +628,7 @@ function AmountRow({
       <span
         className={cn(
           emphasized && 'font-medium',
-          muted && 'text-muted-foreground',
+          muted && 'text-neutral-600',
         )}
       >
         {line.name}
@@ -638,7 +636,7 @@ function AmountRow({
       <span
         className={cn(
           'tabular-nums',
-          muted && 'text-muted-foreground',
+          muted && 'text-neutral-600',
           negative && 'text-destructive',
           emphasized && !muted && 'font-medium',
         )}
