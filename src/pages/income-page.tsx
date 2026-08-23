@@ -166,7 +166,7 @@ export function IncomePage() {
     <div className="min-h-svh bg-background">
       <AppHeader />
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8">
+      <main className="mx-auto grid max-w-6xl px-6 py-8">
         <div>
           <Button variant="ghost" size="sm" asChild>
             <Link to="/">
@@ -184,12 +184,26 @@ export function IncomePage() {
                   setSelectedMonth(null)
                 }}
               >
-                <SelectTrigger aria-label="Income year" size="sm">
+                <SelectTrigger
+                  aria-label="Income year"
+                  size="sm"
+                  className="h-8 text-base"
+                >
                   <SelectValue placeholder="Year" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent
+                  position="popper"
+                  align="start"
+                  side="bottom"
+                  sideOffset={4}
+                  className="w-(--radix-select-trigger-width) min-w-(--radix-select-trigger-width) rounded-md"
+                >
                   {years.map((option) => (
-                    <SelectItem key={option} value={String(option)}>
+                    <SelectItem
+                      key={option}
+                      value={String(option)}
+                      className="text-base"
+                    >
                       {option}
                     </SelectItem>
                   ))}
@@ -223,28 +237,32 @@ export function IncomePage() {
           </p>
         ) : null}
 
-        <section className="grid grid-cols-2 xl:grid-cols-4">
-          <SummaryStat label="Year-to-date net pay" amount={ytdNet} />
+        <section className="mt-8 grid grid-cols-2 xl:grid-cols-4">
+          <SummaryStat
+            label="Year-to-date net pay"
+            amount={ytdNet}
+            className="pr-5 pl-0"
+          />
           <SummaryStat
             label="Average monthly net pay"
             amount={monthlyAverage}
-            className="border-l border-border"
+            className="border-l border-border px-5"
           />
           <SummaryStat
             label="Year-to-date tax"
             amount={ytdTax}
-            className="border-t border-border xl:border-t-0 xl:border-l"
+            className="border-t border-border px-5 max-xl:pl-0 xl:border-t-0 xl:border-l"
             onClick={() => setDeductionDrawer('tax')}
           />
           <SummaryStat
             label="Year-to-date healthcare"
             amount={ytdHealthcare}
-            className="border-t border-l border-border xl:border-t-0"
+            className="border-t border-l border-border px-5 xl:border-t-0"
             onClick={() => setDeductionDrawer('healthcare')}
           />
         </section>
 
-        <section className="grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
+        <section className="mt-6 grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
           <Card>
             <CardHeader>
               <CardTitle>Monthly net</CardTitle>
@@ -348,14 +366,14 @@ function SummaryStat({
   className?: string
 }) {
   const classes = cn(
-    'px-5 py-1 text-left',
-    onClick && 'cursor-pointer rounded-lg transition-colors hover:bg-muted/40',
+    'rounded-none py-1 text-left',
+    onClick && 'cursor-pointer transition-colors hover:bg-muted/40',
     className,
   )
   const body = (
     <>
       <p className="text-muted-foreground text-sm">{label}</p>
-      <p className="mt-2 text-2xl font-normal tabular-nums">
+      <p className="mt-4 text-2xl font-normal tabular-nums">
         {formatUsd(amount)}
       </p>
     </>
@@ -573,11 +591,12 @@ function PaystubDetail({
             </span>
           </button>
           {deductionsOpen ? (
-            <div className="grid gap-2 pt-3 pl-1">
+            <div className="grid gap-2 pt-3 pl-1.5">
               {paystub.deductions.map((line) => (
                 <AmountRow
                   key={`${line.name}-${line.amount}`}
                   line={line}
+                  muted
                 />
               ))}
             </div>
@@ -598,23 +617,31 @@ function AmountRow({
   line,
   emphasized = false,
   keepForeground = false,
+  muted = false,
 }: {
   line: PayLine
   emphasized?: boolean
   keepForeground?: boolean
+  muted?: boolean
 }) {
-  const negative = line.amount < 0 && !keepForeground
+  const negative = line.amount < 0 && !keepForeground && !muted
   return (
     <div className="flex items-baseline justify-between gap-4">
-      <span className={emphasized ? 'font-medium' : undefined}>{line.name}</span>
       <span
-        className={
-          negative
-            ? 'text-destructive tabular-nums'
-            : emphasized
-              ? 'font-medium tabular-nums'
-              : 'tabular-nums'
-        }
+        className={cn(
+          emphasized && 'font-medium',
+          muted && 'text-muted-foreground',
+        )}
+      >
+        {line.name}
+      </span>
+      <span
+        className={cn(
+          'tabular-nums',
+          muted && 'text-muted-foreground',
+          negative && 'text-destructive',
+          emphasized && !muted && 'font-medium',
+        )}
       >
         {formatUsd(line.amount)}
       </span>
