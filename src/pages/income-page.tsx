@@ -100,7 +100,7 @@ export function IncomePage() {
               Dashboard
             </Link>
           </Button>
-          <div className="mt-2 flex flex-wrap items-center gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <h1 className="font-heading text-3xl font-medium">Income</h1>
             <Select
                 value={String(selectedYear)}
@@ -162,12 +162,12 @@ export function IncomePage() {
           />
         </section>
 
-        <section className="mt-12 grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
+        <section className="mt-10 grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
           <Card>
             <CardHeader>
               <CardTitle>Monthly net</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-1">
+            <CardContent className="grid gap-1 pl-3">
               {monthRows.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
                   No months to show yet.
@@ -181,9 +181,9 @@ export function IncomePage() {
                       type="button"
                       onClick={() => setSelectedMonth(row.month)}
                       className={cn(
-                        'grid grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-0 text-left transition-colors',
-                        'hover:bg-muted/50',
-                        selected && 'bg-muted',
+                        'grid grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left transition-colors',
+                        'hover:bg-neutral-200/80',
+                        selected && 'bg-neutral-100 hover:bg-neutral-200/80',
                       )}
                     >
                       <span className={selected ? 'font-medium' : undefined}>
@@ -238,8 +238,8 @@ function SummaryStat({
   className?: string
 }) {
   const classes = cn(
-    'rounded-none py-1 text-left transition-colors',
-    'hover:bg-linear-to-b hover:from-muted hover:to-transparent',
+    'rounded-none bg-transparent py-1 text-left transition-colors',
+    'hover:bg-neutral-200/80',
     onClick && 'cursor-pointer',
     className,
   )
@@ -309,8 +309,8 @@ function DeductionDrawer({
                       }
                       className={cn(
                         'grid w-full grid-cols-[1fr_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors',
-                        canExpand ? 'hover:bg-muted/50' : 'cursor-default',
-                        expanded && 'bg-muted/50',
+                        canExpand ? 'hover:bg-neutral-200/80' : 'cursor-default',
+                        expanded && 'bg-neutral-100 hover:bg-neutral-200/80',
                       )}
                     >
                       <span className={expanded ? 'font-medium' : undefined}>
@@ -333,12 +333,13 @@ function DeductionDrawer({
                       />
                     </button>
                     {expanded ? (
-                      <div className="grid gap-2 py-2 pl-4 pr-8">
+                      <div className="grid gap-2 py-2 pr-8 pl-[22px]">
                         {row.lines.map((line) => (
                           <AmountRow
                             key={`${line.name}-${line.amount}`}
                             line={line}
                             muted
+                            hoverable
                           />
                         ))}
                       </div>
@@ -462,7 +463,7 @@ function PaystubDetail({
             </span>
           </button>
           {deductionsOpen ? (
-            <div className="grid gap-2 pt-3 pl-1.5">
+            <div className="grid gap-2 pt-3 pl-3">
               {paystub.deductions.map((line) => (
                 <AmountRow
                   key={`${line.name}-${line.amount}`}
@@ -489,15 +490,22 @@ function AmountRow({
   emphasized = false,
   keepForeground = false,
   muted = false,
+  hoverable = false,
 }: {
   line: PayLine
   emphasized?: boolean
   keepForeground?: boolean
   muted?: boolean
+  hoverable?: boolean
 }) {
   const negative = line.amount < 0 && !keepForeground && !muted
   return (
-    <div className="flex items-baseline justify-between gap-4">
+    <div
+      className={cn(
+        '-mx-1 flex items-baseline justify-between gap-4 rounded-md px-1 py-0.5',
+        hoverable && 'hover:bg-neutral-200/80',
+      )}
+    >
       <span
         className={cn(
           emphasized && 'font-medium',
