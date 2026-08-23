@@ -24,3 +24,14 @@ export function formatShortDate(iso: string) {
     year: 'numeric',
   })
 }
+
+export function formatDateWithoutYear(
+  iso: string,
+  month: 'long' | 'short' = 'long',
+) {
+  const [year, monthNum, day] = iso.split('-').map(Number)
+  return new Date(year, monthNum - 1, day).toLocaleDateString('en-US', {
+    month,
+    day: 'numeric',
+  })
+}

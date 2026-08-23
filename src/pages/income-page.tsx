@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Upload } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, Upload } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
 import {
@@ -13,7 +13,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -23,27 +22,44 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer'
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
-import { formatLongDate, formatShortDate, formatUsd } from '@/lib/format'
+import {
+  formatDateWithoutYear,
+  formatLongDate,
+  formatUsd,
+} from '@/lib/format'
 import {
   averageMonthlyNet,
   availableIncomeYears,
   INCOME_START_YEAR,
+  isHealthcareDeduction,
+  isTaxDeduction,
   monthName,
+  monthlyDeductionRows,
   stubsForMonth,
-  stubsForYear,
   visibleMonthRows,
+  yearToDateHealthcare,
   yearToDateNet,
+  yearToDateTax,
+  type MonthlyDeductionRow,
 } from '@/lib/income'
 import { parseAdpPaystub, type PayLine, type Paystub } from '@/lib/paystub'
 import { usePaystubs } from '@/lib/paystub-context'
 import { cn } from '@/lib/utils'
+
+type DeductionDrawerKind = 'tax' | 'healthcare'
 
 export function IncomePage() {
   const { paystubs, upsertPaystub } = usePaystubs()
@@ -60,12 +76,25 @@ export function IncomePage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [pendingStub, setPendingStub] = useState<Paystub | null>(null)
+  const [deductionDrawer, setDeductionDrawer] =
+    useState<DeductionDrawerKind | null>(null)
 
   const selectedYear = years.includes(year) ? year : (years[0] ?? INCOME_START_YEAR)
-  const yearStubs = stubsForYear(paystubs, selectedYear)
   const ytdNet = yearToDateNet(paystubs, selectedYear)
   const monthlyAverage = averageMonthlyNet(paystubs, selectedYear)
+  const ytdTax = yearToDateTax(paystubs, selectedYear)
+  const ytdHealthcare = yearToDateHealthcare(paystubs, selectedYear)
   const monthRows = visibleMonthRows(paystubs, selectedYear)
+  const taxMonthRows = monthlyDeductionRows(
+    paystubs,
+    selectedYear,
+    isTaxDeduction,
+  )
+  const healthcareMonthRows = monthlyDeductionRows(
+    paystubs,
+    selectedYear,
+    isHealthcareDeduction,
+  )
   const activeMonth =
     selectedMonth != null && monthRows.some((row) => row.month === selectedMonth)
       ? selectedMonth
@@ -191,31 +220,22 @@ export function IncomePage() {
           </p>
         ) : null}
 
-        <section className="flex max-w-xl flex-wrap gap-4">
-          <Card className="min-w-[14rem] flex-1">
-            <CardHeader>
-              <CardDescription>Year-to-date net pay</CardDescription>
-              <div className="flex items-baseline justify-between gap-4">
-                <CardTitle className="text-2xl">{formatUsd(ytdNet)}</CardTitle>
-                {yearStubs.length > 0 ? (
-                  <span className="text-muted-foreground text-sm">
-                    {yearStubs.length === 1
-                      ? '1 paycheck'
-                      : `${yearStubs.length} paychecks`}
-                  </span>
-                ) : null}
-              </div>
-            </CardHeader>
-          </Card>
-
-          <Card className="min-w-[14rem] flex-1">
-            <CardHeader>
-              <CardDescription>Average monthly net pay</CardDescription>
-              <CardTitle className="text-2xl">
-                {formatUsd(monthlyAverage)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard label="Year-to-date net pay" amount={ytdNet} />
+          <SummaryCard
+            label="Average monthly net pay"
+            amount={monthlyAverage}
+          />
+          <SummaryCard
+            label="Year-to-date tax"
+            amount={ytdTax}
+            onClick={() => setDeductionDrawer('tax')}
+          />
+          <SummaryCard
+            label="Year-to-date healthcare"
+            amount={ytdHealthcare}
+            onClick={() => setDeductionDrawer('healthcare')}
+          />
         </section>
 
         <section className="grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
@@ -263,6 +283,21 @@ export function IncomePage() {
         </section>
       </main>
 
+      <DeductionDrawer
+        open={deductionDrawer != null}
+        title={
+          deductionDrawer === 'healthcare'
+            ? 'Year-to-date healthcare'
+            : 'Year-to-date tax'
+        }
+        rows={
+          deductionDrawer === 'healthcare' ? healthcareMonthRows : taxMonthRows
+        }
+        onOpenChange={(open) => {
+          if (!open) setDeductionDrawer(null)
+        }}
+      />
+
       <AlertDialog
         open={pendingStub != null}
         onOpenChange={(open) => {
@@ -292,6 +327,135 @@ export function IncomePage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+function SummaryCard({
+  label,
+  amount,
+  onClick,
+}: {
+  label: string
+  amount: number
+  onClick?: () => void
+}) {
+  return (
+    <Card
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className={cn(
+        onClick && 'cursor-pointer transition-colors hover:bg-muted/40',
+      )}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onClick()
+              }
+            }
+          : undefined
+      }
+    >
+      <CardHeader className="gap-2">
+        <CardDescription>{label}</CardDescription>
+        <CardTitle className="text-2xl">{formatUsd(amount)}</CardTitle>
+      </CardHeader>
+    </Card>
+  )
+}
+
+function DeductionDrawer({
+  open,
+  title,
+  rows,
+  onOpenChange,
+}: {
+  open: boolean
+  title: string
+  rows: MonthlyDeductionRow[]
+  onOpenChange: (open: boolean) => void
+}) {
+  const [expandedMonth, setExpandedMonth] = useState<number | null>(null)
+
+  return (
+    <Drawer
+      direction="right"
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setExpandedMonth(null)
+        onOpenChange(nextOpen)
+      }}
+    >
+      <DrawerContent className="data-[vaul-drawer-direction=right]:h-full sm:max-w-md">
+        <DrawerHeader>
+          <DrawerTitle>{title}</DrawerTitle>
+          <DrawerDescription>
+            Totals by month. Expand a month to see the breakdown.
+          </DrawerDescription>
+        </DrawerHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+          {rows.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No months to show yet.
+            </p>
+          ) : (
+            <div className="grid gap-1">
+              {rows.map((row) => {
+                const expanded = expandedMonth === row.month
+                const canExpand = row.lines.length > 0
+                return (
+                  <div key={row.month}>
+                    <button
+                      type="button"
+                      disabled={!canExpand}
+                      onClick={() =>
+                        setExpandedMonth(expanded ? null : row.month)
+                      }
+                      className={cn(
+                        'grid w-full grid-cols-[1fr_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors',
+                        canExpand ? 'hover:bg-muted/50' : 'cursor-default',
+                        expanded && 'bg-muted/50',
+                      )}
+                    >
+                      <span className={expanded ? 'font-medium' : undefined}>
+                        {monthName(row.month)}
+                      </span>
+                      <span
+                        className={cn(
+                          'tabular-nums',
+                          row.total === 0 && 'text-muted-foreground',
+                        )}
+                      >
+                        {formatUsd(row.total)}
+                      </span>
+                      <ChevronRight
+                        className={cn(
+                          'size-4 text-muted-foreground transition-transform',
+                          !canExpand && 'invisible',
+                          expanded && 'rotate-90',
+                        )}
+                      />
+                    </button>
+                    {expanded ? (
+                      <div className="grid gap-2 py-2 pl-4 pr-8">
+                        {row.lines.map((line) => (
+                          <AmountRow
+                            key={`${line.name}-${line.amount}`}
+                            line={line}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </DrawerContent>
+    </Drawer>
   )
 }
 
@@ -349,6 +513,7 @@ function PaystubDetail({
   paystub: Paystub
   paycheckLabel?: string
 }) {
+  const [deductionsOpen, setDeductionsOpen] = useState(false)
   const deductionTotal = paystub.deductions.reduce(
     (sum, item) => sum + item.amount,
     0,
@@ -357,53 +522,66 @@ function PaystubDetail({
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
           <CardTitle>
             {paycheckLabel
-              ? `${paycheckLabel} · ${formatLongDate(paystub.payDate)}`
-              : formatLongDate(paystub.payDate)}
+              ? `${paycheckLabel} · ${formatDateWithoutYear(paystub.payDate)}`
+              : formatDateWithoutYear(paystub.payDate)}
           </CardTitle>
-          <Badge variant="secondary">ADP</Badge>
+          {paystub.periodBeginning && paystub.periodEnding ? (
+            <CardDescription>
+              Period {formatDateWithoutYear(paystub.periodBeginning, 'short')} –{' '}
+              {formatDateWithoutYear(paystub.periodEnding, 'short')}
+            </CardDescription>
+          ) : null}
         </div>
-        {paystub.periodBeginning && paystub.periodEnding ? (
-          <CardDescription>
-            Period {formatShortDate(paystub.periodBeginning)} –{' '}
-            {formatShortDate(paystub.periodEnding)}
-          </CardDescription>
-        ) : null}
       </CardHeader>
-      <CardContent className="grid gap-6">
-        <section className="grid gap-3">
-          <h3 className="font-medium">Earnings</h3>
-          {paystub.earnings.map((line) => (
-            <AmountRow key={line.name} line={line} />
-          ))}
-          <Separator />
-          <AmountRow
-            line={{ name: 'Gross pay', amount: paystub.grossPay }}
-            emphasized
-          />
-        </section>
-
-        <section className="grid gap-3">
-          <h3 className="font-medium">Taken out before deposit</h3>
-          {paystub.deductions.map((line) => (
-            <AmountRow key={`${line.name}-${line.amount}`} line={line} />
-          ))}
-          <Separator />
-          <AmountRow
-            line={{ name: 'Total deductions', amount: deductionTotal }}
-            emphasized
-            keepForeground
-          />
-        </section>
-
-        <section className="grid gap-1">
-          <h3 className="font-medium">Net pay</h3>
-          <p className="font-heading text-3xl font-medium">
-            {formatUsd(paystub.netPay)}
-          </p>
-        </section>
+      <CardContent className="grid gap-3">
+        <AmountRow
+          line={{ name: 'Gross pay', amount: paystub.grossPay }}
+          emphasized
+        />
+        <AmountRow
+          line={{ name: 'Net pay', amount: paystub.netPay }}
+          emphasized
+          keepForeground
+        />
+        <div>
+          <button
+            type="button"
+            aria-expanded={deductionsOpen}
+            disabled={paystub.deductions.length === 0}
+            onClick={() => setDeductionsOpen((open) => !open)}
+            className={cn(
+              'flex w-full items-baseline justify-between gap-4 text-left',
+              paystub.deductions.length === 0 && 'cursor-default',
+            )}
+          >
+            <span className="inline-flex items-center gap-1 font-medium">
+              Total deductions
+              <ChevronDown
+                className={cn(
+                  'size-4 text-muted-foreground transition-transform',
+                  paystub.deductions.length === 0 && 'invisible',
+                  deductionsOpen && 'rotate-180',
+                )}
+              />
+            </span>
+            <span className="font-medium tabular-nums">
+              {formatUsd(deductionTotal)}
+            </span>
+          </button>
+          {deductionsOpen ? (
+            <div className="grid gap-2 pt-3 pl-1">
+              {paystub.deductions.map((line) => (
+                <AmountRow
+                  key={`${line.name}-${line.amount}`}
+                  line={line}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   )

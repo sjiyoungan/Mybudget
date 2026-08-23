@@ -1,4 +1,4 @@
-import type { Paystub } from '@/lib/paystub'
+import type { PayLine, Paystub } from '@/lib/paystub'
 
 export const INCOME_START_YEAR = 2026
 
@@ -86,4 +86,86 @@ export function visibleMonthRows(
       if (amount !== 0) return true
       return month === currentMonth
     })
+}
+
+const TAX_DEDUCTION =
+  /\b(federal|fica|oasdi|social security|medicare|withholding|income tax|state tax|local tax|city tax|sdi|sui|pfl|paid family|unemployment|disability)\b/i
+
+const HEALTHCARE_DEDUCTION =
+  /\b(accident|dental|fsa|hsa|hospital|medical|vision|health(?:care)?)\b/i
+
+export function isTaxDeduction(name: string) {
+  return TAX_DEDUCTION.test(name) && !isHealthcareDeduction(name)
+}
+
+export function isHealthcareDeduction(name: string) {
+  return HEALTHCARE_DEDUCTION.test(name)
+}
+
+export function sumDeductions(
+  paystubs: Paystub[],
+  predicate: (name: string) => boolean,
+) {
+  return paystubs.reduce((sum, stub) => {
+    return (
+      sum +
+      stub.deductions.reduce(
+        (inner, line) => (predicate(line.name) ? inner + line.amount : inner),
+        0,
+      )
+    )
+  }, 0)
+}
+
+export function yearToDateTax(paystubs: Paystub[], year: number) {
+  return sumDeductions(stubsForYear(paystubs, year), isTaxDeduction)
+}
+
+export function yearToDateHealthcare(paystubs: Paystub[], year: number) {
+  return sumDeductions(stubsForYear(paystubs, year), isHealthcareDeduction)
+}
+
+export type MonthlyDeductionRow = {
+  month: number
+  total: number
+  lines: PayLine[]
+}
+
+function aggregateDeductionLines(
+  paystubs: Paystub[],
+  predicate: (name: string) => boolean,
+): PayLine[] {
+  const totals = new Map<string, number>()
+  const order: string[] = []
+
+  for (const stub of [...paystubs].sort((left, right) =>
+    left.payDate.localeCompare(right.payDate),
+  )) {
+    for (const line of stub.deductions) {
+      if (!predicate(line.name)) continue
+      if (!totals.has(line.name)) order.push(line.name)
+      totals.set(line.name, (totals.get(line.name) ?? 0) + line.amount)
+    }
+  }
+
+  return order.map((name) => ({ name, amount: totals.get(name) ?? 0 }))
+}
+
+export function monthlyDeductionRows(
+  paystubs: Paystub[],
+  year: number,
+  predicate: (name: string) => boolean,
+  now = new Date(),
+): MonthlyDeductionRow[] {
+  return visibleMonthRows(paystubs, year, now).map(({ month }) => {
+    const lines = aggregateDeductionLines(
+      stubsForMonth(paystubs, year, month),
+      predicate,
+    )
+    return {
+      month,
+      total: lines.reduce((sum, line) => sum + line.amount, 0),
+      lines,
+    }
+  })
 }
