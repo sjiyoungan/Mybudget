@@ -137,27 +137,20 @@ export function IncomePage() {
           </div>
         </div>
 
-        <section className="mt-8 grid grid-cols-2 xl:grid-cols-4">
-          <SummaryStat
-            label="Year-to-date net pay"
-            amount={ytdNet}
-            className="pr-5 pl-0"
-          />
+        <section className="metric-grid mt-8">
+          <SummaryStat label="Year-to-date net pay" amount={ytdNet} />
           <SummaryStat
             label="Average monthly net pay"
             amount={monthlyAverage}
-            className="border-l border-border px-5"
           />
           <SummaryStat
             label="Year-to-date tax"
             amount={ytdTax}
-            className="border-t border-border px-5 max-xl:pl-0 xl:border-t-0 xl:border-l"
             onClick={() => setDeductionDrawer('tax')}
           />
           <SummaryStat
             label="Year-to-date healthcare"
             amount={ytdHealthcare}
-            className="border-t border-l border-border px-5 xl:border-t-0"
             onClick={() => setDeductionDrawer('healthcare')}
           />
         </section>
@@ -181,9 +174,8 @@ export function IncomePage() {
                       type="button"
                       onClick={() => setSelectedMonth(row.month)}
                       className={cn(
-                        'grid grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left transition-colors',
-                        'hover:bg-neutral-200/80',
-                        selected && 'bg-neutral-100 hover:bg-neutral-200/80',
+                        'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
+                        selected && 'hover-fill-active',
                       )}
                     >
                       <span className={selected ? 'font-medium' : undefined}>
@@ -238,8 +230,7 @@ function SummaryStat({
   className?: string
 }) {
   const classes = cn(
-    'rounded-none bg-transparent py-1 text-left transition-colors',
-    'hover:bg-neutral-200/80',
+    'hover-fill w-full rounded-none py-1 text-left',
     onClick && 'cursor-pointer',
     className,
   )
@@ -308,9 +299,9 @@ function DeductionDrawer({
                         setExpandedMonth(expanded ? null : row.month)
                       }
                       className={cn(
-                        'grid w-full grid-cols-[1fr_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors',
-                        canExpand ? 'hover:bg-neutral-200/80' : 'cursor-default',
-                        expanded && 'bg-neutral-100 hover:bg-neutral-200/80',
+                        'hover-fill grid w-full grid-cols-[1fr_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left',
+                        canExpand ? undefined : 'cursor-default',
+                        expanded && 'hover-fill-active',
                       )}
                     >
                       <span className={expanded ? 'font-medium' : undefined}>
@@ -503,7 +494,7 @@ function AmountRow({
     <div
       className={cn(
         '-mx-1 flex items-baseline justify-between gap-4 rounded-md px-1 py-0.5',
-        hoverable && 'hover:bg-neutral-200/80',
+        hoverable && 'hover-fill',
       )}
     >
       <span

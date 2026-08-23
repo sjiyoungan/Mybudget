@@ -128,3 +128,78 @@
     @apply font-sans;
     }
 }
+
+/* Solid grays — color-mix() was compiled to a near-white (or black) fallback. */
+.hover-fill {
+  transition: background-color 150ms ease;
+}
+.hover-fill:hover,
+.hover-fill:focus-visible,
+.hover-fill:active {
+  background-color: #e8e8e8 !important;
+}
+.hover-fill-active {
+  background-color: #f0f0f0;
+}
+.hover-fill-active:hover,
+.hover-fill-active:focus-visible,
+.hover-fill-active:active {
+  background-color: #e0e0e0 !important;
+}
+.dark .hover-fill:hover,
+.dark .hover-fill:focus-visible,
+.dark .hover-fill:active {
+  background-color: #2e2e2e !important;
+}
+.dark .hover-fill-active {
+  background-color: #262626;
+}
+.dark .hover-fill-active:hover,
+.dark .hover-fill-active:focus-visible,
+.dark .hover-fill-active:active {
+  background-color: #3a3a3a !important;
+}
+
+/* Dividers sit in the middle of the 40px gaps, not on a cell edge. */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 2.5rem;
+  row-gap: 2.5rem;
+  background-image: linear-gradient(var(--border), var(--border));
+  background-size: 100% 1px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.metric-grid > * {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+.metric-grid > *:nth-child(odd)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -1.25rem;
+  width: 1px;
+  height: 100%;
+  background-color: var(--border);
+}
+@media (width >= 80rem) {
+  .metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    background-image: none;
+  }
+  .metric-grid > *:nth-child(odd)::after {
+    content: none;
+  }
+  .metric-grid > *:not(:nth-child(4n))::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: -1.25rem;
+    width: 1px;
+    height: 100%;
+    background-color: var(--border);
+  }
+}
