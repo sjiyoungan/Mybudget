@@ -56,3 +56,34 @@ export function averageMonthlyNet(paystubs: Paystub[], year: number) {
   if (monthsWithPay.length === 0) return 0
   return yearToDateNet(paystubs, year) / monthsWithPay.length
 }
+
+export function stubsForMonth(
+  paystubs: Paystub[],
+  year: number,
+  monthIndex: number,
+) {
+  const prefix = `${year}-${String(monthIndex + 1).padStart(2, '0')}-`
+  return paystubs
+    .filter((stub) => stub.payDate.startsWith(prefix))
+    .sort((left, right) => right.payDate.localeCompare(left.payDate))
+}
+
+export function visibleMonthRows(
+  paystubs: Paystub[],
+  year: number,
+  now = new Date(),
+) {
+  const totals = monthlyNetTotals(paystubs, year)
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth()
+
+  return totals
+    .map((amount, month) => ({ month, amount }))
+    .filter(({ month, amount }) => {
+      if (year > currentYear) return amount !== 0
+      if (year < currentYear) return amount !== 0
+      if (month > currentMonth) return false
+      if (amount !== 0) return true
+      return month === currentMonth
+    })
+}
