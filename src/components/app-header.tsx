@@ -22,9 +22,9 @@ export function AppHeader() {
               variant="ghost"
               size="default"
               aria-label="Account menu"
-              className="h-8 gap-1 px-1.5"
+              className="h-8 w-auto min-w-max shrink-0 gap-1 overflow-visible px-2"
             >
-              <span className="text-sm font-medium">HEJI</span>
+              <span className="text-sm font-medium">JI</span>
               <ChevronDown className="size-4 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
