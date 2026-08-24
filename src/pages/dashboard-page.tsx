@@ -83,7 +83,7 @@ export function DashboardPage() {
             className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <Card className="transition-colors hover:bg-muted/40">
-              <CardHeader>
+              <CardHeader className="gap-5">
                 <div className="flex items-start justify-between gap-2">
                   <CardDescription>Income</CardDescription>
                   <ChevronRight className="text-muted-foreground size-4" />
@@ -91,11 +91,6 @@ export function DashboardPage() {
                 <CardTitle className="text-2xl">
                   {formatUsd(totals.income)}
                 </CardTitle>
-                <CardDescription>
-                  {paystubs.length > 0
-                    ? 'Net from uploaded paystubs'
-                    : 'Open to upload an ADP paystub'}
-                </CardDescription>
               </CardHeader>
             </Card>
           </Link>
@@ -196,7 +191,7 @@ export function DashboardPage() {
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="gap-5">
         <CardDescription>{label}</CardDescription>
         <CardTitle className="text-2xl">{value}</CardTitle>
       </CardHeader>
