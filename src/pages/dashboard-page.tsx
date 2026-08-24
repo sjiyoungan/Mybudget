@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ChevronRight, Plus } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
+import { BudgetCards } from '@/components/budget-cards'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -183,6 +184,8 @@ export function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        <BudgetCards />
       </main>
     </div>
   )

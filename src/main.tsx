@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from '@/lib/auth-context'
+import { BudgetProvider } from '@/lib/budget-context'
 import { PaystubProvider } from '@/lib/paystub-context'
 
 createRoot(document.getElementById('root')!).render(
@@ -12,7 +13,9 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <AuthProvider>
         <PaystubProvider>
-          <App />
+          <BudgetProvider>
+            <App />
+          </BudgetProvider>
         </PaystubProvider>
       </AuthProvider>
     </BrowserRouter>

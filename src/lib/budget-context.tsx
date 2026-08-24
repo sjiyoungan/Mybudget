@@ -1,0 +1,153 @@
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
+
+import {
+  loadBudget,
+  saveBudget,
+  type AccountRole,
+  type BankAccount,
+  type BudgetState,
+  type Debt,
+  type RecurringExpense,
+} from '@/lib/budget'
+
+type BudgetContextValue = {
+  accounts: BankAccount[]
+  expenses: RecurringExpense[]
+  debts: Debt[]
+  addAccount: (input: {
+    name: string
+    kind: string
+    role: AccountRole
+  }) => void
+  updateAccountBalance: (id: string, balance: number) => void
+  setAccountRole: (id: string, role: AccountRole) => void
+  removeAccount: (id: string) => void
+  addExpense: (input: Omit<RecurringExpense, 'id'>) => void
+  removeExpense: (id: string) => void
+  addDebt: (input: Omit<Debt, 'id'>) => void
+  removeDebt: (id: string) => void
+}
+
+const BudgetContext = createContext<BudgetContextValue | null>(null)
+
+function withExclusiveRole(
+  accounts: BankAccount[],
+  id: string,
+  role: AccountRole,
+) {
+  return accounts.map((account) => {
+    if (account.id === id) return { ...account, role }
+    if (
+      (role === 'bills' || role === 'overflow') &&
+      account.role === role
+    ) {
+      return { ...account, role: 'other' as const }
+    }
+    return account
+  })
+}
+
+export function BudgetProvider({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<BudgetState>(() => loadBudget())
+
+  useEffect(() => {
+    saveBudget(state)
+  }, [state])
+
+  const value = useMemo<BudgetContextValue>(
+    () => ({
+      accounts: state.accounts,
+      expenses: state.expenses,
+      debts: state.debts,
+      addAccount({ name, kind, role }) {
+        setState((current) => {
+          const next: BankAccount = {
+            id: crypto.randomUUID(),
+            name,
+            kind,
+            role: 'other',
+            balance: 0,
+          }
+          return {
+            ...current,
+            accounts: withExclusiveRole(
+              [...current.accounts, next],
+              next.id,
+              role,
+            ),
+          }
+        })
+      },
+      updateAccountBalance(id, balance) {
+        setState((current) => ({
+          ...current,
+          accounts: current.accounts.map((account) =>
+            account.id === id ? { ...account, balance } : account,
+          ),
+        }))
+      },
+      setAccountRole(id, role) {
+        setState((current) => ({
+          ...current,
+          accounts: withExclusiveRole(current.accounts, id, role),
+        }))
+      },
+      removeAccount(id) {
+        setState((current) => ({
+          ...current,
+          accounts: current.accounts.filter((account) => account.id !== id),
+        }))
+      },
+      addExpense(input) {
+        setState((current) => ({
+          ...current,
+          expenses: [
+            ...current.expenses,
+            { ...input, id: crypto.randomUUID() },
+          ].sort((left, right) => left.dueDay - right.dueDay),
+        }))
+      },
+      removeExpense(id) {
+        setState((current) => ({
+          ...current,
+          expenses: current.expenses.filter((item) => item.id !== id),
+        }))
+      },
+      addDebt(input) {
+        setState((current) => ({
+          ...current,
+          debts: [
+            ...current.debts,
+            { ...input, id: crypto.randomUUID() },
+          ].sort((left, right) => left.dueDay - right.dueDay),
+        }))
+      },
+      removeDebt(id) {
+        setState((current) => ({
+          ...current,
+          debts: current.debts.filter((item) => item.id !== id),
+        }))
+      },
+    }),
+    [state],
+  )
+
+  return (
+    <BudgetContext.Provider value={value}>{children}</BudgetContext.Provider>
+  )
+}
+
+export function useBudget() {
+  const value = useContext(BudgetContext)
+  if (!value) {
+    throw new Error('useBudget must be used within BudgetProvider')
+  }
+  return value
+}
