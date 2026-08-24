@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -16,11 +16,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -35,6 +42,7 @@ import {
   totalForCategory,
   type AccountRole,
   type ExpenseCategory,
+  type RecurringExpense,
 } from '@/lib/budget'
 import { formatUsd } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -48,6 +56,141 @@ function parseDay(value: string) {
   const parsed = Number.parseInt(value, 10)
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 31) return null
   return parsed
+}
+
+function categoryOptionLabel(id: ExpenseCategory) {
+  if (id === 'recurring') return 'Recurring (water, gym, subscriptions)'
+  if (id === 'variable') return 'Variable (spending, food)'
+  return expenseCategories.find((item) => item.id === id)?.label ?? id
+}
+
+function DueDayInput({
+  value,
+  onChange,
+  className,
+  placeholder = 'Due day',
+  ...props
+}: {
+  value: string
+  onChange: (value: string) => void
+} & Omit<React.ComponentProps<typeof Input>, 'value' | 'onChange'>) {
+  function handleChange(next: string) {
+    const digits = next.replace(/\D/g, '')
+    if (digits === '') {
+      onChange('')
+      return
+    }
+    const day = Number.parseInt(digits, 10)
+    if (day < 1 || day > 31) return
+    onChange(String(day))
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Backspace' || value === '') return
+    event.preventDefault()
+    onChange(value.slice(0, -1))
+  }
+
+  return (
+    <Input
+      className={className}
+      inputMode="numeric"
+      placeholder={placeholder}
+      value={value ? formatDueDay(Number(value)) : ''}
+      onChange={(event) => handleChange(event.target.value)}
+      onKeyDown={handleKeyDown}
+      {...props}
+    />
+  )
+}
+
+function BankSelect({
+  accounts,
+  value,
+  onChange,
+  onAdded,
+}: {
+  accounts: { id: string; name: string }[]
+  value: string
+  onChange: (id: string) => void
+  onAdded?: (account: { id: string; name: string }) => void
+}) {
+  const { addAccount } = useBudget()
+  const [open, setOpen] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [bankName, setBankName] = useState('')
+
+  function handleAdd(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!bankName.trim()) return
+    const name = bankName.trim()
+    const id = addAccount({
+      name,
+      kind: 'Checking',
+      role: 'other',
+    })
+    onChange(id)
+    onAdded?.({ id, name })
+    setBankName('')
+    setAdding(false)
+    setOpen(false)
+  }
+
+  return (
+    <Select
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (!nextOpen) {
+          setAdding(false)
+          setBankName('')
+        }
+      }}
+      value={value || undefined}
+      onValueChange={onChange}
+    >
+      <SelectTrigger className="w-full" aria-label="Bank account">
+        <SelectValue placeholder="Bank" />
+      </SelectTrigger>
+      <SelectContent>
+        {accounts.map((account) => (
+          <SelectItem key={account.id} value={account.id}>
+            {account.name}
+          </SelectItem>
+        ))}
+        <SelectSeparator />
+        {adding ? (
+          <form
+            className="grid gap-2 p-1"
+            onSubmit={handleAdd}
+            onPointerDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <Input
+              autoFocus
+              placeholder="Bank name"
+              value={bankName}
+              onChange={(event) => setBankName(event.target.value)}
+              aria-label="Bank name"
+            />
+            <Button type="submit" size="sm">
+              Add account
+            </Button>
+          </form>
+        ) : (
+          <button
+            type="button"
+            className="hover:bg-accent hover:text-accent-foreground relative flex w-full cursor-default items-center rounded-md py-1 pr-8 pl-1.5 text-left text-sm outline-hidden"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => setAdding(true)}
+          >
+            Add account
+          </button>
+        )}
+      </SelectContent>
+    </Select>
+  )
 }
 
 function EmptyNote({ children }: { children: string }) {
@@ -88,15 +231,16 @@ export function BudgetCards() {
 }
 
 function ExpensesCard() {
-  const { accounts, expenses, addAccount, addExpense } = useBudget()
+  const { accounts, expenses, addExpense } = useBudget()
   const [open, setOpen] = useState(false)
-  const [accountOpen, setAccountOpen] = useState(false)
+  const [drawerCategory, setDrawerCategory] = useState<ExpenseCategory | null>(
+    null,
+  )
   const [name, setName] = useState('')
   const [dueDay, setDueDay] = useState('')
   const [amount, setAmount] = useState('')
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '')
-  const [category, setCategory] = useState<ExpenseCategory>('recurring')
-  const [bankName, setBankName] = useState('')
+  const [category, setCategory] = useState<ExpenseCategory | ''>('')
   const [pendingAccount, setPendingAccount] = useState<{
     id: string
     name: string
@@ -112,34 +256,18 @@ function ExpensesCard() {
     setName('')
     setDueDay('')
     setAmount('')
-    setCategory('recurring')
+    setCategory('')
     setAccountId(accounts[0]?.id ?? '')
     setPendingAccount(null)
   }
 
-  function handleDueDayChange(value: string) {
-    const digits = value.replace(/\D/g, '')
-    if (digits === '') {
-      setDueDay('')
-      return
-    }
-    const day = Number.parseInt(digits, 10)
-    if (day < 1 || day > 31) return
-    setDueDay(String(day))
-  }
-
-  function handleDueDayKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key !== 'Backspace' || dueDay === '') return
-    event.preventDefault()
-    setDueDay(dueDay.slice(0, -1))
-  }
-
   function handleAddExpense(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const day = parseDay(dueDay)
     const parsed = parseAmount(amount)
+    const day = dueDay === '' ? null : parseDay(dueDay)
     const resolvedAccountId = accountId || bankOptions[0]?.id || ''
-    if (!name.trim() || day == null || parsed == null || parsed <= 0) return
+    if (!name.trim() || !category || parsed == null || parsed <= 0) return
+    if (dueDay !== '' && day == null) return
     if (bankOptions.length > 0 && !resolvedAccountId) return
     addExpense({
       name: name.trim(),
@@ -152,27 +280,12 @@ function ExpensesCard() {
     setOpen(false)
   }
 
-  function handleAddAccount(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!bankName.trim()) return
-    const name = bankName.trim()
-    const id = addAccount({
-      name,
-      kind: 'Checking',
-      role: 'other',
-    })
-    setPendingAccount({ id, name })
-    setAccountId(id)
-    setBankName('')
-    setAccountOpen(false)
-  }
-
   return (
     <>
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
-            <CardTitle>Total expenses</CardTitle>
+            <CardTitle>Total monthly expenses</CardTitle>
             <Button
               type="button"
               variant="outline"
@@ -185,24 +298,33 @@ function ExpensesCard() {
           </div>
         </CardHeader>
         <CardContent className="grid gap-6">
-          <div>
-            <p className="text-2xl font-medium tabular-nums">
-              {formatUsd(total)}
-            </p>
-            <p className="text-muted-foreground text-sm">Monthly</p>
-          </div>
-          <div className="grid gap-3">
-            {expenseCategories.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-baseline justify-between gap-4"
-              >
-                <span>{item.label}</span>
-                <span className="tabular-nums">
-                  {formatUsd(totalForCategory(expenses, item.id))}
-                </span>
-              </div>
-            ))}
+          <p className="text-2xl font-medium tabular-nums">
+            {formatUsd(total)}
+          </p>
+          <div className="grid gap-1">
+            {expenseCategories.map((item) => {
+              const selected = drawerCategory === item.id
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() =>
+                    setDrawerCategory((current) =>
+                      current === item.id ? null : item.id,
+                    )
+                  }
+                  className={cn(
+                    'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
+                    selected && 'hover-fill-active',
+                  )}
+                >
+                  <span>{item.label}</span>
+                  <span className="tabular-nums">
+                    {formatUsd(totalForCategory(expenses, item.id))}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </CardContent>
       </Card>
@@ -226,30 +348,23 @@ function ExpensesCard() {
               aria-label="Expense name"
             />
             <Select
-              value={category}
+              value={category || undefined}
               onValueChange={(value) => setCategory(value as ExpenseCategory)}
             >
               <SelectTrigger className="w-full" aria-label="Category">
-                <SelectValue placeholder="Category" />
+                <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
                 {expenseCategories.map((item) => (
                   <SelectItem key={item.id} value={item.id}>
-                    {item.id === 'recurring'
-                      ? 'Recurring (water, gym, subscriptions)'
-                      : item.id === 'variable'
-                        ? 'Variable (spending, food)'
-                        : item.label}
+                    {categoryOptionLabel(item.id)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Input
-              inputMode="numeric"
-              placeholder="Due day"
-              value={dueDay ? formatDueDay(Number(dueDay)) : ''}
-              onChange={(event) => handleDueDayChange(event.target.value)}
-              onKeyDown={handleDueDayKeyDown}
+            <DueDayInput
+              value={dueDay}
+              onChange={setDueDay}
               aria-label="Due day of month"
             />
             <div className="relative">
@@ -267,59 +382,148 @@ function ExpensesCard() {
                 aria-label="Monthly amount"
               />
             </div>
-            <div className="grid gap-2">
-              <Select
-                value={accountId || undefined}
-                onValueChange={(value) => {
-                  if (value) setAccountId(value)
-                }}
-                disabled={bankOptions.length === 0}
-              >
-                <SelectTrigger className="w-full" aria-label="Bank account">
-                  <SelectValue placeholder="Bank" />
-                </SelectTrigger>
-                <SelectContent>
-                  {bankOptions.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                type="button"
-                variant="outline"
-                className="bg-white"
-                onClick={() => setAccountOpen(true)}
-              >
-                Add account
-              </Button>
-            </div>
+            <BankSelect
+              accounts={bankOptions}
+              value={accountId}
+              onChange={setAccountId}
+              onAdded={setPendingAccount}
+            />
             <DialogFooter className="col-span-full">
               <Button type="submit">Add expense</Button>
             </DialogFooter>
           </form>
         </DialogContent>
-        <Dialog open={accountOpen} onOpenChange={setAccountOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add account</DialogTitle>
-            </DialogHeader>
-            <form className="grid gap-3" onSubmit={handleAddAccount}>
-              <Input
-                placeholder="Bank name"
-                value={bankName}
-                onChange={(event) => setBankName(event.target.value)}
-                aria-label="Bank name"
-              />
-              <DialogFooter>
-                <Button type="submit">Add account</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
       </Dialog>
+
+      <CategoryDrawer
+        category={drawerCategory}
+        onClose={() => setDrawerCategory(null)}
+      />
     </>
+  )
+}
+
+function CategoryDrawer({
+  category,
+  onClose,
+}: {
+  category: ExpenseCategory | null
+  onClose: () => void
+}) {
+  const { expenses } = useBudget()
+  const meta = expenseCategories.find((item) => item.id === category)
+  const items = expenses.filter((item) => item.category === category)
+
+  return (
+    <Drawer
+      direction="right"
+      open={category != null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose()
+      }}
+    >
+      <DrawerContent className="data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-max data-[vaul-drawer-direction=right]:max-w-[min(92vw,52rem)] data-[vaul-drawer-direction=right]:sm:max-w-[min(92vw,52rem)]">
+        <DrawerHeader>
+          <DrawerTitle>{meta?.label ?? 'Expenses'}</DrawerTitle>
+        </DrawerHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+          {items.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No expenses in this category yet.
+            </p>
+          ) : (
+            <div className="grid min-w-[28rem] gap-4">
+              {items.map((item) => (
+                <ExpenseEditor key={item.id} item={item} />
+              ))}
+            </div>
+          )}
+        </div>
+      </DrawerContent>
+    </Drawer>
+  )
+}
+
+function ExpenseEditor({ item }: { item: RecurringExpense }) {
+  const { accounts, updateExpense, removeExpense } = useBudget()
+  const [name, setName] = useState(item.name)
+  const [dueDay, setDueDay] = useState(item.dueDay ? String(item.dueDay) : '')
+  const [amount, setAmount] = useState(String(item.amount))
+
+  useEffect(() => {
+    setName(item.name)
+    setDueDay(item.dueDay ? String(item.dueDay) : '')
+    setAmount(String(item.amount))
+  }, [item.id, item.name, item.dueDay, item.amount])
+
+  function persistName() {
+    const next = name.trim()
+    if (!next) {
+      setName(item.name)
+      return
+    }
+    if (next !== item.name) updateExpense(item.id, { name: next })
+  }
+
+  function persistDueDay() {
+    const day = dueDay === '' ? null : parseDay(dueDay)
+    if (dueDay !== '' && day == null) {
+      setDueDay(item.dueDay ? String(item.dueDay) : '')
+      return
+    }
+    if (day !== item.dueDay) updateExpense(item.id, { dueDay: day })
+  }
+
+  function persistAmount() {
+    const parsed = parseAmount(amount)
+    if (parsed == null || parsed <= 0) {
+      setAmount(String(item.amount))
+      return
+    }
+    if (parsed !== item.amount) updateExpense(item.id, { amount: parsed })
+  }
+
+  return (
+    <div className="grid gap-2">
+      <div className="grid grid-cols-[minmax(8rem,1fr)_5.5rem_6.5rem_minmax(9rem,1fr)_auto] items-center gap-2">
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onBlur={persistName}
+          aria-label={`${item.name} name`}
+        />
+        <DueDayInput
+          value={dueDay}
+          onChange={setDueDay}
+          onBlur={persistDueDay}
+          aria-label={`${item.name} due day`}
+        />
+        <div className="relative">
+          <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2">
+            $
+          </span>
+          <Input
+            className="pl-5"
+            type="number"
+            min={0}
+            step="0.01"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            onBlur={persistAmount}
+            aria-label={`${item.name} amount`}
+          />
+        </div>
+        <BankSelect
+          accounts={accounts}
+          value={item.accountId}
+          onChange={(id) => updateExpense(item.id, { accountId: id })}
+        />
+        <RowRemove
+          label={`Remove ${item.name}`}
+          onClick={() => removeExpense(item.id)}
+        />
+      </div>
+    </div>
   )
 }
 
@@ -605,10 +809,12 @@ function ByAccountCard() {
                       >
                         <span>
                           {item.name}
-                          <span className="text-muted-foreground">
-                            {' '}
-                            · {formatDueDay(item.dueDay)}
-                          </span>
+                          {item.dueDay != null ? (
+                            <span className="text-muted-foreground">
+                              {' '}
+                              · {formatDueDay(item.dueDay)}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="tabular-nums">
                           {formatUsd(item.amount)}

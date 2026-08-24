@@ -22,7 +22,7 @@ export type ExpenseCategory = (typeof expenseCategories)[number]['id']
 export type RecurringExpense = {
   id: string
   name: string
-  dueDay: number
+  dueDay: number | null
   amount: number
   accountId: string
   category: ExpenseCategory
@@ -76,16 +76,22 @@ function normalizeExpense(value: unknown): RecurringExpense | null {
   if (
     typeof item.id !== 'string' ||
     typeof item.name !== 'string' ||
-    typeof item.dueDay !== 'number' ||
     typeof item.amount !== 'number' ||
     typeof item.accountId !== 'string'
   ) {
     return null
   }
+  const dueDay =
+    typeof item.dueDay === 'number' &&
+    Number.isInteger(item.dueDay) &&
+    item.dueDay >= 1 &&
+    item.dueDay <= 31
+      ? item.dueDay
+      : null
   return {
     id: item.id,
     name: item.name,
-    dueDay: item.dueDay,
+    dueDay,
     amount: item.amount,
     accountId: item.accountId,
     category: isExpenseCategory(item.category) ? item.category : 'recurring',
@@ -131,6 +137,13 @@ export function monthlyNeedForAccount(
   return expenses
     .filter((item) => item.accountId === accountId)
     .reduce((sum, item) => sum + item.amount, 0)
+}
+
+export function compareExpensesByDueDay(
+  left: RecurringExpense,
+  right: RecurringExpense,
+) {
+  return (left.dueDay ?? 32) - (right.dueDay ?? 32)
 }
 
 export function formatDueDay(day: number) {

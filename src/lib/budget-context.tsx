@@ -8,6 +8,7 @@ import {
 } from 'react'
 
 import {
+  compareExpensesByDueDay,
   loadBudget,
   saveBudget,
   type AccountRole,
@@ -30,6 +31,10 @@ type BudgetContextValue = {
   setAccountRole: (id: string, role: AccountRole) => void
   removeAccount: (id: string) => void
   addExpense: (input: Omit<RecurringExpense, 'id'>) => void
+  updateExpense: (
+    id: string,
+    patch: Partial<Omit<RecurringExpense, 'id'>>,
+  ) => void
   removeExpense: (id: string) => void
   addDebt: (input: Omit<Debt, 'id'>) => void
   removeDebt: (id: string) => void
@@ -113,7 +118,15 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
           expenses: [
             ...current.expenses,
             { ...input, id: crypto.randomUUID() },
-          ].sort((left, right) => left.dueDay - right.dueDay),
+          ].sort(compareExpensesByDueDay),
+        }))
+      },
+      updateExpense(id, patch) {
+        setState((current) => ({
+          ...current,
+          expenses: current.expenses
+            .map((item) => (item.id === id ? { ...item, ...patch } : item))
+            .sort(compareExpensesByDueDay),
         }))
       },
       removeExpense(id) {
