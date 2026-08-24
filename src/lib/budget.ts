@@ -10,12 +10,22 @@ export type BankAccount = {
   balance: number
 }
 
+export const expenseCategories = [
+  { id: 'mortgage', label: 'Mortgage' },
+  { id: 'pets', label: 'Pets' },
+  { id: 'recurring', label: 'Recurring' },
+  { id: 'variable', label: 'Variable' },
+] as const
+
+export type ExpenseCategory = (typeof expenseCategories)[number]['id']
+
 export type RecurringExpense = {
   id: string
   name: string
   dueDay: number
   amount: number
   accountId: string
+  category: ExpenseCategory
 }
 
 export type Debt = {
@@ -56,6 +66,32 @@ export const emptyBudget: BudgetState = {
   debts: [],
 }
 
+function isExpenseCategory(value: unknown): value is ExpenseCategory {
+  return expenseCategories.some((category) => category.id === value)
+}
+
+function normalizeExpense(value: unknown): RecurringExpense | null {
+  if (value == null || typeof value !== 'object') return null
+  const item = value as Partial<RecurringExpense>
+  if (
+    typeof item.id !== 'string' ||
+    typeof item.name !== 'string' ||
+    typeof item.dueDay !== 'number' ||
+    typeof item.amount !== 'number' ||
+    typeof item.accountId !== 'string'
+  ) {
+    return null
+  }
+  return {
+    id: item.id,
+    name: item.name,
+    dueDay: item.dueDay,
+    amount: item.amount,
+    accountId: item.accountId,
+    category: isExpenseCategory(item.category) ? item.category : 'recurring',
+  }
+}
+
 function isBudgetState(value: unknown): value is BudgetState {
   if (value == null || typeof value !== 'object') return false
   const record = value as Partial<BudgetState>
@@ -74,7 +110,9 @@ export function loadBudget(): BudgetState {
     if (!isBudgetState(parsed)) return emptyBudget
     return {
       accounts: parsed.accounts.length > 0 ? parsed.accounts : defaultAccounts,
-      expenses: parsed.expenses,
+      expenses: parsed.expenses
+        .map(normalizeExpense)
+        .filter((item): item is RecurringExpense => item != null),
       debts: parsed.debts,
     }
   } catch {
@@ -119,4 +157,13 @@ export function billsAccount(accounts: BankAccount[]) {
 
 export function overflowAccount(accounts: BankAccount[]) {
   return accounts.find((account) => account.role === 'overflow') ?? null
+}
+
+export function totalForCategory(
+  expenses: RecurringExpense[],
+  category: ExpenseCategory,
+) {
+  return expenses
+    .filter((item) => item.category === category)
+    .reduce((sum, item) => sum + item.amount, 0)
 }

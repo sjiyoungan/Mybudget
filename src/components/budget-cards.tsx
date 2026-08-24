@@ -9,6 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -22,10 +28,13 @@ import { useBudget } from '@/lib/budget-context'
 import {
   accountById,
   billsAccount,
+  expenseCategories,
   formatDueDay,
   monthlyNeedForAccount,
   overflowAccount,
+  totalForCategory,
   type AccountRole,
+  type ExpenseCategory,
 } from '@/lib/budget'
 import { formatUsd } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -80,10 +89,12 @@ export function BudgetCards() {
 
 function ExpensesCard() {
   const { accounts, expenses, addExpense, removeExpense } = useBudget()
+  const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [dueDay, setDueDay] = useState('')
   const [amount, setAmount] = useState('')
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '')
+  const [category, setCategory] = useState<ExpenseCategory>('recurring')
 
   const total = expenses.reduce((sum, item) => sum + item.amount, 0)
 
@@ -98,6 +109,7 @@ function ExpensesCard() {
       dueDay: day,
       amount: parsed,
       accountId,
+      category,
     })
     setName('')
     setDueDay('')
@@ -105,95 +117,159 @@ function ExpensesCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Total expenses</CardTitle>
-        <CardDescription>
-          Recurring bills with a due date, monthly amount, and the account they
-          come out of. {formatUsd(total)} this month.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        {expenses.length === 0 ? (
-          <EmptyNote>No bills yet.</EmptyNote>
-        ) : (
-          <div className="grid gap-3">
-            {expenses.map((item, index) => {
-              const account = accountById(accounts, item.accountId)
-              return (
-                <div key={item.id}>
-                  {index > 0 ? <Separator className="mb-3" /> : null}
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-muted-foreground text-xs">
-                        Due {formatDueDay(item.dueDay)}
-                        {account ? ` · ${account.name}` : ''}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="tabular-nums">
-                        {formatUsd(item.amount)}
-                      </span>
-                      <RowRemove
-                        label={`Remove ${item.name}`}
-                        onClick={() => removeExpense(item.id)}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle>Total expenses</CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="bg-white"
+              onClick={() => setOpen(true)}
+            >
+              Add expense
+            </Button>
           </div>
-        )}
-        <form className="grid gap-2 sm:grid-cols-2" onSubmit={handleAdd}>
-          <Input
-            placeholder="Name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            aria-label="Expense name"
-          />
-          <Input
-            type="number"
-            min={1}
-            max={31}
-            placeholder="Due day"
-            value={dueDay}
-            onChange={(event) => setDueDay(event.target.value)}
-            aria-label="Due day of month"
-          />
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            placeholder="Monthly amount"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            aria-label="Monthly amount"
-          />
-          <Select
-            value={accountId || undefined}
-            onValueChange={setAccountId}
-            disabled={accounts.length === 0}
-          >
-            <SelectTrigger className="w-full" aria-label="Bank account">
-              <SelectValue placeholder="Account" />
-            </SelectTrigger>
-            <SelectContent>
-              {accounts.map((account) => (
-                <SelectItem key={account.id} value={account.id}>
-                  {account.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button type="submit" className="sm:col-span-2">
-            <Plus data-icon="inline-start" />
-            Add expense
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+        </CardHeader>
+        <CardContent className="grid gap-6">
+          <div>
+            <p className="text-2xl font-medium tabular-nums">
+              {formatUsd(total)}
+            </p>
+            <p className="text-muted-foreground text-sm">Monthly</p>
+          </div>
+          <div className="grid gap-3">
+            {expenseCategories.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-baseline justify-between gap-4"
+              >
+                <span>{item.label}</span>
+                <span className="tabular-nums">
+                  {formatUsd(totalForCategory(expenses, item.id))}
+                </span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Drawer direction="right" open={open} onOpenChange={setOpen}>
+        <DrawerContent className="data-[vaul-drawer-direction=right]:h-full sm:max-w-md">
+          <DrawerHeader>
+            <DrawerTitle>Add expense</DrawerTitle>
+          </DrawerHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+            <form className="grid gap-3" onSubmit={handleAdd}>
+              <Input
+                placeholder="Name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                aria-label="Expense name"
+              />
+              <Select
+                value={category}
+                onValueChange={(value) =>
+                  setCategory(value as ExpenseCategory)
+                }
+              >
+                <SelectTrigger className="w-full" aria-label="Category">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {expenseCategories.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.id === 'recurring'
+                        ? 'Recurring (water, gym, subscriptions)'
+                        : item.id === 'variable'
+                          ? 'Variable (spending, food)'
+                          : item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                type="number"
+                min={1}
+                max={31}
+                placeholder="Due day"
+                value={dueDay}
+                onChange={(event) => setDueDay(event.target.value)}
+                aria-label="Due day of month"
+              />
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="Monthly amount"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                aria-label="Monthly amount"
+              />
+              <Select
+                value={accountId || undefined}
+                onValueChange={setAccountId}
+                disabled={accounts.length === 0}
+              >
+                <SelectTrigger className="w-full" aria-label="Bank account">
+                  <SelectValue placeholder="Account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button type="submit">
+                <Plus data-icon="inline-start" />
+                Add expense
+              </Button>
+            </form>
+
+            <div className="mt-8 grid gap-3">
+              {expenses.length === 0 ? (
+                <EmptyNote>No expenses yet.</EmptyNote>
+              ) : (
+                expenses.map((item, index) => {
+                  const account = accountById(accounts, item.accountId)
+                  const categoryLabel =
+                    expenseCategories.find(
+                      (entry) => entry.id === item.category,
+                    )?.label ?? item.category
+                  return (
+                    <div key={item.id}>
+                      {index > 0 ? <Separator className="mb-3" /> : null}
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium">{item.name}</p>
+                          <p className="text-muted-foreground text-xs">
+                            {categoryLabel} · Due {formatDueDay(item.dueDay)}
+                            {account ? ` · ${account.name}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="tabular-nums">
+                            {formatUsd(item.amount)}
+                          </span>
+                          <RowRemove
+                            label={`Remove ${item.name}`}
+                            onClick={() => removeExpense(item.id)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </DrawerContent>
+      </Drawer>
+    </>
   )
 }
 
