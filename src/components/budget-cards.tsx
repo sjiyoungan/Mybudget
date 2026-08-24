@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -10,11 +10,12 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer'
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -26,7 +27,6 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { useBudget } from '@/lib/budget-context'
 import {
-  accountById,
   billsAccount,
   expenseCategories,
   formatDueDay,
@@ -88,32 +88,83 @@ export function BudgetCards() {
 }
 
 function ExpensesCard() {
-  const { accounts, expenses, addExpense, removeExpense } = useBudget()
+  const { accounts, expenses, addAccount, addExpense } = useBudget()
   const [open, setOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const [name, setName] = useState('')
   const [dueDay, setDueDay] = useState('')
   const [amount, setAmount] = useState('')
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '')
   const [category, setCategory] = useState<ExpenseCategory>('recurring')
+  const [bankName, setBankName] = useState('')
+  const [pendingAccount, setPendingAccount] = useState<{
+    id: string
+    name: string
+  } | null>(null)
 
   const total = expenses.reduce((sum, item) => sum + item.amount, 0)
+  const bankOptions =
+    pendingAccount && !accounts.some((account) => account.id === pendingAccount.id)
+      ? [...accounts, pendingAccount]
+      : accounts
 
-  function handleAdd(event: FormEvent<HTMLFormElement>) {
+  function resetExpenseForm() {
+    setName('')
+    setDueDay('')
+    setAmount('')
+    setCategory('recurring')
+    setAccountId(accounts[0]?.id ?? '')
+    setPendingAccount(null)
+  }
+
+  function handleDueDayChange(value: string) {
+    const digits = value.replace(/\D/g, '')
+    if (digits === '') {
+      setDueDay('')
+      return
+    }
+    const day = Number.parseInt(digits, 10)
+    if (day < 1 || day > 31) return
+    setDueDay(String(day))
+  }
+
+  function handleDueDayKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Backspace' || dueDay === '') return
+    event.preventDefault()
+    setDueDay(dueDay.slice(0, -1))
+  }
+
+  function handleAddExpense(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const day = parseDay(dueDay)
     const parsed = parseAmount(amount)
+    const resolvedAccountId = accountId || bankOptions[0]?.id || ''
     if (!name.trim() || day == null || parsed == null || parsed <= 0) return
-    if (accounts.length > 0 && !accountId) return
+    if (bankOptions.length > 0 && !resolvedAccountId) return
     addExpense({
       name: name.trim(),
       dueDay: day,
       amount: parsed,
-      accountId,
+      accountId: resolvedAccountId,
       category,
     })
-    setName('')
-    setDueDay('')
-    setAmount('')
+    resetExpenseForm()
+    setOpen(false)
+  }
+
+  function handleAddAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!bankName.trim()) return
+    const name = bankName.trim()
+    const id = addAccount({
+      name,
+      kind: 'Checking',
+      role: 'other',
+    })
+    setPendingAccount({ id, name })
+    setAccountId(id)
+    setBankName('')
+    setAccountOpen(false)
   }
 
   return (
@@ -156,119 +207,118 @@ function ExpensesCard() {
         </CardContent>
       </Card>
 
-      <Drawer direction="right" open={open} onOpenChange={setOpen}>
-        <DrawerContent className="data-[vaul-drawer-direction=right]:h-full sm:max-w-md">
-          <DrawerHeader>
-            <DrawerTitle>Add expense</DrawerTitle>
-          </DrawerHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-            <form className="grid gap-3" onSubmit={handleAdd}>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen)
+          if (!nextOpen) resetExpenseForm()
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add expense</DialogTitle>
+          </DialogHeader>
+          <form className="grid gap-3" onSubmit={handleAddExpense}>
+            <Input
+              placeholder="Name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              aria-label="Expense name"
+            />
+            <Select
+              value={category}
+              onValueChange={(value) => setCategory(value as ExpenseCategory)}
+            >
+              <SelectTrigger className="w-full" aria-label="Category">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                {expenseCategories.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.id === 'recurring'
+                      ? 'Recurring (water, gym, subscriptions)'
+                      : item.id === 'variable'
+                        ? 'Variable (spending, food)'
+                        : item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              inputMode="numeric"
+              placeholder="Due day"
+              value={dueDay ? formatDueDay(Number(dueDay)) : ''}
+              onChange={(event) => handleDueDayChange(event.target.value)}
+              onKeyDown={handleDueDayKeyDown}
+              aria-label="Due day of month"
+            />
+            <div className="relative">
+              <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2">
+                $
+              </span>
               <Input
-                placeholder="Name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                aria-label="Expense name"
-              />
-              <Select
-                value={category}
-                onValueChange={(value) =>
-                  setCategory(value as ExpenseCategory)
-                }
-              >
-                <SelectTrigger className="w-full" aria-label="Category">
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {expenseCategories.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.id === 'recurring'
-                        ? 'Recurring (water, gym, subscriptions)'
-                        : item.id === 'variable'
-                          ? 'Variable (spending, food)'
-                          : item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                type="number"
-                min={1}
-                max={31}
-                placeholder="Due day"
-                value={dueDay}
-                onChange={(event) => setDueDay(event.target.value)}
-                aria-label="Due day of month"
-              />
-              <Input
+                className="pl-5"
                 type="number"
                 min={0}
                 step="0.01"
-                placeholder="Monthly amount"
+                placeholder="0.00"
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
                 aria-label="Monthly amount"
               />
+            </div>
+            <div className="grid gap-2">
               <Select
                 value={accountId || undefined}
-                onValueChange={setAccountId}
-                disabled={accounts.length === 0}
+                onValueChange={(value) => {
+                  if (value) setAccountId(value)
+                }}
+                disabled={bankOptions.length === 0}
               >
                 <SelectTrigger className="w-full" aria-label="Bank account">
-                  <SelectValue placeholder="Account" />
+                  <SelectValue placeholder="Bank" />
                 </SelectTrigger>
                 <SelectContent>
-                  {accounts.map((account) => (
+                  {bankOptions.map((account) => (
                     <SelectItem key={account.id} value={account.id}>
                       {account.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Button type="submit">
-                <Plus data-icon="inline-start" />
-                Add expense
+              <Button
+                type="button"
+                variant="outline"
+                className="bg-white"
+                onClick={() => setAccountOpen(true)}
+              >
+                Add account
               </Button>
-            </form>
-
-            <div className="mt-8 grid gap-3">
-              {expenses.length === 0 ? (
-                <EmptyNote>No expenses yet.</EmptyNote>
-              ) : (
-                expenses.map((item, index) => {
-                  const account = accountById(accounts, item.accountId)
-                  const categoryLabel =
-                    expenseCategories.find(
-                      (entry) => entry.id === item.category,
-                    )?.label ?? item.category
-                  return (
-                    <div key={item.id}>
-                      {index > 0 ? <Separator className="mb-3" /> : null}
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium">{item.name}</p>
-                          <p className="text-muted-foreground text-xs">
-                            {categoryLabel} · Due {formatDueDay(item.dueDay)}
-                            {account ? ` · ${account.name}` : ''}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="tabular-nums">
-                            {formatUsd(item.amount)}
-                          </span>
-                          <RowRemove
-                            label={`Remove ${item.name}`}
-                            onClick={() => removeExpense(item.id)}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
             </div>
-          </div>
-        </DrawerContent>
-      </Drawer>
+            <DialogFooter className="col-span-full">
+              <Button type="submit">Add expense</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+        <Dialog open={accountOpen} onOpenChange={setAccountOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add account</DialogTitle>
+            </DialogHeader>
+            <form className="grid gap-3" onSubmit={handleAddAccount}>
+              <Input
+                placeholder="Bank name"
+                value={bankName}
+                onChange={(event) => setBankName(event.target.value)}
+                aria-label="Bank name"
+              />
+              <DialogFooter>
+                <Button type="submit">Add account</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </Dialog>
     </>
   )
 }

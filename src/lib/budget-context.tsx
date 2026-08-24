@@ -25,7 +25,7 @@ type BudgetContextValue = {
     name: string
     kind: string
     role: AccountRole
-  }) => void
+  }) => string
   updateAccountBalance: (id: string, balance: number) => void
   setAccountRole: (id: string, role: AccountRole) => void
   removeAccount: (id: string) => void
@@ -67,9 +67,10 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       expenses: state.expenses,
       debts: state.debts,
       addAccount({ name, kind, role }) {
+        const id = crypto.randomUUID()
         setState((current) => {
           const next: BankAccount = {
-            id: crypto.randomUUID(),
+            id,
             name,
             kind,
             role: 'other',
@@ -84,6 +85,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
             ),
           }
         })
+        return id
       },
       updateAccountBalance(id, balance) {
         setState((current) => ({
