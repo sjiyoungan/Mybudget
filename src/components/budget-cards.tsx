@@ -1134,7 +1134,12 @@ function AccountsCard() {
           </p>
           <div className="border-border border-t" />
           <div className="pt-2">
-            <div className="grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1">
+            <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-4 gap-y-1">
+              <div className="text-muted-foreground col-span-3 grid grid-cols-subgrid text-xs font-medium">
+                <span />
+                <span>Bi-weekly</span>
+                <span className="text-right">Monthly</span>
+              </div>
               {accounts.map((account) => {
                 const selected = drawerAccount === account.id
                 const need = monthlyNeedForAccount(expenses, account.id)
@@ -1148,7 +1153,7 @@ function AccountsCard() {
                       )
                     }
                     className={cn(
-                      'hover-fill col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline rounded-lg py-2 text-left',
+                      'hover-fill col-span-3 grid cursor-pointer grid-cols-subgrid items-baseline rounded-lg py-2 text-left',
                       selected && 'hover-fill-active',
                     )}
                   >
@@ -1156,6 +1161,9 @@ function AccountsCard() {
                       name={account.name}
                       lastFour={account.lastFour}
                     />
+                    <span className="tabular-nums">
+                      {formatUsd(need / 2)}
+                    </span>
                     <span className="text-right tabular-nums">
                       {formatUsd(need)}
                     </span>
