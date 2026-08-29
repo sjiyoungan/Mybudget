@@ -303,7 +303,7 @@ function ExpensesCard() {
             {formatUsd(total)}
           </p>
           <div className="border-border border-t" />
-          <div className="pt-6">
+          <div className="pt-4">
             <div
               className={cn(
                 'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4',
