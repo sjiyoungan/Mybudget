@@ -309,13 +309,16 @@ function ExpensesCard() {
                 viewAll ? 'gap-y-3' : 'gap-y-1',
               )}
             >
-              {expenseCategories.map((item) => {
+              {expenseCategories.map((item, index) => {
                 const selected = drawerCategory === item.id
                 const details = expenses.filter(
                   (expense) => expense.category === item.id,
                 )
                 return (
                   <Fragment key={item.id}>
+                    {viewAll && index > 0 ? (
+                      <div className="col-span-2 border-border border-t" />
+                    ) : null}
                     <button
                       type="button"
                       onClick={() =>
