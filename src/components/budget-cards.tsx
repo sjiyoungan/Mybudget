@@ -1111,17 +1111,15 @@ function CardGearButton({
   onClick: () => void
 }) {
   return (
-    <Button
+    <button
       type="button"
-      variant="ghost"
-      size="icon-sm"
-      className="border-0 bg-transparent shadow-none hover:bg-neutral-100"
+      className="gear-button inline-flex size-7 items-center justify-center rounded-md text-foreground"
       onClick={onClick}
       title={label}
       aria-label={label}
     >
       <Settings className="size-4" />
-    </Button>
+    </button>
   )
 }
 

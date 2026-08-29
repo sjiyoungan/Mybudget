@@ -134,6 +134,17 @@
   max-width: min(92vw, calc(24rem + 24px)) !important;
 }
 
+.gear-button {
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.gear-button:hover,
+.gear-button:focus-visible {
+  background-color: #f0f0f0;
+}
+
 .hover-fill {
   background-image: none;
   transition: background-color 150ms ease, background-image 150ms ease;
