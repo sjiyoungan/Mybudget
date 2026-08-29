@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { Fragment, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -283,34 +283,39 @@ function ExpensesCard() {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <CardTitle>Total monthly expenses</CardTitle>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="bg-white"
-              onClick={() => setOpen(true)}
-            >
-              Add expense
-            </Button>
-          </div>
-        </CardHeader>
+      <Card className="w-max max-w-full self-start justify-self-start">
+        <div className="flex items-center gap-3 px-(--card-spacing)">
+          <CardTitle className="whitespace-nowrap">
+            Total monthly expenses
+          </CardTitle>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 bg-white"
+            onClick={() => setOpen(true)}
+          >
+            Add expense
+          </Button>
+        </div>
         <CardContent className="grid gap-6">
           <p className="text-2xl font-medium tabular-nums">
             {formatUsd(total)}
           </p>
           <div>
-            <div className={cn('grid', viewAll ? 'gap-3' : 'gap-1')}>
+            <div
+              className={cn(
+                'grid w-full grid-cols-[max-content_max-content] justify-items-start gap-x-8',
+                viewAll ? 'gap-y-3' : 'gap-y-1',
+              )}
+            >
               {expenseCategories.map((item) => {
                 const selected = drawerCategory === item.id
                 const details = expenses.filter(
                   (expense) => expense.category === item.id,
                 )
                 return (
-                  <div key={item.id}>
+                  <Fragment key={item.id}>
                     <button
                       type="button"
                       onClick={() =>
@@ -319,7 +324,7 @@ function ExpensesCard() {
                         )
                       }
                       className={cn(
-                        'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
+                        'hover-fill col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline rounded-lg py-2 pr-2.5 pl-1 text-left',
                         selected && 'hover-fill-active',
                       )}
                     >
@@ -328,24 +333,19 @@ function ExpensesCard() {
                         {formatUsd(totalForCategory(expenses, item.id))}
                       </span>
                     </button>
-                    {viewAll && details.length > 0 ? (
-                      <div className="grid gap-2 pt-3 pl-4">
-                        {details.map((expense) => (
-                          <div
-                            key={expense.id}
-                            className="-mx-1 flex items-baseline justify-between gap-4 rounded-md px-1 py-0.5"
-                          >
-                            <span className="text-neutral-600">
+                    {viewAll && details.length > 0
+                      ? details.map((expense) => (
+                          <Fragment key={expense.id}>
+                            <span className="text-neutral-600 pl-4">
                               {expense.name}
                             </span>
                             <span className="text-neutral-600 tabular-nums">
                               {formatUsd(expense.amount)}
                             </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
+                          </Fragment>
+                        ))
+                      : null}
+                  </Fragment>
                 )
               })}
             </div>
