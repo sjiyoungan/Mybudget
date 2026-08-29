@@ -1138,7 +1138,7 @@ function AccountsCard() {
               <div className="text-muted-foreground col-span-3 grid grid-cols-subgrid text-xs font-medium">
                 <span />
                 <span>Bi-weekly</span>
-                <span className="text-right">Monthly</span>
+                <span className="pl-2 text-right">Monthly</span>
               </div>
               {accounts.map((account) => {
                 const selected = drawerAccount === account.id
@@ -1164,7 +1164,7 @@ function AccountsCard() {
                     <span className="tabular-nums">
                       {formatUsd(need / 2)}
                     </span>
-                    <span className="text-right tabular-nums">
+                    <span className="pl-2 text-right tabular-nums">
                       {formatUsd(need)}
                     </span>
                   </button>
@@ -1570,7 +1570,7 @@ function AccountDrawer({
         if (!nextOpen) closeDrawer()
       }}
     >
-      <DrawerContent className="overflow-x-visible data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-[min(92vw,42rem)] data-[vaul-drawer-direction=right]:max-w-[min(92vw,42rem)] sm:max-w-[min(92vw,42rem)]">
+      <DrawerContent className="overflow-x-visible data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-[min(92vw,44rem)] data-[vaul-drawer-direction=right]:max-w-[min(92vw,44rem)] data-[vaul-drawer-direction=right]:sm:max-w-[min(92vw,44rem)]">
         <DrawerHeader>
           <DrawerTitle>
             {account ? (
@@ -1589,7 +1589,7 @@ function AccountDrawer({
             <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-4 gap-y-1">
               <div className="text-muted-foreground col-span-3 grid grid-cols-subgrid text-xs font-medium">
                 <span />
-                <span>Bi-weekly</span>
+                <span className="pl-8">Bi-weekly</span>
                 <span className="pl-2 text-right">Monthly</span>
               </div>
               {items.map((item) => {
@@ -1639,7 +1639,7 @@ function AccountDrawer({
                       </div>
                     ) : (
                       <>
-                        <span className="tabular-nums">
+                        <span className="pl-8 tabular-nums">
                           {formatUsd(item.amount / 2)}
                         </span>
                         <span className="pl-2 text-right tabular-nums">
@@ -1653,7 +1653,7 @@ function AccountDrawer({
               <div className="border-border col-span-3 mt-1 border-t" />
               <div className="col-span-3 grid grid-cols-subgrid items-baseline py-2 pr-1 pl-1">
                 <span>Total</span>
-                <span className="tabular-nums">
+                <span className="pl-8 tabular-nums">
                   {formatUsd(biweeklyTotal)}
                 </span>
                 <span className="pl-2 text-right tabular-nums">
