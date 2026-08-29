@@ -13,4 +13,9 @@ export default defineConfig({
       '@': path.resolve(rootDir, './src'),
     },
   },
+  server: {
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+  },
 })
