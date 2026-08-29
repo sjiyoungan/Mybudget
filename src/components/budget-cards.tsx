@@ -36,10 +36,10 @@ import { Separator } from '@/components/ui/separator'
 import { useBudget } from '@/lib/budget-context'
 import {
   billsAccount,
-  formatDueDay,
   monthlyNeedForAccount,
   overflowAccount,
   totalForCategory,
+  type Debt,
   type RecurringExpense,
 } from '@/lib/budget'
 import { formatUsd } from '@/lib/format'
@@ -961,26 +961,6 @@ function EmptyNote({ children }: { children: string }) {
   return <p className="text-muted-foreground text-sm">{children}</p>
 }
 
-function RowRemove({
-  label,
-  onClick,
-}: {
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-xs"
-      aria-label={label}
-      onClick={onClick}
-    >
-      <Trash2 />
-    </Button>
-  )
-}
-
 export function BudgetCards() {
   return (
     <section className="grid gap-6 lg:grid-cols-2">
@@ -1124,12 +1104,12 @@ function CardGearButton({
 }
 
 function AmountCols({
-  biweekly,
-  monthly,
+  left,
+  right,
   header = false,
 }: {
-  biweekly: string
-  monthly: string
+  left: string
+  right: string
   header?: boolean
 }) {
   return (
@@ -1139,8 +1119,8 @@ function AmountCols({
         header && 'text-muted-foreground text-xs font-medium',
       )}
     >
-      <span className={amountColClass}>{biweekly}</span>
-      <span className={amountColClass}>{monthly}</span>
+      <span className={amountColClass}>{left}</span>
+      <span className={amountColClass}>{right}</span>
     </div>
   )
 }
@@ -1171,7 +1151,7 @@ function AccountsCard() {
             <div className="grid gap-y-1">
               <div className="flex items-baseline">
                 <span className="min-w-0 flex-1" />
-                <AmountCols header biweekly="Bi-weekly" monthly="Monthly" />
+                <AmountCols header left="Bi-weekly" right="Monthly" />
               </div>
               {accounts.map((account) => {
                 const selected = drawerAccount === account.id
@@ -1197,8 +1177,8 @@ function AccountsCard() {
                       />
                     </span>
                     <AmountCols
-                      biweekly={formatUsd(need / 2)}
-                      monthly={formatUsd(need)}
+                      left={formatUsd(need / 2)}
+                      right={formatUsd(need)}
                     />
                   </button>
                 )
@@ -1622,7 +1602,7 @@ function AccountDrawer({
             <div className="grid gap-y-1">
               <div className="flex items-baseline">
                 <span className="min-w-0 flex-1" />
-                <AmountCols header biweekly="Bi-weekly" monthly="Monthly" />
+                <AmountCols header left="Bi-weekly" right="Monthly" />
               </div>
               {items.map((item) => {
                 const isEditing = editingId === item.id
@@ -1671,8 +1651,8 @@ function AccountDrawer({
                       </div>
                     ) : (
                       <AmountCols
-                        biweekly={formatUsd(item.amount / 2)}
-                        monthly={formatUsd(item.amount)}
+                        left={formatUsd(item.amount / 2)}
+                        right={formatUsd(item.amount)}
                       />
                     )}
                   </div>
@@ -1682,8 +1662,8 @@ function AccountDrawer({
               <div className="flex items-baseline py-2 pr-1 pl-1">
                 <span className="min-w-0 flex-1">Total</span>
                 <AmountCols
-                  biweekly={formatUsd(biweeklyTotal)}
-                  monthly={formatUsd(monthlyTotal)}
+                  left={formatUsd(biweeklyTotal)}
+                  right={formatUsd(monthlyTotal)}
                 />
               </div>
             </div>
@@ -1695,135 +1675,395 @@ function AccountDrawer({
 }
 
 function DebtsCard() {
-  const { debts, addDebt, removeDebt } = useBudget()
-  const [lender, setLender] = useState('')
-  const [dueDay, setDueDay] = useState('')
-  const [minimum, setMinimum] = useState('')
-  const [apr, setApr] = useState('')
-  const [balance, setBalance] = useState('')
-
+  const { debts } = useBudget()
+  const [open, setOpen] = useState(false)
   const totalBalance = debts.reduce((sum, item) => sum + item.balance, 0)
-  const totalMinimum = debts.reduce((sum, item) => sum + item.minimum, 0)
 
-  function handleAdd(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const day = parseDay(dueDay)
-    const min = parseAmount(minimum)
-    const rate = parseAmount(apr)
-    const owed = parseAmount(balance)
-    if (
-      !lender.trim() ||
-      day == null ||
-      min == null ||
-      rate == null ||
-      owed == null
-    ) {
+  return (
+    <>
+      <Card className="self-start">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle>Debt</CardTitle>
+            <CardGearButton label="Edit debts" onClick={() => setOpen(true)} />
+          </div>
+        </CardHeader>
+        <CardContent className="grid">
+          <p className="pb-4 text-2xl font-medium tabular-nums">
+            {formatUsd(totalBalance)}
+          </p>
+          <div className="border-border border-t" />
+          <div className="pt-2">
+            <div className="grid gap-y-1">
+              <div className="flex items-baseline">
+                <span className="min-w-0 flex-1" />
+                <AmountCols header left="Minimum" right="Balance" />
+              </div>
+              {debts.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex w-full items-baseline rounded-lg py-2"
+                >
+                  <span className="min-w-0 flex-1 truncate">{item.lender}</span>
+                  <AmountCols
+                    left={formatUsd(item.minimum)}
+                    right={formatUsd(item.balance)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <EditDebtsDialog open={open} onOpenChange={setOpen} />
+    </>
+  )
+}
+
+type DebtDraft = {
+  id: string
+  lender: string
+  minimum: string
+  balance: string
+}
+
+function debtSnapshot(drafts: DebtDraft[]) {
+  return JSON.stringify(
+    drafts.map((draft) => ({
+      id: draft.id,
+      lender: draft.lender.trim(),
+      minimum: draft.minimum.trim(),
+      balance: draft.balance.trim(),
+    })),
+  )
+}
+
+function moneyField(value: string) {
+  if (value.trim() === '') return 0
+  return parseAmount(value)
+}
+
+function EditDebtsDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const { debts, replaceDebts } = useBudget()
+  const [drafts, setDrafts] = useState<DebtDraft[]>([])
+  const [baseline, setBaseline] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [removeId, setRemoveId] = useState<string | null>(null)
+  const [focusId, setFocusId] = useState<string | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const next = debts.map((debt) => ({
+      id: debt.id,
+      lender: debt.lender,
+      minimum: String(debt.minimum),
+      balance: String(debt.balance),
+    }))
+    setDrafts(next)
+    setBaseline(debtSnapshot(next))
+    setConfirmOpen(false)
+    setRemoveId(null)
+    setFocusId(null)
+  }, [open])
+
+  const dirty = useMemo(
+    () => debtSnapshot(drafts) !== baseline,
+    [drafts, baseline],
+  )
+  const existingIds = useMemo(
+    () => new Set(debts.map((debt) => debt.id)),
+    [debts],
+  )
+  const filled = drafts.filter(
+    (draft) =>
+      existingIds.has(draft.id) ||
+      draft.lender.trim() !== '' ||
+      draft.minimum.trim() !== '' ||
+      draft.balance.trim() !== '',
+  )
+  const canSubmit =
+    dirty &&
+    filled.every(
+      (draft) =>
+        draft.lender.trim() !== '' &&
+        moneyField(draft.minimum) != null &&
+        moneyField(draft.balance) != null,
+    )
+  const removeTarget = removeId
+    ? drafts.find((draft) => draft.id === removeId)
+    : undefined
+
+  function updateDraft(id: string, patch: Partial<DebtDraft>) {
+    setDrafts((current) =>
+      current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
+    )
+  }
+
+  function closeClean() {
+    setConfirmOpen(false)
+    setRemoveId(null)
+    onOpenChange(false)
+  }
+
+  function requestClose() {
+    if (confirmOpen || removeId) return
+    if (dirty) {
+      setConfirmOpen(true)
       return
     }
-    addDebt({
-      lender: lender.trim(),
-      dueDay: day,
-      minimum: min,
-      apr: rate,
-      balance: owed,
-    })
-    setLender('')
-    setDueDay('')
-    setMinimum('')
-    setApr('')
-    setBalance('')
+    closeClean()
+  }
+
+  function requestRemove(id: string) {
+    const draft = drafts.find((item) => item.id === id)
+    if (!draft) return
+    if (
+      existingIds.has(id) ||
+      draft.lender.trim() !== '' ||
+      draft.minimum.trim() !== '' ||
+      draft.balance.trim() !== ''
+    ) {
+      setRemoveId(id)
+      return
+    }
+    setDrafts((current) => current.filter((item) => item.id !== id))
+  }
+
+  function handleSave() {
+    if (!canSubmit) return
+    const previous = new Map(debts.map((debt) => [debt.id, debt]))
+    const kept = filled
+      .map((draft) => {
+        const minimum = moneyField(draft.minimum)
+        const balance = moneyField(draft.balance)
+        if (minimum == null || balance == null) return null
+        const current = previous.get(draft.id)
+        return {
+          id: draft.id,
+          lender: draft.lender.trim(),
+          dueDay: current?.dueDay ?? null,
+          minimum,
+          apr: current?.apr ?? 0,
+          balance,
+        } satisfies Debt
+      })
+      .filter((item): item is Debt => item != null)
+    replaceDebts(kept)
+    closeClean()
+  }
+
+  function addDebtRow() {
+    const id = crypto.randomUUID()
+    setFocusId(id)
+    setDrafts((current) => [
+      ...current,
+      { id, lender: '', minimum: '', balance: '' },
+    ])
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Debt</CardTitle>
-        <CardDescription>
-          Lender, due date, minimum, APR, and balance.{' '}
-          {formatUsd(totalBalance)} owed · {formatUsd(totalMinimum)} minimum.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        {debts.length === 0 ? (
-          <EmptyNote>No debts yet.</EmptyNote>
-        ) : (
-          <div className="grid gap-3">
-            {debts.map((item, index) => (
-              <div key={item.id}>
-                {index > 0 ? <Separator className="mb-3" /> : null}
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{item.lender}</p>
-                    <p className="text-muted-foreground text-xs">
-                      Due {formatDueDay(item.dueDay)} · Min{' '}
-                      {formatUsd(item.minimum)} · {item.apr}% APR
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="tabular-nums">
-                      {formatUsd(item.balance)}
-                    </span>
-                    <RowRemove
-                      label={`Remove ${item.lender}`}
-                      onClick={() => removeDebt(item.id)}
-                    />
-                  </div>
-                </div>
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) {
+            onOpenChange(true)
+            return
+          }
+          if (confirmOpen || removeId) return
+          if (document.visibilityState === 'hidden') return
+          requestClose()
+        }}
+      >
+        <DialogContent
+          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
+          showCloseButton={false}
+          onPointerDownOutside={(event) => {
+            event.preventDefault()
+            if (confirmOpen || removeId) return
+            if (document.visibilityState === 'hidden') return
+            requestClose()
+          }}
+          onInteractOutside={(event) => {
+            event.preventDefault()
+            if (confirmOpen || removeId) return
+            if (document.visibilityState === 'hidden') return
+            requestClose()
+          }}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault()
+            if (removeId) {
+              setRemoveId(null)
+              return
+            }
+            if (confirmOpen) {
+              setConfirmOpen(false)
+              return
+            }
+            requestClose()
+          }}
+        >
+          <div className="-ml-6 -mr-4 border-b px-6 pr-4 pb-4">
+            <DialogHeader>
+              <DialogTitle className="text-2xl tracking-tight">
+                Edit debts
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+
+          <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-y-auto">
+            <div className="grid grid-cols-[minmax(10rem,16rem)_6.5rem_6.5rem_28px] items-center gap-2 text-xs font-medium text-muted-foreground">
+              <span>Lender</span>
+              <span className="text-right">Minimum</span>
+              <span className="text-right">Balance</span>
+              <span />
+            </div>
+            {drafts.map((draft) => (
+              <div
+                key={draft.id}
+                className="grid grid-cols-[minmax(10rem,16rem)_6.5rem_6.5rem_28px] items-center gap-2"
+              >
+                <Input
+                  className="h-8"
+                  value={draft.lender}
+                  onChange={(event) =>
+                    updateDraft(draft.id, { lender: event.target.value })
+                  }
+                  placeholder="Lender"
+                  aria-label="Lender"
+                  autoFocus={focusId === draft.id}
+                />
+                <Input
+                  className="h-8 text-right tabular-nums"
+                  value={draft.minimum}
+                  onChange={(event) =>
+                    updateDraft(draft.id, { minimum: event.target.value })
+                  }
+                  placeholder="0"
+                  inputMode="decimal"
+                  aria-label="Minimum payment"
+                />
+                <Input
+                  className="h-8 text-right tabular-nums"
+                  value={draft.balance}
+                  onChange={(event) =>
+                    updateDraft(draft.id, { balance: event.target.value })
+                  }
+                  placeholder="0"
+                  inputMode="decimal"
+                  aria-label="Balance"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground justify-self-end hover:bg-transparent"
+                  onClick={() => requestRemove(draft.id)}
+                  title="Remove debt"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
               </div>
             ))}
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1"
+              onClick={addDebtRow}
+            >
+              <Plus className="size-3.5" />
+              Add debt
+            </Button>
           </div>
-        )}
-        <form className="grid gap-2 sm:grid-cols-2" onSubmit={handleAdd}>
-          <Input
-            placeholder="Lender"
-            value={lender}
-            onChange={(event) => setLender(event.target.value)}
-            aria-label="Lender"
-          />
-          <Input
-            type="number"
-            min={1}
-            max={31}
-            placeholder="Due day"
-            value={dueDay}
-            onChange={(event) => setDueDay(event.target.value)}
-            aria-label="Debt due day"
-          />
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            placeholder="Minimum"
-            value={minimum}
-            onChange={(event) => setMinimum(event.target.value)}
-            aria-label="Minimum payment"
-          />
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            placeholder="APR"
-            value={apr}
-            onChange={(event) => setApr(event.target.value)}
-            aria-label="APR percent"
-          />
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            placeholder="Balance"
-            value={balance}
-            onChange={(event) => setBalance(event.target.value)}
-            aria-label="Debt balance"
-            className="sm:col-span-2"
-          />
-          <Button type="submit" className="sm:col-span-2">
-            <Plus data-icon="inline-start" />
-            Add debt
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+
+          <DialogFooter className="-ml-6 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={requestClose}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={!canSubmit} onClick={handleSave}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogDescription>
+              You have unsaved edits. If you cancel, that information will be
+              lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+            >
+              Keep editing
+            </Button>
+            <Button type="button" variant="destructive" onClick={closeClean}>
+              Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!removeId}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setRemoveId(null)
+        }}
+      >
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Remove debt?</DialogTitle>
+            <DialogDescription>
+              {removeTarget?.lender
+                ? `Removing “${removeTarget.lender}” will delete it from this list.`
+                : 'Removing this debt will delete it from this list.'}{' '}
+              This can&apos;t be undone from here.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRemoveId(null)}
+            >
+              Keep debt
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (!removeId) return
+                setDrafts((current) =>
+                  current.filter((item) => item.id !== removeId),
+                )
+                setRemoveId(null)
+              }}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

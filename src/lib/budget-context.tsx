@@ -43,6 +43,7 @@ type BudgetContextValue = {
   replaceAccounts: (accounts: BankAccount[]) => void
   addDebt: (input: Omit<Debt, 'id'>) => void
   removeDebt: (id: string) => void
+  replaceDebts: (debts: Debt[]) => void
 }
 
 const BudgetContext = createContext<BudgetContextValue | null>(null)
@@ -163,16 +164,19 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       addDebt(input) {
         setState((current) => ({
           ...current,
-          debts: [
-            ...current.debts,
-            { ...input, id: crypto.randomUUID() },
-          ].sort((left, right) => left.dueDay - right.dueDay),
+          debts: [...current.debts, { ...input, id: crypto.randomUUID() }],
         }))
       },
       removeDebt(id) {
         setState((current) => ({
           ...current,
           debts: current.debts.filter((item) => item.id !== id),
+        }))
+      },
+      replaceDebts(debts) {
+        setState((current) => ({
+          ...current,
+          debts,
         }))
       },
     }),

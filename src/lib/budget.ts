@@ -37,7 +37,7 @@ export type RecurringExpense = {
 export type Debt = {
   id: string
   lender: string
-  dueDay: number
+  dueDay: number | null
   minimum: number
   apr: number
   balance: number
@@ -200,6 +200,7 @@ export const emptyBudget: BudgetState = {
 
 const EXPENSE_SHEET_SEED = 'mybudget.expense-sheet.v1'
 const ACCOUNTS_SHEET_SEED = 'mybudget.accounts-sheet.v1'
+const DEBT_SHEET_SEED = 'mybudget.debt-sheet.v1'
 
 function sheetExpenses(accountId: string): RecurringExpense[] {
   const row = (
@@ -237,6 +238,33 @@ function sheetExpenses(accountId: string): RecurringExpense[] {
     row('sheet-spending', 'Spending', 300, 'variable'),
     row('sheet-food', 'Food', 500, 'variable'),
     row('sheet-gas', 'Gas', 75, 'variable'),
+  ]
+}
+
+function sheetDebts(): Debt[] {
+  const row = (
+    id: string,
+    lender: string,
+    minimum: number,
+    apr: number,
+    dueDay: number | null = null,
+  ): Debt => ({
+    id,
+    lender,
+    dueDay,
+    minimum,
+    apr,
+    balance: 0,
+  })
+
+  return [
+    row('debt-discover', 'Discover', 150, 16.49, 4),
+    row('debt-p-boa', 'P BoA CC', 982, 14.49, 1),
+    row('debt-b-boa', 'B BoA CC', 390, 22.74, 3),
+    row('debt-t-boa', 'T BoA CC', 150, 24.49),
+    row('debt-tally', 'Tally', 66, 16, 13),
+    row('debt-ikea', 'Ikea', 218, 21.99),
+    row('debt-affirm', 'Affirm', 1303, 0),
   ]
 }
 
@@ -334,6 +362,37 @@ function normalizeExpense(value: unknown): RecurringExpense | null {
   }
 }
 
+function normalizeDebt(value: unknown): Debt | null {
+  if (value == null || typeof value !== 'object') return null
+  const item = value as Partial<Debt>
+  if (
+    typeof item.id !== 'string' ||
+    typeof item.lender !== 'string' ||
+    typeof item.minimum !== 'number' ||
+    typeof item.balance !== 'number'
+  ) {
+    return null
+  }
+  const lender = item.lender.trim()
+  if (!lender) return null
+  const dueDay =
+    typeof item.dueDay === 'number' &&
+    Number.isInteger(item.dueDay) &&
+    item.dueDay >= 1 &&
+    item.dueDay <= 31
+      ? item.dueDay
+      : null
+  const apr = typeof item.apr === 'number' && Number.isFinite(item.apr) ? item.apr : 0
+  return {
+    id: item.id,
+    lender,
+    dueDay,
+    minimum: item.minimum,
+    apr,
+    balance: item.balance,
+  }
+}
+
 function isBudgetState(value: unknown): value is BudgetState {
   if (value == null || typeof value !== 'object') return false
   const record = value as Partial<BudgetState>
@@ -362,7 +421,9 @@ export function loadBudget(): BudgetState {
             .map(normalizeAccount)
             .filter((item): item is BankAccount => item != null),
           expenses,
-          debts: parsed.debts,
+          debts: parsed.debts
+            .map(normalizeDebt)
+            .filter((item): item is Debt => item != null),
           categories: normalizeCategories(parsed.categories, expenses),
         }
       }
@@ -393,6 +454,15 @@ export function loadBudget(): BudgetState {
     localStorage.setItem(ACCOUNTS_SHEET_SEED, '1')
   }
 
+  if (!localStorage.getItem(DEBT_SHEET_SEED)) {
+    state = {
+      ...state,
+      debts: sheetDebts(),
+    }
+    saveBudget(state)
+    localStorage.setItem(DEBT_SHEET_SEED, '1')
+  }
+
   return state
 }
 
@@ -413,6 +483,10 @@ export function compareExpensesByDueDay(
   left: RecurringExpense,
   right: RecurringExpense,
 ) {
+  return (left.dueDay ?? 32) - (right.dueDay ?? 32)
+}
+
+export function compareDebtsByDueDay(left: Debt, right: Debt) {
   return (left.dueDay ?? 32) - (right.dueDay ?? 32)
 }
 
