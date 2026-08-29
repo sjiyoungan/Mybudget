@@ -1552,7 +1552,7 @@ function AccountDrawer({
           if (!nextOpen) requestClose()
         }}
       >
-        <DrawerContent className="data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-max data-[vaul-drawer-direction=right]:max-w-[min(92vw,52rem)] data-[vaul-drawer-direction=right]:sm:max-w-[min(92vw,52rem)]">
+        <DrawerContent className="overflow-x-visible data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-[min(92vw,32rem)] data-[vaul-drawer-direction=right]:max-w-[min(92vw,32rem)] sm:max-w-[min(92vw,32rem)]">
           <DrawerHeader>
             <DrawerTitle>
               {account ? (
@@ -1568,18 +1568,18 @@ function AccountDrawer({
                 No expenses assigned to this account yet.
               </p>
             ) : (
-              <div className="grid min-w-[28rem] gap-y-1">
+              <div className="grid gap-y-1">
                 {items.map((item) => {
                   const isEditing = editingId === item.id
                   return (
                     <div
                       key={item.id}
-                      className="hover-fill flex items-center justify-between gap-3 rounded-lg py-2 pr-1 pl-1"
+                      className="hover-fill grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg py-2 pr-1 pl-1"
                     >
-                      <span>{item.name}</span>
+                      <span className="min-w-0 truncate">{item.name}</span>
                       {isEditing ? (
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <div className="w-52">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-44">
                             <BankSelect
                               accounts={accounts}
                               value={draftAccountId}
@@ -1599,19 +1599,21 @@ function AccountDrawer({
                           </Button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1">
-                          <button
+                        <div className="flex items-center gap-2">
+                          <span className="tabular-nums">
+                            {formatUsd(item.amount)}
+                          </span>
+                          <Button
                             type="button"
-                            className="text-neutral-400 hover:text-foreground flex size-6 shrink-0 items-center justify-center"
+                            variant="outline"
+                            size="icon-xs"
+                            className="border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-foreground"
                             onClick={() => startEdit(item)}
                             title="Edit bank"
                             aria-label={`Edit bank for ${item.name}`}
                           >
                             <Pencil className="size-3.5" />
-                          </button>
-                          <span className="tabular-nums">
-                            {formatUsd(item.amount)}
-                          </span>
+                          </Button>
                         </div>
                       )}
                     </div>
