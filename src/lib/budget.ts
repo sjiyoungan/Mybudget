@@ -66,6 +66,47 @@ export const emptyBudget: BudgetState = {
   debts: [],
 }
 
+const EXPENSE_SHEET_SEED = 'mybudget.expense-sheet.v1'
+
+function sheetExpenses(accountId: string): RecurringExpense[] {
+  const row = (
+    id: string,
+    name: string,
+    amount: number,
+    category: ExpenseCategory,
+    dueDay: number | null = null,
+  ): RecurringExpense => ({
+    id,
+    name,
+    amount,
+    category,
+    dueDay,
+    accountId,
+  })
+
+  return [
+    row('sheet-mortgage', 'Mortgage', 692, 'mortgage'),
+    row('sheet-suburban-pest', 'Suburban pest', 66, 'recurring'),
+    row('sheet-state-farm', 'State Farm', 290, 'recurring', 1),
+    row('sheet-water', 'Water', 160, 'recurring', 21),
+    row('sheet-noom', 'Noom', 163, 'recurring'),
+    row('sheet-yoga', 'Yoga', 110, 'recurring'),
+    row('sheet-phone', 'Phone', 197, 'recurring', 15),
+    row('sheet-rowdy-chewy', 'Rowdy - Chewy', 250, 'pets'),
+    row('sheet-rowdy-insurance', 'Rowdy - Insurance', 72, 'pets'),
+    row('sheet-rowdy-vet', 'Rowdy - Vet', 50, 'pets'),
+    row('sheet-rollo-insurance', 'Rollo - Insurance', 35, 'pets'),
+    row('sheet-rollo-chewy', 'Rollo - Chewy', 360, 'pets'),
+    row('sheet-rollo-vet', 'Rollo - Vet', 50, 'pets'),
+    row('sheet-subscription', 'Subscription', 383, 'recurring'),
+    row('sheet-holidays', 'Holidays', 67, 'recurring'),
+    row('sheet-unnes-phone', "Unne's phone", 160, 'recurring'),
+    row('sheet-spending', 'Spending', 300, 'variable'),
+    row('sheet-food', 'Food', 500, 'variable'),
+    row('sheet-gas', 'Gas', 75, 'variable'),
+  ]
+}
+
 function isExpenseCategory(value: unknown): value is ExpenseCategory {
   return expenseCategories.some((category) => category.id === value)
 }
@@ -109,21 +150,38 @@ function isBudgetState(value: unknown): value is BudgetState {
 }
 
 export function loadBudget(): BudgetState {
+  let state = emptyBudget
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return emptyBudget
-    const parsed: unknown = JSON.parse(raw)
-    if (!isBudgetState(parsed)) return emptyBudget
-    return {
-      accounts: parsed.accounts.length > 0 ? parsed.accounts : defaultAccounts,
-      expenses: parsed.expenses
-        .map(normalizeExpense)
-        .filter((item): item is RecurringExpense => item != null),
-      debts: parsed.debts,
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw)
+      if (isBudgetState(parsed)) {
+        state = {
+          accounts:
+            parsed.accounts.length > 0 ? parsed.accounts : defaultAccounts,
+          expenses: parsed.expenses
+            .map(normalizeExpense)
+            .filter((item): item is RecurringExpense => item != null),
+          debts: parsed.debts,
+        }
+      }
     }
   } catch {
-    return emptyBudget
+    state = emptyBudget
   }
+
+  if (!localStorage.getItem(EXPENSE_SHEET_SEED)) {
+    const accountId =
+      billsAccount(state.accounts)?.id ?? state.accounts[0]?.id ?? ''
+    state = {
+      ...state,
+      expenses: sheetExpenses(accountId).sort(compareExpensesByDueDay),
+    }
+    saveBudget(state)
+    localStorage.setItem(EXPENSE_SHEET_SEED, '1')
+  }
+
+  return state
 }
 
 export function saveBudget(state: BudgetState) {
