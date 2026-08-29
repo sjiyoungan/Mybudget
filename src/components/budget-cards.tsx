@@ -299,11 +299,11 @@ function ExpensesCard() {
           </div>
         </CardHeader>
         <CardContent className="grid px-2.5">
-          <p className="px-1.5 pb-6 text-2xl font-medium tabular-nums">
+          <p className="px-1.5 pb-4 text-2xl font-medium tabular-nums">
             {formatUsd(total)}
           </p>
           <div className="border-border border-t" />
-          <div className="pt-4">
+          <div className="pt-2">
             <div
               className={cn(
                 'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4',
