@@ -283,21 +283,21 @@ function ExpensesCard() {
 
   return (
     <>
-      <Card className="w-max max-w-full self-start justify-self-start">
-        <div className="flex items-center gap-3 px-(--card-spacing)">
-          <CardTitle className="whitespace-nowrap">
-            Total monthly expenses
-          </CardTitle>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0 bg-white"
-            onClick={() => setOpen(true)}
-          >
-            Add expense
-          </Button>
-        </div>
+      <Card className="self-start">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle>Total monthly expenses</CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="bg-white"
+              onClick={() => setOpen(true)}
+            >
+              Add expense
+            </Button>
+          </div>
+        </CardHeader>
         <CardContent className="grid gap-6">
           <p className="text-2xl font-medium tabular-nums">
             {formatUsd(total)}
@@ -305,7 +305,7 @@ function ExpensesCard() {
           <div>
             <div
               className={cn(
-                'grid w-full grid-cols-[max-content_max-content] justify-items-start gap-x-8',
+                'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4 pl-1 pr-2.5',
                 viewAll ? 'gap-y-3' : 'gap-y-1',
               )}
             >
@@ -324,12 +324,12 @@ function ExpensesCard() {
                         )
                       }
                       className={cn(
-                        'hover-fill col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline rounded-lg py-2 pr-2.5 pl-1 text-left',
+                        'hover-fill col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline rounded-lg py-2 text-left',
                         selected && 'hover-fill-active',
                       )}
                     >
                       <span>{item.label}</span>
-                      <span className="tabular-nums">
+                      <span className="text-right tabular-nums">
                         {formatUsd(totalForCategory(expenses, item.id))}
                       </span>
                     </button>
@@ -339,7 +339,7 @@ function ExpensesCard() {
                             <span className="text-neutral-600 pl-4">
                               {expense.name}
                             </span>
-                            <span className="text-neutral-600 tabular-nums">
+                            <span className="text-right text-neutral-600 tabular-nums">
                               {formatUsd(expense.amount)}
                             </span>
                           </Fragment>
