@@ -963,12 +963,17 @@ function EmptyNote({ children }: { children: string }) {
 export function BudgetCards() {
   return (
     <section className="grid items-start gap-6 lg:grid-cols-2">
-      <div className="grid gap-6">
-        <ExpensesCard />
-        <DebtsCard />
-      </div>
-      <AccountsCard />
+      <DebtsCard />
       <CalculationsCard />
+    </section>
+  )
+}
+
+export function ExpenseDetailCards() {
+  return (
+    <section className="grid items-start gap-6 lg:grid-cols-2">
+      <ExpensesCard />
+      <AccountsCard />
     </section>
   )
 }

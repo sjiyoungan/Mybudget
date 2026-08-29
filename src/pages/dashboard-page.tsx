@@ -24,11 +24,6 @@ export function DashboardPage() {
     () => expenses.reduce((sum, item) => sum + item.amount, 0),
     [expenses],
   )
-  const debtMinimums = useMemo(
-    () => debts.reduce((sum, item) => sum + item.minimum, 0),
-    [debts],
-  )
-  const extraToDebt = income - expenseTotal - debtMinimums
   const totalDebt = useMemo(
     () => debts.reduce((sum, item) => sum + item.balance, 0),
     [debts],
@@ -54,7 +49,20 @@ export function DashboardPage() {
               </CardHeader>
             </Card>
           </Link>
-          <SummaryCard label="Extra to debt" value={formatUsd(extraToDebt)} />
+          <Link
+            to="/expenses"
+            className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <Card className="transition-colors hover:bg-muted/40">
+              <CardHeader className="gap-5">
+                <div className="flex items-start justify-between gap-2">
+                  <CardDescription>Expenses</CardDescription>
+                  <ChevronRight className="text-muted-foreground size-4" />
+                </div>
+                <CardTitle className="text-2xl">{formatUsd(expenseTotal)}</CardTitle>
+              </CardHeader>
+            </Card>
+          </Link>
           <SummaryCard label="Total debt" value={formatUsd(totalDebt)} />
         </section>
 
