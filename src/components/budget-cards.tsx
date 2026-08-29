@@ -298,11 +298,12 @@ function ExpensesCard() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-6 px-2.5">
-          <p className="px-1.5 text-2xl font-medium tabular-nums">
+        <CardContent className="grid px-2.5">
+          <p className="px-1.5 pb-6 text-2xl font-medium tabular-nums">
             {formatUsd(total)}
           </p>
-          <div>
+          <div className="border-border border-t" />
+          <div className="pt-6">
             <div
               className={cn(
                 'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4',
