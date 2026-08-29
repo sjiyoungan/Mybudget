@@ -17,6 +17,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -34,7 +40,6 @@ import {
   monthlyNeedForAccount,
   overflowAccount,
   totalForCategory,
-  type AccountRole,
   type RecurringExpense,
 } from '@/lib/budget'
 import { formatUsd } from '@/lib/format'
@@ -980,7 +985,6 @@ export function BudgetCards() {
       <ExpensesCard />
       <AccountsCard />
       <DebtsCard />
-      <ByAccountCard />
       <DepositsCard />
       <CalculationsCard />
     </section>
@@ -1078,111 +1082,417 @@ function ExpensesCard() {
 }
 
 function AccountsCard() {
-  const { accounts, addAccount, setAccountRole, removeAccount } = useBudget()
-  const [name, setName] = useState('')
-  const [kind, setKind] = useState('Checking')
-  const [role, setRole] = useState<AccountRole>('other')
+  const { accounts, expenses } = useBudget()
+  const [open, setOpen] = useState(false)
+  const [drawerAccount, setDrawerAccount] = useState<string | null>(null)
 
-  function handleAdd(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!name.trim()) return
-    addAccount({ name: name.trim(), kind: kind.trim() || 'Checking', role })
-    setName('')
-    setKind('Checking')
-    setRole('other')
+  return (
+    <>
+      <Card className="self-start">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle>Bank accounts</CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="bg-white"
+              onClick={() => setOpen(true)}
+            >
+              Edit accounts
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="grid">
+          <p className="pb-4 text-2xl font-medium tabular-nums">
+            {accounts.length}
+          </p>
+          <div className="border-border border-t" />
+          <div className="pt-2">
+            <div className="grid w-full gap-y-1">
+              {accounts.map((account) => {
+                const selected = drawerAccount === account.id
+                const need = monthlyNeedForAccount(expenses, account.id)
+                return (
+                  <button
+                    key={account.id}
+                    type="button"
+                    onClick={() =>
+                      setDrawerAccount((current) =>
+                        current === account.id ? null : account.id,
+                      )
+                    }
+                    className={cn(
+                      'hover-fill w-full cursor-pointer rounded-lg py-2 text-left',
+                      selected && 'hover-fill-active',
+                    )}
+                  >
+                    <span className="block">{account.name}</span>
+                    <span className="block tabular-nums">
+                      {formatUsd(need)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <EditAccountsDialog open={open} onOpenChange={setOpen} />
+
+      <AccountDrawer
+        accountId={drawerAccount}
+        onClose={() => setDrawerAccount(null)}
+      />
+    </>
+  )
+}
+
+type AccountDraft = {
+  id: string
+  name: string
+}
+
+function accountSnapshot(drafts: AccountDraft[]) {
+  return JSON.stringify(
+    drafts.map((draft) => ({
+      id: draft.id,
+      name: draft.name.trim(),
+    })),
+  )
+}
+
+function EditAccountsDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const { accounts, replaceAccounts } = useBudget()
+  const [drafts, setDrafts] = useState<AccountDraft[]>([])
+  const [baseline, setBaseline] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [removeId, setRemoveId] = useState<string | null>(null)
+  const [focusId, setFocusId] = useState<string | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const next = accounts.map((account) => ({
+      id: account.id,
+      name: account.name,
+    }))
+    setDrafts(next)
+    setBaseline(accountSnapshot(next))
+    setConfirmOpen(false)
+    setRemoveId(null)
+    setFocusId(null)
+  }, [open])
+
+  const dirty = useMemo(
+    () => accountSnapshot(drafts) !== baseline,
+    [drafts, baseline],
+  )
+  const existingIds = useMemo(
+    () => new Set(accounts.map((account) => account.id)),
+    [accounts],
+  )
+  const canSubmit =
+    dirty &&
+    drafts
+      .filter((draft) => existingIds.has(draft.id) || draft.name.trim() !== '')
+      .every((draft) => draft.name.trim() !== '')
+  const removeTarget = removeId
+    ? drafts.find((draft) => draft.id === removeId)
+    : undefined
+
+  function updateDraft(id: string, name: string) {
+    setDrafts((current) =>
+      current.map((draft) => (draft.id === id ? { ...draft, name } : draft)),
+    )
+  }
+
+  function closeClean() {
+    setConfirmOpen(false)
+    setRemoveId(null)
+    onOpenChange(false)
+  }
+
+  function requestClose() {
+    if (confirmOpen || removeId) return
+    if (dirty) {
+      setConfirmOpen(true)
+      return
+    }
+    closeClean()
+  }
+
+  function requestRemove(id: string) {
+    const draft = drafts.find((item) => item.id === id)
+    if (!draft) return
+    if (existingIds.has(id) || draft.name.trim() !== '') {
+      setRemoveId(id)
+      return
+    }
+    setDrafts((current) => current.filter((item) => item.id !== id))
+  }
+
+  function handleSave() {
+    if (!canSubmit) return
+    const kept = drafts.filter((draft) => draft.name.trim() !== '')
+    const previous = new Map(accounts.map((account) => [account.id, account]))
+    replaceAccounts(
+      kept.map((draft) => {
+        const current = previous.get(draft.id)
+        return {
+          id: draft.id,
+          name: draft.name.trim(),
+          kind: current?.kind ?? 'Checking',
+          role: current?.role ?? 'other',
+          balance: current?.balance ?? 0,
+        }
+      }),
+    )
+    closeClean()
+  }
+
+  function addAccountRow() {
+    const id = crypto.randomUUID()
+    setFocusId(id)
+    setDrafts((current) => [...current, { id, name: '' }])
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Bank accounts</CardTitle>
-        <CardDescription>
-          Mark one account as bills (BoA Debit) and one as leftover
-          (Disc Debit) for the transfer math.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        {accounts.length === 0 ? (
-          <EmptyNote>No accounts yet.</EmptyNote>
-        ) : (
-          <div className="grid gap-3">
-            {accounts.map((account, index) => (
-              <div key={account.id}>
-                {index > 0 ? <Separator className="mb-3" /> : null}
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{account.name}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {account.kind}
-                      {account.role === 'bills'
-                        ? ' · Bills account'
-                        : account.role === 'overflow'
-                          ? ' · Leftover account'
-                          : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Select
-                      value={account.role}
-                      onValueChange={(value) =>
-                        setAccountRole(account.id, value as AccountRole)
-                      }
-                    >
-                      <SelectTrigger
-                        size="sm"
-                        aria-label={`Role for ${account.name}`}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="bills">Bills</SelectItem>
-                        <SelectItem value="overflow">Leftover</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <RowRemove
-                      label={`Remove ${account.name}`}
-                      onClick={() => removeAccount(account.id)}
-                    />
-                  </div>
-                </div>
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) {
+            onOpenChange(true)
+            return
+          }
+          if (confirmOpen || removeId) return
+          if (document.visibilityState === 'hidden') return
+          requestClose()
+        }}
+      >
+        <DialogContent
+          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
+          showCloseButton={false}
+          onPointerDownOutside={(event) => {
+            event.preventDefault()
+            if (confirmOpen || removeId) return
+            if (document.visibilityState === 'hidden') return
+            requestClose()
+          }}
+          onInteractOutside={(event) => {
+            event.preventDefault()
+            if (confirmOpen || removeId) return
+            if (document.visibilityState === 'hidden') return
+            requestClose()
+          }}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault()
+            if (removeId) {
+              setRemoveId(null)
+              return
+            }
+            if (confirmOpen) {
+              setConfirmOpen(false)
+              return
+            }
+            requestClose()
+          }}
+        >
+          <div className="-ml-6 -mr-4 border-b px-6 pr-4 pb-4">
+            <DialogHeader>
+              <DialogTitle className="text-2xl tracking-tight">
+                Edit accounts
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+
+          <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-y-auto">
+            <div className="text-muted-foreground text-xs font-medium">
+              Name
+            </div>
+            {drafts.map((draft) => (
+              <div
+                key={draft.id}
+                className="grid grid-cols-[minmax(12rem,20rem)_28px] items-center gap-2"
+              >
+                <Input
+                  className="h-8"
+                  value={draft.name}
+                  onChange={(event) =>
+                    updateDraft(draft.id, event.target.value)
+                  }
+                  placeholder="Name"
+                  aria-label="Account name"
+                  autoFocus={focusId === draft.id}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground justify-self-end hover:bg-transparent"
+                  onClick={() => requestRemove(draft.id)}
+                  title="Remove account"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
               </div>
             ))}
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1"
+              onClick={addAccountRow}
+            >
+              <Plus className="size-3.5" />
+              Add account
+            </Button>
           </div>
-        )}
-        <form className="grid gap-2 sm:grid-cols-2" onSubmit={handleAdd}>
-          <Input
-            placeholder="Account name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            aria-label="Account name"
-          />
-          <Input
-            placeholder="Type, like Checking"
-            value={kind}
-            onChange={(event) => setKind(event.target.value)}
-            aria-label="Account type"
-          />
-          <Select
-            value={role}
-            onValueChange={(value) => setRole(value as AccountRole)}
-          >
-            <SelectTrigger className="w-full" aria-label="Account role">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="bills">Bills</SelectItem>
-              <SelectItem value="overflow">Leftover</SelectItem>
-              <SelectItem value="other">Other</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button type="submit">
-            <Plus data-icon="inline-start" />
-            Add account
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+
+          <DialogFooter className="-ml-6 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={requestClose}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={!canSubmit} onClick={handleSave}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogDescription>
+              You have unsaved edits. If you cancel, that information will be
+              lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+            >
+              Keep editing
+            </Button>
+            <Button type="button" variant="destructive" onClick={closeClean}>
+              Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!removeId}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setRemoveId(null)
+        }}
+      >
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Remove account?</DialogTitle>
+            <DialogDescription>
+              {removeTarget?.name
+                ? `Removing “${removeTarget.name}” will delete it from this list.`
+                : 'Removing this account will delete it from this list.'}{' '}
+              This can&apos;t be undone from here.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRemoveId(null)}
+            >
+              Keep account
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (!removeId) return
+                setDrafts((current) =>
+                  current.filter((item) => item.id !== removeId),
+                )
+                setRemoveId(null)
+              }}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function AccountDrawer({
+  accountId,
+  onClose,
+}: {
+  accountId: string | null
+  onClose: () => void
+}) {
+  const { accounts, expenses } = useBudget()
+  const account = accounts.find((item) => item.id === accountId)
+  const items = expenses.filter((item) => item.accountId === accountId)
+
+  return (
+    <Drawer
+      direction="right"
+      open={accountId != null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose()
+      }}
+    >
+      <DrawerContent className="data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-max data-[vaul-drawer-direction=right]:max-w-[min(92vw,52rem)] data-[vaul-drawer-direction=right]:sm:max-w-[min(92vw,52rem)]">
+        <DrawerHeader>
+          <DrawerTitle>{account?.name ?? 'Account'}</DrawerTitle>
+        </DrawerHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+          {items.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No expenses assigned to this account yet.
+            </p>
+          ) : (
+            <div className="grid min-w-[22rem] gap-y-1">
+              {items.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-baseline justify-between gap-4 py-1.5"
+                >
+                  <span>
+                    {item.name}
+                    {item.dueDay != null ? (
+                      <span className="text-muted-foreground">
+                        {' '}
+                        · {formatDueDay(item.dueDay)}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="tabular-nums">
+                    {formatUsd(item.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </DrawerContent>
+    </Drawer>
   )
 }
 
@@ -1314,69 +1624,6 @@ function DebtsCard() {
             Add debt
           </Button>
         </form>
-      </CardContent>
-    </Card>
-  )
-}
-
-function ByAccountCard() {
-  const { accounts, expenses } = useBudget()
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>By account</CardTitle>
-        <CardDescription>
-          Bills pulling from each bank account this month.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        {accounts.length === 0 ? (
-          <EmptyNote>Add an account to group bills.</EmptyNote>
-        ) : (
-          accounts.map((account, index) => {
-            const items = expenses.filter(
-              (item) => item.accountId === account.id,
-            )
-            const need = monthlyNeedForAccount(expenses, account.id)
-            return (
-              <div key={account.id}>
-                {index > 0 ? <Separator className="mb-4" /> : null}
-                <div className="mb-2 flex items-baseline justify-between gap-3">
-                  <p className="font-medium">{account.name}</p>
-                  <p className="text-muted-foreground text-sm tabular-nums">
-                    {formatUsd(need)}
-                  </p>
-                </div>
-                {items.length === 0 ? (
-                  <EmptyNote>Nothing assigned here.</EmptyNote>
-                ) : (
-                  <div className="grid gap-1.5">
-                    {items.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-baseline justify-between gap-3 text-sm"
-                      >
-                        <span>
-                          {item.name}
-                          {item.dueDay != null ? (
-                            <span className="text-muted-foreground">
-                              {' '}
-                              · {formatDueDay(item.dueDay)}
-                            </span>
-                          ) : null}
-                        </span>
-                        <span className="tabular-nums">
-                          {formatUsd(item.amount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })
-        )}
       </CardContent>
     </Card>
   )

@@ -40,6 +40,7 @@ type BudgetContextValue = {
   removeExpense: (id: string) => void
   replaceExpenses: (expenses: RecurringExpense[]) => void
   replaceCategories: (categories: ExpenseCategoryGroup[]) => void
+  replaceAccounts: (accounts: BankAccount[]) => void
   addDebt: (input: Omit<Debt, 'id'>) => void
   removeDebt: (id: string) => void
 }
@@ -150,6 +151,12 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         setState((current) => ({
           ...current,
           categories,
+        }))
+      },
+      replaceAccounts(accounts) {
+        setState((current) => ({
+          ...current,
+          accounts,
         }))
       },
       addDebt(input) {
