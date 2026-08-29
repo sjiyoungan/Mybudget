@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { Menu, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -17,12 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -55,46 +49,6 @@ function parseDay(value: string) {
   const parsed = Number.parseInt(value, 10)
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 31) return null
   return parsed
-}
-
-function DueDayInput({
-  value,
-  onChange,
-  className,
-  placeholder = 'Due day',
-  ...props
-}: {
-  value: string
-  onChange: (value: string) => void
-} & Omit<React.ComponentProps<typeof Input>, 'value' | 'onChange'>) {
-  function handleChange(next: string) {
-    const digits = next.replace(/\D/g, '')
-    if (digits === '') {
-      onChange('')
-      return
-    }
-    const day = Number.parseInt(digits, 10)
-    if (day < 1 || day > 31) return
-    onChange(String(day))
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key !== 'Backspace' || value === '') return
-    event.preventDefault()
-    onChange(value.slice(0, -1))
-  }
-
-  return (
-    <Input
-      className={className}
-      inputMode="numeric"
-      placeholder={placeholder}
-      value={value ? formatDueDay(Number(value)) : ''}
-      onChange={(event) => handleChange(event.target.value)}
-      onKeyDown={handleKeyDown}
-      {...props}
-    />
-  )
 }
 
 function BankSelect({
@@ -1037,7 +991,6 @@ function ExpensesCard() {
   const { categories, expenses } = useBudget()
   const [open, setOpen] = useState(false)
   const [viewAll, setViewAll] = useState(false)
-  const [drawerCategory, setDrawerCategory] = useState<string | null>(null)
 
   const total = expenses.reduce((sum, item) => sum + item.amount, 0)
 
@@ -1071,7 +1024,6 @@ function ExpensesCard() {
               )}
             >
               {categories.map((item) => {
-                const selected = drawerCategory === item.id
                 const details = expenses.filter(
                   (expense) => expense.category === item.id,
                 )
@@ -1080,23 +1032,12 @@ function ExpensesCard() {
                     key={item.id}
                     className="col-span-2 grid grid-cols-subgrid gap-y-1"
                   >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setDrawerCategory((current) =>
-                          current === item.id ? null : item.id,
-                        )
-                      }
-                      className={cn(
-                        'hover-fill col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline rounded-lg py-2 text-left',
-                        selected && 'hover-fill-active',
-                      )}
-                    >
+                    <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
                       <span>{item.name}</span>
                       <span className="text-right tabular-nums">
                         {formatUsd(totalForCategory(expenses, item.id))}
                       </span>
-                    </button>
+                    </div>
                     {viewAll && details.length > 0 ? (
                       <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
                         <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1">
@@ -1132,136 +1073,7 @@ function ExpensesCard() {
       </Card>
 
       <EditExpensesDialog open={open} onOpenChange={setOpen} />
-
-      <CategoryDrawer
-        category={drawerCategory}
-        onClose={() => setDrawerCategory(null)}
-      />
     </>
-  )
-}
-
-function CategoryDrawer({
-  category,
-  onClose,
-}: {
-  category: string | null
-  onClose: () => void
-}) {
-  const { categories, expenses } = useBudget()
-  const meta = categories.find((item) => item.id === category)
-  const items = expenses.filter((item) => item.category === category)
-
-  return (
-    <Drawer
-      direction="right"
-      open={category != null}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose()
-      }}
-    >
-      <DrawerContent className="data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-max data-[vaul-drawer-direction=right]:max-w-[min(92vw,52rem)] data-[vaul-drawer-direction=right]:sm:max-w-[min(92vw,52rem)]">
-        <DrawerHeader>
-          <DrawerTitle>{meta?.name ?? 'Expenses'}</DrawerTitle>
-        </DrawerHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-          {items.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              No expenses in this category yet.
-            </p>
-          ) : (
-            <div className="grid min-w-[28rem] gap-4">
-              {items.map((item) => (
-                <ExpenseEditor key={item.id} item={item} />
-              ))}
-            </div>
-          )}
-        </div>
-      </DrawerContent>
-    </Drawer>
-  )
-}
-
-function ExpenseEditor({ item }: { item: RecurringExpense }) {
-  const { accounts, updateExpense, removeExpense } = useBudget()
-  const [name, setName] = useState(item.name)
-  const [dueDay, setDueDay] = useState(item.dueDay ? String(item.dueDay) : '')
-  const [amount, setAmount] = useState(String(item.amount))
-
-  useEffect(() => {
-    setName(item.name)
-    setDueDay(item.dueDay ? String(item.dueDay) : '')
-    setAmount(String(item.amount))
-  }, [item.id, item.name, item.dueDay, item.amount])
-
-  function persistName() {
-    const next = name.trim()
-    if (!next) {
-      setName(item.name)
-      return
-    }
-    if (next !== item.name) updateExpense(item.id, { name: next })
-  }
-
-  function persistDueDay() {
-    const day = dueDay === '' ? null : parseDay(dueDay)
-    if (dueDay !== '' && day == null) {
-      setDueDay(item.dueDay ? String(item.dueDay) : '')
-      return
-    }
-    if (day !== item.dueDay) updateExpense(item.id, { dueDay: day })
-  }
-
-  function persistAmount() {
-    const parsed = parseAmount(amount)
-    if (parsed == null || parsed <= 0) {
-      setAmount(String(item.amount))
-      return
-    }
-    if (parsed !== item.amount) updateExpense(item.id, { amount: parsed })
-  }
-
-  return (
-    <div className="grid gap-2">
-      <div className="grid grid-cols-[minmax(8rem,1fr)_5.5rem_6.5rem_minmax(9rem,1fr)_auto] items-center gap-2">
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          onBlur={persistName}
-          aria-label={`${item.name} name`}
-        />
-        <DueDayInput
-          value={dueDay}
-          onChange={setDueDay}
-          onBlur={persistDueDay}
-          aria-label={`${item.name} due day`}
-        />
-        <div className="relative">
-          <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2">
-            $
-          </span>
-          <Input
-            className="pl-5"
-            type="number"
-            min={0}
-            step="0.01"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            onBlur={persistAmount}
-            aria-label={`${item.name} amount`}
-          />
-        </div>
-        <BankSelect
-          accounts={accounts}
-          value={item.accountId}
-          onChange={(id) => updateExpense(item.id, { accountId: id })}
-        />
-        <RowRemove
-          label={`Remove ${item.name}`}
-          onClick={() => removeExpense(item.id)}
-        />
-      </div>
-    </div>
   )
 }
 
