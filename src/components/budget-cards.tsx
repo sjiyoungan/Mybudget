@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { Check, Menu, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -1503,31 +1503,38 @@ function AccountDrawer({
   const items = expenses.filter((item) => item.accountId === accountId)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draftAccountId, setDraftAccountId] = useState('')
-  const [confirmOpen, setConfirmOpen] = useState(false)
+  const editRowRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
     setEditingId(null)
     setDraftAccountId('')
-    setConfirmOpen(false)
   }, [accountId])
 
   const editing = items.find((item) => item.id === editingId)
 
-  function requestClose() {
-    if (confirmOpen) return
-    if (editingId) {
-      setConfirmOpen(true)
-      return
-    }
-    closeClean()
-  }
-
-  function closeClean() {
-    setConfirmOpen(false)
+  function cancelEdit() {
     setEditingId(null)
     setDraftAccountId('')
+  }
+
+  function closeDrawer() {
+    cancelEdit()
     onClose()
   }
+
+  useEffect(() => {
+    if (!editingId) return
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (editRowRef.current?.contains(target)) return
+      if (target.closest('[data-slot="select-content"]')) return
+      if (target.closest('[data-radix-popper-content-wrapper]')) return
+      cancelEdit()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [editingId])
 
   function startEdit(item: RecurringExpense) {
     setEditingId(item.id)
@@ -1539,116 +1546,92 @@ function AccountDrawer({
     if (draftAccountId !== editing?.accountId) {
       updateExpense(editingId, { accountId: draftAccountId })
     }
-    setEditingId(null)
-    setDraftAccountId('')
+    cancelEdit()
   }
 
   return (
-    <>
-      <Drawer
-        direction="right"
-        open={accountId != null}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) requestClose()
-        }}
-      >
-        <DrawerContent className="overflow-x-visible data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-[min(92vw,32rem)] data-[vaul-drawer-direction=right]:max-w-[min(92vw,32rem)] sm:max-w-[min(92vw,32rem)]">
-          <DrawerHeader>
-            <DrawerTitle>
-              {account ? (
-                <AccountLabel name={account.name} lastFour={account.lastFour} />
-              ) : (
-                'Account'
-              )}
-            </DrawerTitle>
-          </DrawerHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-            {items.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                No expenses assigned to this account yet.
-              </p>
+    <Drawer
+      direction="right"
+      open={accountId != null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) closeDrawer()
+      }}
+    >
+      <DrawerContent className="overflow-x-visible data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-[min(92vw,32rem)] data-[vaul-drawer-direction=right]:max-w-[min(92vw,32rem)] sm:max-w-[min(92vw,32rem)]">
+        <DrawerHeader>
+          <DrawerTitle>
+            {account ? (
+              <AccountLabel name={account.name} lastFour={account.lastFour} />
             ) : (
-              <div className="grid gap-y-1">
-                {items.map((item) => {
-                  const isEditing = editingId === item.id
-                  return (
-                    <div
-                      key={item.id}
-                      className="hover-fill grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg py-2 pr-1 pl-1"
-                    >
-                      <span className="min-w-0 truncate">{item.name}</span>
-                      {isEditing ? (
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-44">
-                            <BankSelect
-                              accounts={accounts}
-                              value={draftAccountId}
-                              onChange={setDraftAccountId}
-                            />
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon-xs"
-                            className="bg-white"
-                            onClick={saveEdit}
-                            title="Save bank"
-                            aria-label="Save bank"
-                          >
-                            <Check className="size-3.5" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="tabular-nums">
-                            {formatUsd(item.amount)}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon-xs"
-                            className="border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-foreground"
-                            onClick={() => startEdit(item)}
-                            title="Edit bank"
-                            aria-label={`Edit bank for ${item.name}`}
-                          >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                        </div>
+              'Account'
+            )}
+          </DrawerTitle>
+        </DrawerHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+          {items.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No expenses assigned to this account yet.
+            </p>
+          ) : (
+            <div className="grid gap-y-1">
+              {items.map((item) => {
+                const isEditing = editingId === item.id
+                return (
+                  <div
+                    key={item.id}
+                    ref={isEditing ? editRowRef : undefined}
+                    className="hover-fill flex items-center justify-between gap-3 rounded-lg py-2 pr-1 pl-1 [&:hover_.edit-pencil]:opacity-100"
+                  >
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate">{item.name}</span>
+                      {isEditing ? null : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          className="edit-pencil border-neutral-200 bg-white text-neutral-600 opacity-0 hover:bg-neutral-50 hover:text-foreground"
+                          onClick={() => startEdit(item)}
+                          title="Edit bank"
+                          aria-label={`Edit bank for ${item.name}`}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
                       )}
                     </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </DrawerContent>
-      </Drawer>
-
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Discard changes?</DialogTitle>
-            <DialogDescription>
-              You have unsaved edits. If you close this, that information will
-              be lost.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setConfirmOpen(false)}
-            >
-              Keep editing
-            </Button>
-            <Button type="button" variant="destructive" onClick={closeClean}>
-              Discard
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+                    {isEditing ? (
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <div className="w-44">
+                          <BankSelect
+                            accounts={accounts}
+                            value={draftAccountId}
+                            onChange={setDraftAccountId}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          className="bg-white"
+                          onClick={saveEdit}
+                          title="Save bank"
+                          aria-label="Save bank"
+                        >
+                          <Check className="size-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="tabular-nums">
+                        {formatUsd(item.amount)}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </DrawerContent>
+    </Drawer>
   )
 }
 
