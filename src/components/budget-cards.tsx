@@ -1097,8 +1097,8 @@ function AccountsCard() {
       <CardHeader>
         <CardTitle>Bank accounts</CardTitle>
         <CardDescription>
-          Mark one account as bills (Bank of America) and one as leftover
-          (Discover) for the transfer math.
+          Mark one account as bills (BoA Debit) and one as leftover
+          (Disc Debit) for the transfer math.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
@@ -1471,7 +1471,7 @@ function CalculationsCard() {
       <CardHeader>
         <CardTitle>Calculations</CardTitle>
         <CardDescription>
-          Fill in what is in Bank of America and Discover. Need comes from the
+          Fill in what is in BoA Debit and Disc Debit. Need comes from the
           bills assigned to the bills account.
         </CardDescription>
       </CardHeader>

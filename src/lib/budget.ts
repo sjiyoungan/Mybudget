@@ -49,22 +49,143 @@ export type BudgetState = {
   debts: Debt[]
 }
 
-export const defaultAccounts: BankAccount[] = [
+type SheetBankAccount = {
+  id: string
+  name: string
+  kind: string
+  role: AccountRole
+  key: string
+}
+
+const sheetBankAccounts: SheetBankAccount[] = [
   {
     id: 'bofa-checking',
-    name: 'Bank of America Personal Checking',
-    kind: 'Checking',
+    name: 'BoA Debit',
+    kind: 'Checking · 8856',
     role: 'bills',
-    balance: 0,
+    key: 'bofa',
   },
   {
     id: 'discover-checking',
-    name: 'Discover Checking',
-    kind: 'Checking',
+    name: 'Disc Debit',
+    kind: 'Checking · 2674',
     role: 'overflow',
-    balance: 0,
+    key: 'discover',
+  },
+  {
+    id: 'sheet-one',
+    name: 'One',
+    kind: 'Checking · 1871',
+    role: 'other',
+    key: 'one',
+  },
+  {
+    id: 'sheet-axos',
+    name: 'Axos',
+    kind: 'Checking · 1451',
+    role: 'other',
+    key: 'axos',
+  },
+  {
+    id: 'sheet-chime',
+    name: 'Chime',
+    kind: 'Checking · 9914',
+    role: 'other',
+    key: 'chime',
+  },
+  {
+    id: 'sheet-ally',
+    name: 'Ally',
+    kind: 'Checking · 5198',
+    role: 'other',
+    key: 'ally',
+  },
+  {
+    id: 'sheet-aspiration',
+    name: 'Aspiration',
+    kind: 'Checking · 7427',
+    role: 'other',
+    key: 'aspiration',
+  },
+  {
+    id: 'sheet-varo',
+    name: 'Varo',
+    kind: 'Checking · 1613',
+    role: 'other',
+    key: 'varo',
+  },
+  {
+    id: 'sheet-sofi',
+    name: 'Sofi chk',
+    kind: 'Checking · 0755',
+    role: 'other',
+    key: 'sofi',
   },
 ]
+
+function accountMatchKey(name: string) {
+  const n = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (n.includes('disc')) return 'discover'
+  if (
+    n.includes('bankofamerica') ||
+    n.includes('bofa') ||
+    n.startsWith('boa')
+  ) {
+    return 'bofa'
+  }
+  if (n === 'one' || n.includes('capitalone')) return 'one'
+  if (n.includes('axos')) return 'axos'
+  if (n.includes('chime')) return 'chime'
+  if (n.includes('ally')) return 'ally'
+  if (n.includes('aspiration')) return 'aspiration'
+  if (n.includes('varo')) return 'varo'
+  if (n.includes('sofi')) return 'sofi'
+  return n
+}
+
+function mergeSheetAccounts(accounts: BankAccount[]): BankAccount[] {
+  const next = accounts.map((account) => {
+    const sheet = sheetBankAccounts.find(
+      (item) =>
+        item.id === account.id || item.key === accountMatchKey(account.name),
+    )
+    if (!sheet) return account
+    return {
+      ...account,
+      name: sheet.name,
+      kind: sheet.kind,
+    }
+  })
+  const known = new Set(
+    next.flatMap((account) => [
+      account.id,
+      accountMatchKey(account.name),
+    ]),
+  )
+  for (const sheet of sheetBankAccounts) {
+    if (known.has(sheet.id) || known.has(sheet.key)) continue
+    next.push({
+      id: sheet.id,
+      name: sheet.name,
+      kind: sheet.kind,
+      role: sheet.role,
+      balance: 0,
+    })
+    known.add(sheet.id)
+    known.add(sheet.key)
+  }
+  return next
+}
+
+export const defaultAccounts: BankAccount[] = sheetBankAccounts.map(
+  ({ id, name, kind, role }) => ({
+    id,
+    name,
+    kind,
+    role,
+    balance: 0,
+  }),
+)
 
 export const emptyBudget: BudgetState = {
   accounts: defaultAccounts,
@@ -74,6 +195,7 @@ export const emptyBudget: BudgetState = {
 }
 
 const EXPENSE_SHEET_SEED = 'mybudget.expense-sheet.v1'
+const ACCOUNTS_SHEET_SEED = 'mybudget.accounts-sheet.v1'
 
 function sheetExpenses(accountId: string): RecurringExpense[] {
   const row = (
@@ -218,6 +340,15 @@ export function loadBudget(): BudgetState {
     }
     saveBudget(state)
     localStorage.setItem(EXPENSE_SHEET_SEED, '1')
+  }
+
+  if (!localStorage.getItem(ACCOUNTS_SHEET_SEED)) {
+    state = {
+      ...state,
+      accounts: mergeSheetAccounts(state.accounts),
+    }
+    saveBudget(state)
+    localStorage.setItem(ACCOUNTS_SHEET_SEED, '1')
   }
 
   return state
