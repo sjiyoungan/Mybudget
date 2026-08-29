@@ -1557,6 +1557,11 @@ function AccountDrawer({
     cancelEdit()
   }
 
+  const monthlyTotal = accountId
+    ? monthlyNeedForAccount(expenses, accountId)
+    : 0
+  const biweeklyTotal = monthlyTotal / 2
+
   return (
     <Drawer
       direction="right"
@@ -1565,7 +1570,7 @@ function AccountDrawer({
         if (!nextOpen) closeDrawer()
       }}
     >
-      <DrawerContent className="overflow-x-visible data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-[min(92vw,32rem)] data-[vaul-drawer-direction=right]:max-w-[min(92vw,32rem)] sm:max-w-[min(92vw,32rem)]">
+      <DrawerContent className="overflow-x-visible data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-[min(92vw,42rem)] data-[vaul-drawer-direction=right]:max-w-[min(92vw,42rem)] sm:max-w-[min(92vw,42rem)]">
         <DrawerHeader>
           <DrawerTitle>
             {account ? (
@@ -1574,69 +1579,91 @@ function AccountDrawer({
               'Account'
             )}
           </DrawerTitle>
+          <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-4">
+            <span />
+            <p className="text-2xl font-medium tabular-nums">
+              {formatUsd(biweeklyTotal)}
+            </p>
+            <p className="-ml-2 text-2xl font-medium tabular-nums text-right">
+              {formatUsd(monthlyTotal)}
+            </p>
+          </div>
         </DrawerHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-          {items.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              No expenses assigned to this account yet.
-            </p>
-          ) : (
-            <div className="grid gap-y-1">
-              {items.map((item) => {
-                const isEditing = editingId === item.id
-                return (
-                  <div
-                    key={item.id}
-                    ref={isEditing ? editRowRef : undefined}
-                    className="hover-fill flex items-center justify-between gap-3 rounded-lg py-2 pr-1 pl-1 [&:hover_.edit-pencil]:opacity-100"
-                  >
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate">{item.name}</span>
-                      {isEditing ? null : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-xs"
-                          className="edit-pencil border-neutral-200 bg-white text-neutral-600 opacity-0 hover:bg-neutral-50 hover:text-foreground"
-                          onClick={() => startEdit(item)}
-                          title="Edit bank"
-                          aria-label={`Edit bank for ${item.name}`}
-                        >
-                          <Pencil className="size-3.5" />
-                        </Button>
+          <div className="border-border border-t" />
+          <div className="pt-2">
+            {items.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No expenses assigned to this account yet.
+              </p>
+            ) : (
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-4 gap-y-1">
+                <div className="text-muted-foreground col-span-3 grid grid-cols-subgrid text-xs font-medium">
+                  <span />
+                  <span>Bi-weekly</span>
+                  <span className="-ml-2 text-right">Monthly</span>
+                </div>
+                {items.map((item) => {
+                  const isEditing = editingId === item.id
+                  return (
+                    <div
+                      key={item.id}
+                      ref={isEditing ? editRowRef : undefined}
+                      className="hover-fill col-span-3 grid grid-cols-subgrid items-center rounded-lg py-2 pr-1 pl-1 [&:hover_.edit-pencil]:opacity-100"
+                    >
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate">{item.name}</span>
+                        {isEditing ? null : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-xs"
+                            className="edit-pencil border-neutral-200 bg-white text-neutral-600 opacity-0 hover:bg-neutral-50 hover:text-foreground"
+                            onClick={() => startEdit(item)}
+                            title="Edit bank"
+                            aria-label={`Edit bank for ${item.name}`}
+                          >
+                            <Pencil className="size-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                      {isEditing ? (
+                        <div className="col-span-2 -ml-2 flex items-center justify-end gap-1.5">
+                          <div className="w-44">
+                            <BankSelect
+                              accounts={accounts}
+                              value={draftAccountId}
+                              onChange={setDraftAccountId}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-xs"
+                            className="bg-white"
+                            onClick={saveEdit}
+                            title="Save bank"
+                            aria-label="Save bank"
+                          >
+                            <Check className="size-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="tabular-nums">
+                            {formatUsd(item.amount / 2)}
+                          </span>
+                          <span className="-ml-2 text-right tabular-nums">
+                            {formatUsd(item.amount)}
+                          </span>
+                        </>
                       )}
                     </div>
-                    {isEditing ? (
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <div className="w-44">
-                          <BankSelect
-                            accounts={accounts}
-                            value={draftAccountId}
-                            onChange={setDraftAccountId}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-xs"
-                          className="bg-white"
-                          onClick={saveEdit}
-                          title="Save bank"
-                          aria-label="Save bank"
-                        >
-                          <Check className="size-3.5" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="tabular-nums">
-                        {formatUsd(item.amount)}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </DrawerContent>
     </Drawer>
