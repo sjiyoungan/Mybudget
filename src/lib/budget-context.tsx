@@ -84,6 +84,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
             id,
             name,
             kind,
+            lastFour: '',
             role: 'other',
             balance: 0,
           }

@@ -62,7 +62,7 @@ function BankSelect({
   onChange,
   onAdded,
 }: {
-  accounts: { id: string; name: string }[]
+  accounts: { id: string; name: string; lastFour?: string }[]
   value: string
   onChange: (id: string) => void
   onAdded?: (account: { id: string; name: string }) => void
@@ -108,7 +108,9 @@ function BankSelect({
       <SelectContent>
         {accounts.map((account) => (
           <SelectItem key={account.id} value={account.id}>
-            {account.name}
+            {account.lastFour
+              ? `${account.name} · ${account.lastFour}`
+              : account.name}
           </SelectItem>
         ))}
         <SelectSeparator />
@@ -1081,6 +1083,29 @@ function ExpensesCard() {
   )
 }
 
+function AccountLabel({
+  name,
+  lastFour,
+}: {
+  name: string
+  lastFour?: string
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span>{name}</span>
+      {lastFour ? (
+        <>
+          <span
+            aria-hidden
+            className="bg-foreground size-1 shrink-0 rounded-full"
+          />
+          <span className="tabular-nums">{lastFour}</span>
+        </>
+      ) : null}
+    </span>
+  )
+}
+
 function AccountsCard() {
   const { accounts, expenses } = useBudget()
   const [open, setOpen] = useState(false)
@@ -1109,7 +1134,7 @@ function AccountsCard() {
           </p>
           <div className="border-border border-t" />
           <div className="pt-2">
-            <div className="grid w-full gap-y-1">
+            <div className="grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1">
               {accounts.map((account) => {
                 const selected = drawerAccount === account.id
                 const need = monthlyNeedForAccount(expenses, account.id)
@@ -1123,12 +1148,15 @@ function AccountsCard() {
                       )
                     }
                     className={cn(
-                      'hover-fill w-full cursor-pointer rounded-lg py-2 text-left',
+                      'hover-fill col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline rounded-lg py-2 text-left',
                       selected && 'hover-fill-active',
                     )}
                   >
-                    <span className="block">{account.name}</span>
-                    <span className="block tabular-nums">
+                    <AccountLabel
+                      name={account.name}
+                      lastFour={account.lastFour}
+                    />
+                    <span className="text-right tabular-nums">
                       {formatUsd(need)}
                     </span>
                   </button>
@@ -1152,6 +1180,7 @@ function AccountsCard() {
 type AccountDraft = {
   id: string
   name: string
+  lastFour: string
 }
 
 function accountSnapshot(drafts: AccountDraft[]) {
@@ -1159,6 +1188,7 @@ function accountSnapshot(drafts: AccountDraft[]) {
     drafts.map((draft) => ({
       id: draft.id,
       name: draft.name.trim(),
+      lastFour: draft.lastFour,
     })),
   )
 }
@@ -1182,6 +1212,7 @@ function EditAccountsDialog({
     const next = accounts.map((account) => ({
       id: account.id,
       name: account.name,
+      lastFour: account.lastFour,
     }))
     setDrafts(next)
     setBaseline(accountSnapshot(next))
@@ -1201,15 +1232,20 @@ function EditAccountsDialog({
   const canSubmit =
     dirty &&
     drafts
-      .filter((draft) => existingIds.has(draft.id) || draft.name.trim() !== '')
+      .filter(
+        (draft) =>
+          existingIds.has(draft.id) ||
+          draft.name.trim() !== '' ||
+          draft.lastFour !== '',
+      )
       .every((draft) => draft.name.trim() !== '')
   const removeTarget = removeId
     ? drafts.find((draft) => draft.id === removeId)
     : undefined
 
-  function updateDraft(id: string, name: string) {
+  function updateDraft(id: string, patch: Partial<AccountDraft>) {
     setDrafts((current) =>
-      current.map((draft) => (draft.id === id ? { ...draft, name } : draft)),
+      current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
     )
   }
 
@@ -1231,7 +1267,7 @@ function EditAccountsDialog({
   function requestRemove(id: string) {
     const draft = drafts.find((item) => item.id === id)
     if (!draft) return
-    if (existingIds.has(id) || draft.name.trim() !== '') {
+    if (existingIds.has(id) || draft.name.trim() !== '' || draft.lastFour !== '') {
       setRemoveId(id)
       return
     }
@@ -1249,6 +1285,7 @@ function EditAccountsDialog({
           id: draft.id,
           name: draft.name.trim(),
           kind: current?.kind ?? 'Checking',
+          lastFour: draft.lastFour,
           role: current?.role ?? 'other',
           balance: current?.balance ?? 0,
         }
@@ -1260,7 +1297,7 @@ function EditAccountsDialog({
   function addAccountRow() {
     const id = crypto.randomUUID()
     setFocusId(id)
-    setDrafts((current) => [...current, { id, name: '' }])
+    setDrafts((current) => [...current, { id, name: '', lastFour: '' }])
   }
 
   return (
@@ -1314,23 +1351,38 @@ function EditAccountsDialog({
           </div>
 
           <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-y-auto">
-            <div className="text-muted-foreground text-xs font-medium">
-              Name
+            <div className="grid grid-cols-[minmax(12rem,20rem)_5.5rem_28px] items-center gap-2 text-xs font-medium text-muted-foreground">
+              <span>Name</span>
+              <span>Last four</span>
+              <span />
             </div>
             {drafts.map((draft) => (
               <div
                 key={draft.id}
-                className="grid grid-cols-[minmax(12rem,20rem)_28px] items-center gap-2"
+                className="grid grid-cols-[minmax(12rem,20rem)_5.5rem_28px] items-center gap-2"
               >
                 <Input
                   className="h-8"
                   value={draft.name}
                   onChange={(event) =>
-                    updateDraft(draft.id, event.target.value)
+                    updateDraft(draft.id, { name: event.target.value })
                   }
                   placeholder="Name"
                   aria-label="Account name"
                   autoFocus={focusId === draft.id}
+                />
+                <Input
+                  className="h-8 tabular-nums"
+                  value={draft.lastFour}
+                  onChange={(event) =>
+                    updateDraft(draft.id, {
+                      lastFour: event.target.value.replace(/\D/g, '').slice(0, 4),
+                    })
+                  }
+                  placeholder="0000"
+                  inputMode="numeric"
+                  maxLength={4}
+                  aria-label="Last four digits"
                 />
                 <Button
                   type="button"
@@ -1460,7 +1512,13 @@ function AccountDrawer({
     >
       <DrawerContent className="data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-max data-[vaul-drawer-direction=right]:max-w-[min(92vw,52rem)] data-[vaul-drawer-direction=right]:sm:max-w-[min(92vw,52rem)]">
         <DrawerHeader>
-          <DrawerTitle>{account?.name ?? 'Account'}</DrawerTitle>
+          <DrawerTitle>
+            {account ? (
+              <AccountLabel name={account.name} lastFour={account.lastFour} />
+            ) : (
+              'Account'
+            )}
+          </DrawerTitle>
         </DrawerHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
           {items.length === 0 ? (

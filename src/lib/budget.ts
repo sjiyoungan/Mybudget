@@ -6,6 +6,7 @@ export type BankAccount = {
   id: string
   name: string
   kind: string
+  lastFour: string
   role: AccountRole
   balance: number
 }
@@ -52,7 +53,7 @@ export type BudgetState = {
 type SheetBankAccount = {
   id: string
   name: string
-  kind: string
+  lastFour: string
   role: AccountRole
   key: string
 }
@@ -61,63 +62,63 @@ const sheetBankAccounts: SheetBankAccount[] = [
   {
     id: 'bofa-checking',
     name: 'BoA Debit',
-    kind: 'Checking · 8856',
+    lastFour: '8856',
     role: 'bills',
     key: 'bofa',
   },
   {
     id: 'discover-checking',
     name: 'Disc Debit',
-    kind: 'Checking · 2674',
+    lastFour: '2674',
     role: 'overflow',
     key: 'discover',
   },
   {
     id: 'sheet-one',
     name: 'One',
-    kind: 'Checking · 1871',
+    lastFour: '1871',
     role: 'other',
     key: 'one',
   },
   {
     id: 'sheet-axos',
     name: 'Axos',
-    kind: 'Checking · 1451',
+    lastFour: '1451',
     role: 'other',
     key: 'axos',
   },
   {
     id: 'sheet-chime',
     name: 'Chime',
-    kind: 'Checking · 9914',
+    lastFour: '9914',
     role: 'other',
     key: 'chime',
   },
   {
     id: 'sheet-ally',
     name: 'Ally',
-    kind: 'Checking · 5198',
+    lastFour: '5198',
     role: 'other',
     key: 'ally',
   },
   {
     id: 'sheet-aspiration',
     name: 'Aspiration',
-    kind: 'Checking · 7427',
+    lastFour: '7427',
     role: 'other',
     key: 'aspiration',
   },
   {
     id: 'sheet-varo',
     name: 'Varo',
-    kind: 'Checking · 1613',
+    lastFour: '1613',
     role: 'other',
     key: 'varo',
   },
   {
     id: 'sheet-sofi',
     name: 'Sofi chk',
-    kind: 'Checking · 0755',
+    lastFour: '0755',
     role: 'other',
     key: 'sofi',
   },
@@ -153,7 +154,8 @@ function mergeSheetAccounts(accounts: BankAccount[]): BankAccount[] {
     return {
       ...account,
       name: sheet.name,
-      kind: sheet.kind,
+      kind: 'Checking',
+      lastFour: sheet.lastFour,
     }
   })
   const known = new Set(
@@ -167,7 +169,8 @@ function mergeSheetAccounts(accounts: BankAccount[]): BankAccount[] {
     next.push({
       id: sheet.id,
       name: sheet.name,
-      kind: sheet.kind,
+      kind: 'Checking',
+      lastFour: sheet.lastFour,
       role: sheet.role,
       balance: 0,
     })
@@ -178,10 +181,11 @@ function mergeSheetAccounts(accounts: BankAccount[]): BankAccount[] {
 }
 
 export const defaultAccounts: BankAccount[] = sheetBankAccounts.map(
-  ({ id, name, kind, role }) => ({
+  ({ id, name, lastFour, role }) => ({
     id,
     name,
-    kind,
+    kind: 'Checking',
+    lastFour,
     role,
     balance: 0,
   }),
@@ -270,6 +274,38 @@ function isExpenseCategory(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
 }
 
+function lastFourDigits(value: string) {
+  return value.replace(/\D/g, '').slice(0, 4)
+}
+
+function lastFourFromKind(kind: string) {
+  const match = kind.match(/(\d{4})\s*$/)
+  return match?.[1] ?? ''
+}
+
+function normalizeAccount(value: unknown): BankAccount | null {
+  if (value == null || typeof value !== 'object') return null
+  const item = value as Partial<BankAccount>
+  if (typeof item.id !== 'string' || typeof item.name !== 'string') return null
+  const rawKind = typeof item.kind === 'string' ? item.kind : ''
+  const kind =
+    rawKind.replace(/\s*·\s*\d{4}\s*$/, '').trim() || 'Checking'
+  const lastFour =
+    typeof item.lastFour === 'string' && lastFourDigits(item.lastFour)
+      ? lastFourDigits(item.lastFour)
+      : lastFourFromKind(rawKind)
+  const role =
+    item.role === 'bills' || item.role === 'overflow' ? item.role : 'other'
+  return {
+    id: item.id,
+    name: item.name,
+    kind,
+    lastFour,
+    role,
+    balance: typeof item.balance === 'number' ? item.balance : 0,
+  }
+}
+
 function normalizeExpense(value: unknown): RecurringExpense | null {
   if (value == null || typeof value !== 'object') return null
   const item = value as Partial<RecurringExpense>
@@ -319,8 +355,12 @@ export function loadBudget(): BudgetState {
           .map(normalizeExpense)
           .filter((item): item is RecurringExpense => item != null)
         state = {
-          accounts:
-            parsed.accounts.length > 0 ? parsed.accounts : defaultAccounts,
+          accounts: (parsed.accounts.length > 0
+            ? parsed.accounts
+            : defaultAccounts
+          )
+            .map(normalizeAccount)
+            .filter((item): item is BankAccount => item != null),
           expenses,
           debts: parsed.debts,
           categories: normalizeCategories(parsed.categories, expenses),
@@ -345,7 +385,9 @@ export function loadBudget(): BudgetState {
   if (!localStorage.getItem(ACCOUNTS_SHEET_SEED)) {
     state = {
       ...state,
-      accounts: mergeSheetAccounts(state.accounts),
+      accounts: mergeSheetAccounts(state.accounts).map((account) =>
+        normalizeAccount(account),
+      ).filter((item): item is BankAccount => item != null),
     }
     saveBudget(state)
     localStorage.setItem(ACCOUNTS_SHEET_SEED, '1')
