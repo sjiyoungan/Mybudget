@@ -12,19 +12,26 @@ import {
 } from '@/components/ui/card'
 import { useBudget } from '@/lib/budget-context'
 import { formatUsd } from '@/lib/format'
+import { currentMonthNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
 
 export function DashboardPage() {
   const { paystubs } = usePaystubs()
-  const { expenses } = useBudget()
+  const { expenses, debts } = useBudget()
 
-  const income = useMemo(
-    () => paystubs.reduce((sum, stub) => sum + stub.netPay, 0),
-    [paystubs],
-  )
+  const income = useMemo(() => currentMonthNet(paystubs), [paystubs])
   const expenseTotal = useMemo(
     () => expenses.reduce((sum, item) => sum + item.amount, 0),
     [expenses],
+  )
+  const debtMinimums = useMemo(
+    () => debts.reduce((sum, item) => sum + item.minimum, 0),
+    [debts],
+  )
+  const extraToDebt = income - expenseTotal - debtMinimums
+  const totalDebt = useMemo(
+    () => debts.reduce((sum, item) => sum + item.balance, 0),
+    [debts],
   )
 
   return (
@@ -47,11 +54,8 @@ export function DashboardPage() {
               </CardHeader>
             </Card>
           </Link>
-          <SummaryCard label="Expenses" value={formatUsd(expenseTotal)} />
-          <SummaryCard
-            label="Remaining"
-            value={formatUsd(income - expenseTotal)}
-          />
+          <SummaryCard label="Extra to debt" value={formatUsd(extraToDebt)} />
+          <SummaryCard label="Total debt" value={formatUsd(totalDebt)} />
         </section>
 
         <BudgetCards />

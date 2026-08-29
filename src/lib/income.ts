@@ -68,6 +68,13 @@ export function stubsForMonth(
     .sort((left, right) => left.payDate.localeCompare(right.payDate))
 }
 
+export function currentMonthNet(paystubs: Paystub[], now = new Date()) {
+  return stubsForMonth(paystubs, now.getFullYear(), now.getMonth()).reduce(
+    (sum, stub) => sum + stub.netPay,
+    0,
+  )
+}
+
 export function visibleMonthRows(
   paystubs: Paystub[],
   year: number,
