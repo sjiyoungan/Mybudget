@@ -1574,17 +1574,9 @@ function AccountDrawer({
                   return (
                     <div
                       key={item.id}
-                      className="group/expense flex items-center justify-between gap-4 py-1.5"
+                      className="hover-fill flex items-center justify-between gap-3 rounded-lg py-2 pr-1 pl-1"
                     >
-                      <span>
-                        {item.name}
-                        {item.dueDay != null ? (
-                          <span className="text-muted-foreground">
-                            {' '}
-                            · {formatDueDay(item.dueDay)}
-                          </span>
-                        ) : null}
-                      </span>
+                      <span>{item.name}</span>
                       {isEditing ? (
                         <div className="flex min-w-0 items-center gap-1.5">
                           <div className="w-52">
@@ -1607,10 +1599,10 @@ function AccountDrawer({
                           </Button>
                         </div>
                       ) : (
-                        <div className="relative flex items-center justify-end">
+                        <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className="text-muted-foreground hover:text-foreground absolute top-1/2 right-full mr-1 -translate-y-1/2 opacity-0 group-hover/expense:opacity-100"
+                            className="text-neutral-400 hover:text-foreground flex size-6 shrink-0 items-center justify-center"
                             onClick={() => startEdit(item)}
                             title="Edit bank"
                             aria-label={`Edit bank for ${item.name}`}
