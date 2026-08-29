@@ -233,6 +233,7 @@ export function BudgetCards() {
 function ExpensesCard() {
   const { accounts, expenses, addExpense } = useBudget()
   const [open, setOpen] = useState(false)
+  const [viewAll, setViewAll] = useState(false)
   const [drawerCategory, setDrawerCategory] = useState<ExpenseCategory | null>(
     null,
   )
@@ -301,30 +302,63 @@ function ExpensesCard() {
           <p className="text-2xl font-medium tabular-nums">
             {formatUsd(total)}
           </p>
-          <div className="grid gap-1">
-            {expenseCategories.map((item) => {
-              const selected = drawerCategory === item.id
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() =>
-                    setDrawerCategory((current) =>
-                      current === item.id ? null : item.id,
-                    )
-                  }
-                  className={cn(
-                    'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
-                    selected && 'hover-fill-active',
-                  )}
-                >
-                  <span>{item.label}</span>
-                  <span className="tabular-nums">
-                    {formatUsd(totalForCategory(expenses, item.id))}
-                  </span>
-                </button>
-              )
-            })}
+          <div>
+            <div className={cn('grid', viewAll ? 'gap-3' : 'gap-1')}>
+              {expenseCategories.map((item) => {
+                const selected = drawerCategory === item.id
+                const details = expenses.filter(
+                  (expense) => expense.category === item.id,
+                )
+                return (
+                  <div key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDrawerCategory((current) =>
+                          current === item.id ? null : item.id,
+                        )
+                      }
+                      className={cn(
+                        'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
+                        selected && 'hover-fill-active',
+                      )}
+                    >
+                      <span>{item.label}</span>
+                      <span className="tabular-nums">
+                        {formatUsd(totalForCategory(expenses, item.id))}
+                      </span>
+                    </button>
+                    {viewAll && details.length > 0 ? (
+                      <div className="grid gap-2 pt-3 pl-4">
+                        {details.map((expense) => (
+                          <div
+                            key={expense.id}
+                            className="-mx-1 flex items-baseline justify-between gap-4 rounded-md px-1 py-0.5"
+                          >
+                            <span className="text-neutral-600">
+                              {expense.name}
+                            </span>
+                            <span className="text-neutral-600 tabular-nums">
+                              {formatUsd(expense.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                className="cursor-pointer bg-transparent p-0 text-sm"
+                aria-expanded={viewAll}
+                onClick={() => setViewAll((visible) => !visible)}
+              >
+                {viewAll ? 'Hide' : 'View all'}
+              </button>
+            </div>
           </div>
         </CardContent>
       </Card>
