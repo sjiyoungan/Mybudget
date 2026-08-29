@@ -1138,7 +1138,7 @@ function AccountsCard() {
               <div className="text-muted-foreground col-span-3 grid grid-cols-subgrid text-xs font-medium">
                 <span />
                 <span>Bi-weekly</span>
-                <span className="-ml-2 text-right">Monthly</span>
+                <span className="text-right">Monthly</span>
               </div>
               {accounts.map((account) => {
                 const selected = drawerAccount === account.id
@@ -1164,7 +1164,7 @@ function AccountsCard() {
                     <span className="tabular-nums">
                       {formatUsd(need / 2)}
                     </span>
-                    <span className="-ml-2 text-right tabular-nums">
+                    <span className="text-right tabular-nums">
                       {formatUsd(need)}
                     </span>
                   </button>
