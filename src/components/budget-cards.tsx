@@ -1579,14 +1579,19 @@ function AccountDrawer({
               'Account'
             )}
           </DrawerTitle>
-          <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-4">
-            <span />
-            <p className="text-2xl font-medium tabular-nums">
-              {formatUsd(biweeklyTotal)}
-            </p>
-            <p className="-ml-2 text-2xl font-medium tabular-nums text-right">
-              {formatUsd(monthlyTotal)}
-            </p>
+          <div className="mt-2 flex gap-4">
+            <div>
+              <p className="text-lg font-medium tabular-nums">
+                {formatUsd(biweeklyTotal)}
+              </p>
+              <p className="text-muted-foreground text-xs">Bi-weekly</p>
+            </div>
+            <div>
+              <p className="text-lg font-medium tabular-nums">
+                {formatUsd(monthlyTotal)}
+              </p>
+              <p className="text-muted-foreground text-xs">Monthly</p>
+            </div>
           </div>
         </DrawerHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
@@ -1601,7 +1606,7 @@ function AccountDrawer({
                 <div className="text-muted-foreground col-span-3 grid grid-cols-subgrid text-xs font-medium">
                   <span />
                   <span>Bi-weekly</span>
-                  <span className="-ml-2 text-right">Monthly</span>
+                  <span className="text-right">Monthly</span>
                 </div>
                 {items.map((item) => {
                   const isEditing = editingId === item.id
@@ -1628,7 +1633,7 @@ function AccountDrawer({
                         )}
                       </div>
                       {isEditing ? (
-                        <div className="col-span-2 -ml-2 flex items-center justify-end gap-1.5">
+                        <div className="col-span-2 flex items-center justify-end gap-1.5">
                           <div className="w-44">
                             <BankSelect
                               accounts={accounts}
@@ -1653,7 +1658,7 @@ function AccountDrawer({
                           <span className="tabular-nums">
                             {formatUsd(item.amount / 2)}
                           </span>
-                          <span className="-ml-2 text-right tabular-nums">
+                          <span className="text-right tabular-nums">
                             {formatUsd(item.amount)}
                           </span>
                         </>
