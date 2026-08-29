@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
-import { Check, Menu, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, Menu, Pencil, Plus, Settings, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -1006,15 +1006,10 @@ function ExpensesCard() {
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <CardTitle>Total monthly expenses</CardTitle>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="bg-white"
+            <CardGearButton
+              label="Edit expenses"
               onClick={() => setOpen(true)}
-            >
-              Edit
-            </Button>
+            />
           </div>
         </CardHeader>
         <CardContent className="grid">
@@ -1106,7 +1101,29 @@ function AccountLabel({
   )
 }
 
-const amountColClass = 'w-[4.5rem] shrink-0 text-right tabular-nums'
+const amountColClass = 'w-20 shrink-0 text-right tabular-nums'
+
+function CardGearButton({
+  label,
+  onClick,
+}: {
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className="border-0 bg-transparent shadow-none hover:bg-neutral-100"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+    >
+      <Settings className="size-4" />
+    </Button>
+  )
+}
 
 function AmountCols({
   biweekly,
@@ -1141,15 +1158,10 @@ function AccountsCard() {
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <CardTitle>Bank accounts</CardTitle>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="bg-white"
+            <CardGearButton
+              label="Edit accounts"
               onClick={() => setOpen(true)}
-            >
-              Edit accounts
-            </Button>
+            />
           </div>
         </CardHeader>
         <CardContent className="grid">
