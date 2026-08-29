@@ -309,16 +309,16 @@ function ExpensesCard() {
                 viewAll ? 'gap-y-3' : 'gap-y-1',
               )}
             >
-              {expenseCategories.map((item, index) => {
+              {expenseCategories.map((item) => {
                 const selected = drawerCategory === item.id
                 const details = expenses.filter(
                   (expense) => expense.category === item.id,
                 )
                 return (
-                  <Fragment key={item.id}>
-                    {viewAll && index > 0 ? (
-                      <div className="col-span-2 border-border border-t" />
-                    ) : null}
+                  <div
+                    key={item.id}
+                    className="col-span-2 grid grid-cols-subgrid gap-y-1"
+                  >
                     <button
                       type="button"
                       onClick={() =>
@@ -327,7 +327,8 @@ function ExpensesCard() {
                         )
                       }
                       className={cn(
-                        'hover-fill col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline rounded-lg py-2 text-left',
+                        'hover-fill col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline py-2 text-left',
+                        viewAll ? 'rounded-[6px] bg-[#f6f6f6]' : 'rounded-lg',
                         selected && 'hover-fill-active',
                       )}
                     >
@@ -339,7 +340,7 @@ function ExpensesCard() {
                     {viewAll && details.length > 0
                       ? details.map((expense) => (
                           <Fragment key={expense.id}>
-                            <span className="text-neutral-600 pl-4">
+                            <span className="text-neutral-600 pl-2">
                               {expense.name}
                             </span>
                             <span className="text-right text-neutral-600 tabular-nums">
@@ -348,7 +349,7 @@ function ExpensesCard() {
                           </Fragment>
                         ))
                       : null}
-                  </Fragment>
+                  </div>
                 )
               })}
             </div>
