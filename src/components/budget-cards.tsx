@@ -1579,96 +1579,89 @@ function AccountDrawer({
               'Account'
             )}
           </DrawerTitle>
-          <div className="mt-2 flex gap-4">
-            <div>
-              <p className="text-lg font-medium tabular-nums">
-                {formatUsd(biweeklyTotal)}
-              </p>
-              <p className="text-muted-foreground text-xs">Bi-weekly</p>
-            </div>
-            <div>
-              <p className="text-lg font-medium tabular-nums">
-                {formatUsd(monthlyTotal)}
-              </p>
-              <p className="text-muted-foreground text-xs">Monthly</p>
-            </div>
-          </div>
         </DrawerHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-          <div className="border-border border-t" />
-          <div className="pt-2">
-            {items.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                No expenses assigned to this account yet.
-              </p>
-            ) : (
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-4 gap-y-1">
-                <div className="text-muted-foreground col-span-3 grid grid-cols-subgrid text-xs font-medium">
-                  <span />
-                  <span>Bi-weekly</span>
-                  <span className="text-right">Monthly</span>
-                </div>
-                {items.map((item) => {
-                  const isEditing = editingId === item.id
-                  return (
-                    <div
-                      key={item.id}
-                      ref={isEditing ? editRowRef : undefined}
-                      className="hover-fill col-span-3 grid grid-cols-subgrid items-center rounded-lg py-2 pr-1 pl-1 [&:hover_.edit-pencil]:opacity-100"
-                    >
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate">{item.name}</span>
-                        {isEditing ? null : (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon-xs"
-                            className="edit-pencil border-neutral-200 bg-white text-neutral-600 opacity-0 hover:bg-neutral-50 hover:text-foreground"
-                            onClick={() => startEdit(item)}
-                            title="Edit bank"
-                            aria-label={`Edit bank for ${item.name}`}
-                          >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                      {isEditing ? (
-                        <div className="col-span-2 flex items-center justify-end gap-1.5">
-                          <div className="w-44">
-                            <BankSelect
-                              accounts={accounts}
-                              value={draftAccountId}
-                              onChange={setDraftAccountId}
-                            />
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon-xs"
-                            className="bg-white"
-                            onClick={saveEdit}
-                            title="Save bank"
-                            aria-label="Save bank"
-                          >
-                            <Check className="size-3.5" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <span className="tabular-nums">
-                            {formatUsd(item.amount / 2)}
-                          </span>
-                          <span className="text-right tabular-nums">
-                            {formatUsd(item.amount)}
-                          </span>
-                        </>
+          {items.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No expenses assigned to this account yet.
+            </p>
+          ) : (
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-4 gap-y-1">
+              <div className="text-muted-foreground col-span-3 grid grid-cols-subgrid text-xs font-medium">
+                <span />
+                <span>Bi-weekly</span>
+                <span className="pl-2 text-right">Monthly</span>
+              </div>
+              {items.map((item) => {
+                const isEditing = editingId === item.id
+                return (
+                  <div
+                    key={item.id}
+                    ref={isEditing ? editRowRef : undefined}
+                    className="hover-fill col-span-3 grid grid-cols-subgrid items-center rounded-lg py-2 pr-1 pl-1 [&:hover_.edit-pencil]:opacity-100"
+                  >
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate">{item.name}</span>
+                      {isEditing ? null : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          className="edit-pencil border-neutral-200 bg-white text-neutral-600 opacity-0 hover:bg-neutral-50 hover:text-foreground"
+                          onClick={() => startEdit(item)}
+                          title="Edit bank"
+                          aria-label={`Edit bank for ${item.name}`}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
                       )}
                     </div>
-                  )
-                })}
+                    {isEditing ? (
+                      <div className="col-span-2 flex items-center justify-end gap-1.5">
+                        <div className="w-44">
+                          <BankSelect
+                            accounts={accounts}
+                            value={draftAccountId}
+                            onChange={setDraftAccountId}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          className="bg-white"
+                          onClick={saveEdit}
+                          title="Save bank"
+                          aria-label="Save bank"
+                        >
+                          <Check className="size-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="tabular-nums">
+                          {formatUsd(item.amount / 2)}
+                        </span>
+                        <span className="pl-2 text-right tabular-nums">
+                          {formatUsd(item.amount)}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+              <div className="border-border col-span-3 mt-1 border-t" />
+              <div className="col-span-3 grid grid-cols-subgrid items-baseline py-2 pr-1 pl-1">
+                <span>Total</span>
+                <span className="tabular-nums">
+                  {formatUsd(biweeklyTotal)}
+                </span>
+                <span className="pl-2 text-right tabular-nums">
+                  {formatUsd(monthlyTotal)}
+                </span>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </DrawerContent>
     </Drawer>
