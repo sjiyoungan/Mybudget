@@ -32,7 +32,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
 import { useBudget } from '@/lib/budget-context'
 import {
   billsAccount,
@@ -963,11 +962,12 @@ function EmptyNote({ children }: { children: string }) {
 
 export function BudgetCards() {
   return (
-    <section className="grid gap-6 lg:grid-cols-2">
-      <ExpensesCard />
+    <section className="grid items-start gap-6 lg:grid-cols-2">
+      <div className="grid gap-6">
+        <ExpensesCard />
+        <DebtsCard />
+      </div>
       <AccountsCard />
-      <DebtsCard />
-      <DepositsCard />
       <CalculationsCard />
     </section>
   )
@@ -2064,78 +2064,6 @@ function EditDebtsDialog({
         </DialogContent>
       </Dialog>
     </>
-  )
-}
-
-function DepositsCard() {
-  const { accounts, expenses, updateAccountBalance } = useBudget()
-  const monthlyTotal = expenses.reduce((sum, item) => sum + item.amount, 0)
-  const onHand = accounts.reduce((sum, account) => sum + account.balance, 0)
-
-  return (
-    <Card className="lg:col-span-2">
-      <CardHeader>
-        <CardTitle>Total deposits</CardTitle>
-        <CardDescription>
-          What is in each account versus what that account needs this month.{' '}
-          {formatUsd(onHand)} on hand · {formatUsd(monthlyTotal)} in monthly
-          bills.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        {accounts.length === 0 ? (
-          <EmptyNote>Add accounts to track deposits.</EmptyNote>
-        ) : (
-          accounts.map((account, index) => {
-            const need = monthlyNeedForAccount(expenses, account.id)
-            const difference = account.balance - need
-            return (
-              <div key={account.id}>
-                {index > 0 ? <Separator className="mb-4" /> : null}
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-end">
-                  <div>
-                    <p className="font-medium">{account.name}</p>
-                    <p className="text-muted-foreground text-xs">
-                      Needs {formatUsd(need)} this month
-                    </p>
-                  </div>
-                  <div className="grid gap-1">
-                    <label
-                      className="text-muted-foreground text-xs"
-                      htmlFor={`balance-${account.id}`}
-                    >
-                      In account
-                    </label>
-                    <Input
-                      id={`balance-${account.id}`}
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={Number.isFinite(account.balance) ? account.balance : ''}
-                      onChange={(event) => {
-                        const parsed = parseAmount(event.target.value)
-                        updateAccountBalance(account.id, parsed ?? 0)
-                      }}
-                    />
-                  </div>
-                  <p
-                    className={cn(
-                      'text-sm tabular-nums sm:text-right',
-                      difference < 0
-                        ? 'text-destructive'
-                        : 'text-muted-foreground',
-                    )}
-                  >
-                    {difference >= 0 ? 'Left ' : 'Short '}
-                    {formatUsd(Math.abs(difference))}
-                  </p>
-                </div>
-              </div>
-            )
-          })
-        )}
-      </CardContent>
-    </Card>
   )
 }
 
