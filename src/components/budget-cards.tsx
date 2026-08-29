@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { Menu, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -201,7 +201,7 @@ type ExpenseDraft = {
 }
 
 const EXPENSE_ROW =
-  'grid-cols-[24px_minmax(8rem,14rem)_5.75rem_4.75rem_minmax(8rem,1fr)_28px]' as const
+  'grid-cols-[minmax(8rem,14rem)_5.75rem_4.75rem_minmax(8rem,1fr)_28px]' as const
 
 function newExpenseDraft(accountId: string, category = ''): ExpenseDraft {
   return {
@@ -367,12 +367,14 @@ function ModalDueDayInput({
 }
 
 function CategoryDropGroup({
+  categoryId,
   active,
   onDragOver,
   onDragLeave,
   onDrop,
   children,
 }: {
+  categoryId?: string
   active: boolean
   onDragOver: (event: DragEvent<HTMLElement>) => void
   onDragLeave: (event: DragEvent<HTMLElement>) => void
@@ -381,6 +383,7 @@ function CategoryDropGroup({
 }) {
   return (
     <section
+      data-category-id={categoryId}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -406,6 +409,7 @@ function ExpenseDraftRow({
   onDragStart,
   onDragEnd,
   canRemove,
+  autoFocus = false,
 }: {
   draft: ExpenseDraft
   accounts: { id: string; name: string }[]
@@ -418,11 +422,13 @@ function ExpenseDraftRow({
   onDragStart: (event: DragEvent<HTMLButtonElement>, id: string) => void
   onDragEnd: () => void
   canRemove: boolean
+  autoFocus?: boolean
 }) {
   return (
     <div
+      data-draft-id={draft.id}
       className={cn(
-        'grid items-center gap-2',
+        'group/row relative grid items-center gap-2',
         EXPENSE_ROW,
         dragging && 'opacity-50',
       )}
@@ -434,7 +440,12 @@ function ExpenseDraftRow({
         aria-label={`Move ${draft.name || 'expense'}`}
         onDragStart={(event) => onDragStart(event, draft.id)}
         onDragEnd={onDragEnd}
-        className="text-neutral-400 hover:text-foreground flex h-8 w-full cursor-grab items-center justify-center active:cursor-grabbing"
+        className={cn(
+          'text-neutral-400 hover:text-foreground absolute top-1/2 right-full mr-1 flex h-8 w-5 -translate-y-1/2 cursor-grab items-center justify-center active:cursor-grabbing',
+          dragging
+            ? 'opacity-100'
+            : 'opacity-0 group-hover/row:opacity-100',
+        )}
       >
         <Menu className="size-3.5" />
       </button>
@@ -444,6 +455,7 @@ function ExpenseDraftRow({
         onChange={(event) => onUpdate(draft.id, { name: event.target.value })}
         placeholder="Name"
         aria-label="Expense name"
+        autoFocus={autoFocus}
       />
       <MoneyInput
         value={draft.amount}
@@ -508,6 +520,11 @@ function EditExpensesDialog({
   const [dueDayError, setDueDayError] = useState(false)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropCategoryId, setDropCategoryId] = useState<string | null>(null)
+  const [addCategoryOpen, setAddCategoryOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [focusDraftId, setFocusDraftId] = useState<string | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const pendingScrollCategoryId = useRef<string | null>(null)
 
   useLayoutEffect(() => {
     if (!open) return
@@ -521,7 +538,29 @@ function EditExpensesDialog({
     setDueDayError(false)
     setDraggingId(null)
     setDropCategoryId(null)
+    setAddCategoryOpen(false)
+    setNewCategoryName('')
+    setFocusDraftId(null)
+    pendingScrollCategoryId.current = null
   }, [open])
+
+  useLayoutEffect(() => {
+    const id = pendingScrollCategoryId.current
+    if (!id) return
+    pendingScrollCategoryId.current = null
+    const node = listRef.current?.querySelector(
+      `[data-category-id="${id}"]`,
+    )
+    node?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [categoryDrafts])
+
+  useLayoutEffect(() => {
+    if (!focusDraftId) return
+    const node = listRef.current?.querySelector(
+      `[data-draft-id="${focusDraftId}"]`,
+    )
+    node?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [focusDraftId])
 
   const namedCategoryIds = useMemo(
     () =>
@@ -555,20 +594,33 @@ function EditExpensesDialog({
     )
   }
 
-  function updateCategory(id: string, name: string) {
-    setCategoryDrafts((current) =>
-      current.map((item) => (item.id === id ? { ...item, name } : item)),
-    )
+  function addExpenseToCategory(categoryId: string) {
+    const draft = newExpenseDraft(defaultAccountId, categoryId)
+    setFocusDraftId(draft.id)
+    setDrafts((current) => [...current, draft])
+  }
+
+  function handleAddCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const name = newCategoryName.trim()
+    if (!name) return
+    const id = crypto.randomUUID()
+    pendingScrollCategoryId.current = id
+    setCategoryDrafts((current) => [...current, { id, name }])
+    setNewCategoryName('')
+    setAddCategoryOpen(false)
   }
 
   function closeClean() {
     setConfirmOpen(false)
     setRemoveId(null)
+    setAddCategoryOpen(false)
+    setNewCategoryName('')
     onOpenChange(false)
   }
 
   function requestClose() {
-    if (confirmOpen || removeId) return
+    if (confirmOpen || removeId || addCategoryOpen) return
     if (dirty) {
       setConfirmOpen(true)
       return
@@ -651,7 +703,7 @@ function EditExpensesDialog({
             onOpenChange(true)
             return
           }
-          if (confirmOpen || removeId) return
+          if (confirmOpen || removeId || addCategoryOpen) return
           if (document.visibilityState === 'hidden') return
           requestClose()
         }}
@@ -661,18 +713,22 @@ function EditExpensesDialog({
           showCloseButton={false}
           onPointerDownOutside={(event) => {
             event.preventDefault()
-            if (confirmOpen || removeId) return
+            if (confirmOpen || removeId || addCategoryOpen) return
             if (document.visibilityState === 'hidden') return
             requestClose()
           }}
           onInteractOutside={(event) => {
             event.preventDefault()
-            if (confirmOpen || removeId) return
+            if (confirmOpen || removeId || addCategoryOpen) return
             if (document.visibilityState === 'hidden') return
             requestClose()
           }}
           onEscapeKeyDown={(event) => {
             event.preventDefault()
+            if (addCategoryOpen) {
+              setAddCategoryOpen(false)
+              return
+            }
             if (removeId) {
               setRemoveId(null)
               return
@@ -685,21 +741,37 @@ function EditExpensesDialog({
           }}
         >
           <div className="-ml-6 -mr-4 border-b px-6 pr-4 pb-4">
-            <DialogHeader>
-              <DialogTitle className="text-2xl tracking-tight">
-                Edit expenses
-              </DialogTitle>
-            </DialogHeader>
+            <div className="flex items-center justify-between gap-3">
+              <DialogHeader>
+                <DialogTitle className="text-2xl tracking-tight">
+                  Edit expenses
+                </DialogTitle>
+              </DialogHeader>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="bg-white"
+                onClick={() => {
+                  setNewCategoryName('')
+                  setAddCategoryOpen(true)
+                }}
+              >
+                Add category
+              </Button>
+            </div>
           </div>
 
-          <div className="mt-5 max-h-[min(70vh,40rem)] space-y-4 overflow-y-auto">
+          <div
+            ref={listRef}
+            className="-ml-6 mt-5 max-h-[min(70vh,40rem)] space-y-4 overflow-y-auto pl-6"
+          >
             <div
               className={cn(
-                'bg-background sticky top-0 z-10 grid gap-2 pb-1 text-xs font-medium text-muted-foreground',
+                'bg-popover sticky top-0 z-10 grid gap-2 pb-1 text-xs font-medium text-muted-foreground',
                 EXPENSE_ROW,
               )}
             >
-              <span />
               <span>Name</span>
               <span>Amount</span>
               <span>Due day</span>
@@ -709,12 +781,13 @@ function EditExpensesDialog({
 
             {uncategorized.length > 0 ? (
               <CategoryDropGroup
+                categoryId=""
                 active={dropCategoryId === ''}
                 onDragOver={(event) => handleDragOver(event, '')}
                 onDragLeave={handleDragLeave}
                 onDrop={(event) => handleDrop(event, '')}
               >
-                <p className="text-muted-foreground text-xs font-medium">
+                <p className="text-muted-foreground text-sm font-medium">
                   Uncategorized
                 </p>
                 {uncategorized.map((draft) => (
@@ -731,6 +804,7 @@ function EditExpensesDialog({
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
                     canRemove={drafts.length > 1}
+                    autoFocus={focusDraftId === draft.id}
                   />
                 ))}
               </CategoryDropGroup>
@@ -743,25 +817,25 @@ function EditExpensesDialog({
               return (
                 <CategoryDropGroup
                   key={category.id}
+                  categoryId={category.id}
                   active={dropCategoryId === category.id}
                   onDragOver={(event) => handleDragOver(event, category.id)}
                   onDragLeave={handleDragLeave}
                   onDrop={(event) => handleDrop(event, category.id)}
                 >
-                  <Input
-                    className="h-8 font-medium"
-                    value={category.name}
-                    onChange={(event) =>
-                      updateCategory(category.id, event.target.value)
-                    }
-                    placeholder="Category name"
-                    aria-label="Category name"
-                    autoFocus={
-                      category.name === '' &&
-                      category.id ===
-                        categoryDrafts[categoryDrafts.length - 1]?.id
-                    }
-                  />
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">{category.name}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-xs"
+                      className="border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700"
+                      aria-label={`Add expense to ${category.name}`}
+                      onClick={() => addExpenseToCategory(category.id)}
+                    >
+                      <Plus className="size-3.5" />
+                    </Button>
+                  </div>
                   {items.map((draft) => (
                     <ExpenseDraftRow
                       key={draft.id}
@@ -776,6 +850,7 @@ function EditExpensesDialog({
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       canRemove={drafts.length > 1}
+                      autoFocus={focusDraftId === draft.id}
                     />
                   ))}
                   {items.length === 0 ? (
@@ -787,39 +862,6 @@ function EditExpensesDialog({
               )
             })}
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-1"
-                onClick={() =>
-                  setCategoryDrafts((current) => [
-                    ...current,
-                    { id: crypto.randomUUID(), name: '' },
-                  ])
-                }
-              >
-                <Plus className="size-3.5" />
-                Add category
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-1"
-                onClick={() =>
-                  setDrafts((current) => [
-                    ...current,
-                    newExpenseDraft(
-                      defaultAccountId,
-                      categoryDrafts[categoryDrafts.length - 1]?.id ?? '',
-                    ),
-                  ])
-                }
-              >
-                <Plus className="size-3.5" />
-                Add expense
-              </Button>
-            </div>
             {dueDayError ? (
               <p className="text-destructive text-xs">
                 Due day can&apos;t be more than the days in a month.
@@ -838,6 +880,49 @@ function EditExpensesDialog({
             </Button>
             <Button type="button" disabled={!canSubmit} onClick={handleSave}>
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={addCategoryOpen}
+        onOpenChange={(next) => {
+          setAddCategoryOpen(next)
+          if (!next) setNewCategoryName('')
+        }}
+      >
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <form id="add-category-form" onSubmit={handleAddCategory}>
+            <DialogHeader>
+              <DialogTitle>Add category</DialogTitle>
+            </DialogHeader>
+            <Input
+              autoFocus
+              className="mt-4"
+              placeholder="Name"
+              value={newCategoryName}
+              onChange={(event) => setNewCategoryName(event.target.value)}
+              aria-label="Category name"
+            />
+          </form>
+          <DialogFooter className="sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setAddCategoryOpen(false)
+                setNewCategoryName('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              form="add-category-form"
+              type="submit"
+              disabled={!newCategoryName.trim()}
+            >
+              Add
             </Button>
           </DialogFooter>
         </DialogContent>
