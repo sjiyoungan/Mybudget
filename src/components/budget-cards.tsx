@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -56,12 +57,6 @@ function parseDay(value: string) {
   const parsed = Number.parseInt(value, 10)
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 31) return null
   return parsed
-}
-
-function categoryOptionLabel(id: ExpenseCategory) {
-  if (id === 'recurring') return 'Recurring (water, gym, subscriptions)'
-  if (id === 'variable') return 'Variable (spending, food)'
-  return expenseCategories.find((item) => item.id === id)?.label ?? id
 }
 
 function DueDayInput({
@@ -193,6 +188,491 @@ function BankSelect({
   )
 }
 
+type ExpenseDraft = {
+  id: string
+  name: string
+  amount: string
+  dueDay: string
+  category: ExpenseCategory | ''
+  accountId: string
+}
+
+const EXPENSE_ROW =
+  'grid-cols-[minmax(8rem,14rem)_5.75rem_4.75rem_minmax(8.5rem,11rem)_minmax(8rem,1fr)_28px]' as const
+
+function newExpenseDraft(accountId: string): ExpenseDraft {
+  return {
+    id: crypto.randomUUID(),
+    name: '',
+    amount: '',
+    dueDay: '',
+    category: '',
+    accountId,
+  }
+}
+
+function expenseToDraft(item: RecurringExpense): ExpenseDraft {
+  return {
+    id: item.id,
+    name: item.name,
+    amount: String(item.amount),
+    dueDay: item.dueDay ? String(item.dueDay) : '',
+    category: item.category,
+    accountId: item.accountId,
+  }
+}
+
+function expenseSnapshot(drafts: ExpenseDraft[]) {
+  return JSON.stringify(
+    drafts.map((draft) => ({
+      id: draft.id,
+      name: draft.name.trim(),
+      amount: draft.amount.trim(),
+      dueDay: draft.dueDay.trim(),
+      category: draft.category,
+      accountId: draft.accountId,
+    })),
+  )
+}
+
+function isDueDayInvalid(dueDay: string) {
+  if (dueDay.trim() === '') return false
+  return parseDay(dueDay) == null
+}
+
+function draftHasData(draft: ExpenseDraft) {
+  return (
+    draft.name.trim() !== '' ||
+    draft.amount.trim() !== '' ||
+    draft.dueDay.trim() !== '' ||
+    draft.category !== ''
+  )
+}
+
+function draftIsComplete(draft: ExpenseDraft) {
+  const amount = parseAmount(draft.amount)
+  return (
+    draft.name.trim() !== '' &&
+    draft.category !== '' &&
+    amount != null &&
+    amount > 0 &&
+    !isDueDayInvalid(draft.dueDay)
+  )
+}
+
+function ordinalSuffix(day: number) {
+  const j = day % 10
+  const k = day % 100
+  if (j === 1 && k !== 11) return 'st'
+  if (j === 2 && k !== 12) return 'nd'
+  if (j === 3 && k !== 13) return 'rd'
+  return 'th'
+}
+
+function MoneyInput({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="focus-within:border-ring focus-within:ring-ring/30 flex h-8 items-center rounded-lg border border-input px-1.5 hover:border-neutral-400 focus-within:ring-3">
+      <span className="pr-1 text-sm text-neutral-500">$</span>
+      <input
+        className="placeholder:text-muted-foreground/50 h-full w-full bg-transparent text-right text-sm tabular-nums outline-none"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+        }}
+        inputMode="decimal"
+        placeholder="0"
+        aria-label="Amount"
+      />
+    </div>
+  )
+}
+
+function ModalDueDayInput({
+  value,
+  onChange,
+  onCommit,
+  invalid = false,
+}: {
+  value: string
+  onChange: (value: string) => void
+  onCommit?: (value: string) => void
+  invalid?: boolean
+}) {
+  const day = parseDay(value)
+  return (
+    <div
+      className={cn(
+        'flex h-8 items-center justify-end rounded-lg border px-1.5',
+        invalid
+          ? 'border-destructive focus-within:border-destructive focus-within:ring-destructive/25 focus-within:ring-3'
+          : 'focus-within:border-ring focus-within:ring-ring/30 border-input hover:border-neutral-400 focus-within:ring-3',
+      )}
+    >
+      <input
+        className="h-full w-full min-w-0 bg-transparent text-right text-sm tabular-nums outline-none"
+        value={value}
+        onChange={(event) => onChange(event.target.value.replace(/\D/g, ''))}
+        onBlur={(event) => onCommit?.(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+        }}
+        inputMode="numeric"
+        aria-label="Due day"
+      />
+      {day != null ? (
+        <span className="text-muted-foreground shrink-0 text-[10px] leading-none">
+          {ordinalSuffix(day)}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+function EditExpensesDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const { accounts, expenses, replaceExpenses } = useBudget()
+  const defaultAccountId = accounts[0]?.id ?? ''
+  const [drafts, setDrafts] = useState<ExpenseDraft[]>([
+    newExpenseDraft(defaultAccountId),
+  ])
+  const [baseline, setBaseline] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [removeId, setRemoveId] = useState<string | null>(null)
+  const [dueDayError, setDueDayError] = useState(false)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const next =
+      expenses.length > 0
+        ? expenses.map(expenseToDraft)
+        : [newExpenseDraft(accounts[0]?.id ?? '')]
+    setDrafts(next)
+    setBaseline(expenseSnapshot(next))
+    setConfirmOpen(false)
+    setRemoveId(null)
+    setDueDayError(false)
+  }, [open])
+
+  const dirty = useMemo(
+    () => expenseSnapshot(drafts) !== baseline,
+    [drafts, baseline],
+  )
+  const canSubmit =
+    dirty &&
+    !drafts.some((draft) => isDueDayInvalid(draft.dueDay)) &&
+    drafts.filter(draftHasData).every(draftIsComplete)
+  const removeTarget = removeId
+    ? drafts.find((draft) => draft.id === removeId)
+    : undefined
+
+  function updateDraft(id: string, patch: Partial<ExpenseDraft>) {
+    setDrafts((current) =>
+      current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
+    )
+  }
+
+  function closeClean() {
+    setConfirmOpen(false)
+    setRemoveId(null)
+    onOpenChange(false)
+  }
+
+  function requestClose() {
+    if (confirmOpen || removeId) return
+    if (dirty) {
+      setConfirmOpen(true)
+      return
+    }
+    closeClean()
+  }
+
+  function requestRemove(id: string) {
+    const draft = drafts.find((item) => item.id === id)
+    if (!draft) return
+    const existed = expenses.some((item) => item.id === id)
+    if (existed || draftHasData(draft)) {
+      setRemoveId(id)
+      return
+    }
+    setDrafts((current) => current.filter((item) => item.id !== id))
+  }
+
+  function handleSave() {
+    if (!canSubmit) return
+    replaceExpenses(
+      drafts.filter(draftIsComplete).map((draft) => ({
+        id: draft.id,
+        name: draft.name.trim(),
+        dueDay: draft.dueDay === '' ? null : parseDay(draft.dueDay),
+        amount: parseAmount(draft.amount) ?? 0,
+        accountId: draft.accountId || defaultAccountId,
+        category: draft.category as ExpenseCategory,
+      })),
+    )
+    closeClean()
+  }
+
+  return (
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) {
+            onOpenChange(true)
+            return
+          }
+          if (confirmOpen || removeId) return
+          if (document.visibilityState === 'hidden') return
+          requestClose()
+        }}
+      >
+        <DialogContent
+          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-0 pl-6 sm:max-w-none"
+          showCloseButton={false}
+          onPointerDownOutside={(event) => {
+            event.preventDefault()
+            if (confirmOpen || removeId) return
+            if (document.visibilityState === 'hidden') return
+            requestClose()
+          }}
+          onInteractOutside={(event) => {
+            event.preventDefault()
+            if (confirmOpen || removeId) return
+            if (document.visibilityState === 'hidden') return
+            requestClose()
+          }}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault()
+            if (removeId) {
+              setRemoveId(null)
+              return
+            }
+            if (confirmOpen) {
+              setConfirmOpen(false)
+              return
+            }
+            requestClose()
+          }}
+        >
+          <div className="-ml-6 -mr-4 border-b px-6 pr-4 pb-4">
+            <DialogHeader>
+              <DialogTitle className="text-2xl tracking-tight">
+                Edit expenses
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+
+          <div className="mt-5 space-y-2">
+            <div
+              className={cn(
+                'grid gap-2 text-xs font-medium text-muted-foreground',
+                EXPENSE_ROW,
+              )}
+            >
+              <span>Name</span>
+              <span>Amount</span>
+              <span>Due day</span>
+              <span>Category</span>
+              <span>Bank</span>
+              <span />
+            </div>
+
+            {drafts.map((draft) => (
+              <div
+                key={draft.id}
+                className={cn('grid items-center gap-2', EXPENSE_ROW)}
+              >
+                <Input
+                  className="h-8"
+                  value={draft.name}
+                  onChange={(event) =>
+                    updateDraft(draft.id, { name: event.target.value })
+                  }
+                  placeholder="Name"
+                  aria-label="Expense name"
+                />
+                <MoneyInput
+                  value={draft.amount}
+                  onChange={(value) => updateDraft(draft.id, { amount: value })}
+                />
+                <ModalDueDayInput
+                  value={draft.dueDay}
+                  invalid={dueDayError && isDueDayInvalid(draft.dueDay)}
+                  onChange={(value) => {
+                    updateDraft(draft.id, { dueDay: value })
+                    if (dueDayError) {
+                      setDueDayError(
+                        drafts.some((item) =>
+                          isDueDayInvalid(
+                            item.id === draft.id ? value : item.dueDay,
+                          ),
+                        ),
+                      )
+                    }
+                  }}
+                  onCommit={(value) => {
+                    setDueDayError(
+                      drafts.some((item) =>
+                        isDueDayInvalid(
+                          item.id === draft.id ? value : item.dueDay,
+                        ),
+                      ),
+                    )
+                  }}
+                />
+                <Select
+                  value={draft.category || undefined}
+                  onValueChange={(value) =>
+                    updateDraft(draft.id, { category: value as ExpenseCategory })
+                  }
+                >
+                  <SelectTrigger className="w-full" aria-label="Category">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {expenseCategories.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <BankSelect
+                  accounts={accounts}
+                  value={draft.accountId}
+                  onChange={(id) => updateDraft(draft.id, { accountId: id })}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground justify-self-end hover:bg-transparent"
+                  disabled={drafts.length === 1}
+                  onClick={() => requestRemove(draft.id)}
+                  title="Remove expense"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1"
+              onClick={() =>
+                setDrafts((current) => [
+                  ...current,
+                  newExpenseDraft(defaultAccountId),
+                ])
+              }
+            >
+              <Plus className="size-3.5" />
+              Add expense
+            </Button>
+            {dueDayError ? (
+              <p className="text-destructive text-xs">
+                Due day can&apos;t be more than the days in a month.
+              </p>
+            ) : null}
+          </div>
+
+          <DialogFooter className="-ml-6 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={requestClose}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={!canSubmit} onClick={handleSave}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogDescription>
+              You have unsaved edits. If you cancel, that information will be
+              lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+            >
+              Keep editing
+            </Button>
+            <Button type="button" variant="destructive" onClick={closeClean}>
+              Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!removeId}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setRemoveId(null)
+        }}
+      >
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Remove expense?</DialogTitle>
+            <DialogDescription>
+              {removeTarget?.name
+                ? `Removing “${removeTarget.name}” will delete it from this list.`
+                : 'Removing this expense will delete it from this list.'}{' '}
+              This can&apos;t be undone from here.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRemoveId(null)}
+            >
+              Keep expense
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (!removeId) return
+                setDrafts((current) =>
+                  current.filter((item) => item.id !== removeId),
+                )
+                setRemoveId(null)
+              }}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 function EmptyNote({ children }: { children: string }) {
   return <p className="text-muted-foreground text-sm">{children}</p>
 }
@@ -231,55 +711,14 @@ export function BudgetCards() {
 }
 
 function ExpensesCard() {
-  const { accounts, expenses, addExpense } = useBudget()
+  const { expenses } = useBudget()
   const [open, setOpen] = useState(false)
   const [viewAll, setViewAll] = useState(false)
   const [drawerCategory, setDrawerCategory] = useState<ExpenseCategory | null>(
     null,
   )
-  const [name, setName] = useState('')
-  const [dueDay, setDueDay] = useState('')
-  const [amount, setAmount] = useState('')
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? '')
-  const [category, setCategory] = useState<ExpenseCategory | ''>('')
-  const [pendingAccount, setPendingAccount] = useState<{
-    id: string
-    name: string
-  } | null>(null)
 
   const total = expenses.reduce((sum, item) => sum + item.amount, 0)
-  const bankOptions =
-    pendingAccount && !accounts.some((account) => account.id === pendingAccount.id)
-      ? [...accounts, pendingAccount]
-      : accounts
-
-  function resetExpenseForm() {
-    setName('')
-    setDueDay('')
-    setAmount('')
-    setCategory('')
-    setAccountId(accounts[0]?.id ?? '')
-    setPendingAccount(null)
-  }
-
-  function handleAddExpense(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const parsed = parseAmount(amount)
-    const day = dueDay === '' ? null : parseDay(dueDay)
-    const resolvedAccountId = accountId || bankOptions[0]?.id || ''
-    if (!name.trim() || !category || parsed == null || parsed <= 0) return
-    if (dueDay !== '' && day == null) return
-    if (bankOptions.length > 0 && !resolvedAccountId) return
-    addExpense({
-      name: name.trim(),
-      dueDay: day,
-      amount: parsed,
-      accountId: resolvedAccountId,
-      category,
-    })
-    resetExpenseForm()
-    setOpen(false)
-  }
 
   return (
     <>
@@ -294,7 +733,7 @@ function ExpensesCard() {
               className="bg-white"
               onClick={() => setOpen(true)}
             >
-              Add expense
+              Edit
             </Button>
           </div>
         </CardHeader>
@@ -371,71 +810,7 @@ function ExpensesCard() {
         </CardContent>
       </Card>
 
-      <Dialog
-        open={open}
-        onOpenChange={(nextOpen) => {
-          setOpen(nextOpen)
-          if (!nextOpen) resetExpenseForm()
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add expense</DialogTitle>
-          </DialogHeader>
-          <form className="grid gap-3" onSubmit={handleAddExpense}>
-            <Input
-              placeholder="Name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              aria-label="Expense name"
-            />
-            <Select
-              value={category || undefined}
-              onValueChange={(value) => setCategory(value as ExpenseCategory)}
-            >
-              <SelectTrigger className="w-full" aria-label="Category">
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent>
-                {expenseCategories.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {categoryOptionLabel(item.id)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <DueDayInput
-              value={dueDay}
-              onChange={setDueDay}
-              aria-label="Due day of month"
-            />
-            <div className="relative">
-              <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2">
-                $
-              </span>
-              <Input
-                className="pl-5"
-                type="number"
-                min={0}
-                step="0.01"
-                placeholder="0.00"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                aria-label="Monthly amount"
-              />
-            </div>
-            <BankSelect
-              accounts={bankOptions}
-              value={accountId}
-              onChange={setAccountId}
-              onAdded={setPendingAccount}
-            />
-            <DialogFooter className="col-span-full">
-              <Button type="submit">Add expense</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <EditExpensesDialog open={open} onOpenChange={setOpen} />
 
       <CategoryDrawer
         category={drawerCategory}

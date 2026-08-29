@@ -36,6 +36,7 @@ type BudgetContextValue = {
     patch: Partial<Omit<RecurringExpense, 'id'>>,
   ) => void
   removeExpense: (id: string) => void
+  replaceExpenses: (expenses: RecurringExpense[]) => void
   addDebt: (input: Omit<Debt, 'id'>) => void
   removeDebt: (id: string) => void
 }
@@ -133,6 +134,12 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         setState((current) => ({
           ...current,
           expenses: current.expenses.filter((item) => item.id !== id),
+        }))
+      },
+      replaceExpenses(expenses) {
+        setState((current) => ({
+          ...current,
+          expenses: [...expenses].sort(compareExpensesByDueDay),
         }))
       },
       addDebt(input) {
