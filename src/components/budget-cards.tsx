@@ -284,8 +284,8 @@ function ExpensesCard() {
   return (
     <>
       <Card className="self-start">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
+        <CardHeader className="px-2.5">
+          <div className="flex items-start justify-between gap-3 px-1.5">
             <CardTitle>Total monthly expenses</CardTitle>
             <Button
               type="button"
@@ -298,14 +298,14 @@ function ExpensesCard() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-6">
-          <p className="text-2xl font-medium tabular-nums">
+        <CardContent className="grid gap-6 px-2.5">
+          <p className="px-1.5 text-2xl font-medium tabular-nums">
             {formatUsd(total)}
           </p>
           <div>
             <div
               className={cn(
-                'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4 pl-1 pr-2.5',
+                'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4',
                 viewAll ? 'gap-y-3' : 'gap-y-1',
               )}
             >
@@ -327,7 +327,7 @@ function ExpensesCard() {
                         )
                       }
                       className={cn(
-                        'hover-fill col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline py-2 text-left',
+                        'hover-fill col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline px-1.5 py-2 text-left',
                         viewAll ? 'rounded-[6px] bg-[#f6f6f6]' : 'rounded-lg',
                         selected && 'hover-fill-active',
                       )}
@@ -340,10 +340,10 @@ function ExpensesCard() {
                     {viewAll && details.length > 0
                       ? details.map((expense) => (
                           <Fragment key={expense.id}>
-                            <span className="text-neutral-600 pl-2">
+                            <span className="text-neutral-600 pl-3.5">
                               {expense.name}
                             </span>
-                            <span className="text-right text-neutral-600 tabular-nums">
+                            <span className="pr-1.5 text-right text-neutral-600 tabular-nums">
                               {formatUsd(expense.amount)}
                             </span>
                           </Fragment>
@@ -353,7 +353,7 @@ function ExpensesCard() {
                 )
               })}
             </div>
-            <div className="mt-3 flex justify-end">
+            <div className="mt-3 flex justify-end px-1.5">
               <button
                 type="button"
                 className="cursor-pointer bg-transparent p-0 text-sm"
