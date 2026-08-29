@@ -1,5 +1,5 @@
 import { Fragment, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
-import { Menu, Plus, Trash2 } from 'lucide-react'
+import { Check, Menu, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -1498,59 +1498,163 @@ function AccountDrawer({
   accountId: string | null
   onClose: () => void
 }) {
-  const { accounts, expenses } = useBudget()
+  const { accounts, expenses, updateExpense } = useBudget()
   const account = accounts.find((item) => item.id === accountId)
   const items = expenses.filter((item) => item.accountId === accountId)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draftAccountId, setDraftAccountId] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
+  useLayoutEffect(() => {
+    setEditingId(null)
+    setDraftAccountId('')
+    setConfirmOpen(false)
+  }, [accountId])
+
+  const editing = items.find((item) => item.id === editingId)
+
+  function requestClose() {
+    if (confirmOpen) return
+    if (editingId) {
+      setConfirmOpen(true)
+      return
+    }
+    closeClean()
+  }
+
+  function closeClean() {
+    setConfirmOpen(false)
+    setEditingId(null)
+    setDraftAccountId('')
+    onClose()
+  }
+
+  function startEdit(item: RecurringExpense) {
+    setEditingId(item.id)
+    setDraftAccountId(item.accountId)
+  }
+
+  function saveEdit() {
+    if (!editingId || !draftAccountId) return
+    if (draftAccountId !== editing?.accountId) {
+      updateExpense(editingId, { accountId: draftAccountId })
+    }
+    setEditingId(null)
+    setDraftAccountId('')
+  }
 
   return (
-    <Drawer
-      direction="right"
-      open={accountId != null}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose()
-      }}
-    >
-      <DrawerContent className="data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-max data-[vaul-drawer-direction=right]:max-w-[min(92vw,52rem)] data-[vaul-drawer-direction=right]:sm:max-w-[min(92vw,52rem)]">
-        <DrawerHeader>
-          <DrawerTitle>
-            {account ? (
-              <AccountLabel name={account.name} lastFour={account.lastFour} />
+    <>
+      <Drawer
+        direction="right"
+        open={accountId != null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) requestClose()
+        }}
+      >
+        <DrawerContent className="data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-max data-[vaul-drawer-direction=right]:max-w-[min(92vw,52rem)] data-[vaul-drawer-direction=right]:sm:max-w-[min(92vw,52rem)]">
+          <DrawerHeader>
+            <DrawerTitle>
+              {account ? (
+                <AccountLabel name={account.name} lastFour={account.lastFour} />
+              ) : (
+                'Account'
+              )}
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+            {items.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No expenses assigned to this account yet.
+              </p>
             ) : (
-              'Account'
-            )}
-          </DrawerTitle>
-        </DrawerHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-          {items.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              No expenses assigned to this account yet.
-            </p>
-          ) : (
-            <div className="grid min-w-[22rem] gap-y-1">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-baseline justify-between gap-4 py-1.5"
-                >
-                  <span>
-                    {item.name}
-                    {item.dueDay != null ? (
-                      <span className="text-muted-foreground">
-                        {' '}
-                        · {formatDueDay(item.dueDay)}
+              <div className="grid min-w-[28rem] gap-y-1">
+                {items.map((item) => {
+                  const isEditing = editingId === item.id
+                  return (
+                    <div
+                      key={item.id}
+                      className="group/expense flex items-center justify-between gap-4 py-1.5"
+                    >
+                      <span>
+                        {item.name}
+                        {item.dueDay != null ? (
+                          <span className="text-muted-foreground">
+                            {' '}
+                            · {formatDueDay(item.dueDay)}
+                          </span>
+                        ) : null}
                       </span>
-                    ) : null}
-                  </span>
-                  <span className="tabular-nums">
-                    {formatUsd(item.amount)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </DrawerContent>
-    </Drawer>
+                      {isEditing ? (
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <div className="w-52">
+                            <BankSelect
+                              accounts={accounts}
+                              value={draftAccountId}
+                              onChange={setDraftAccountId}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-xs"
+                            className="bg-white"
+                            onClick={saveEdit}
+                            title="Save bank"
+                            aria-label="Save bank"
+                          >
+                            <Check className="size-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="relative flex items-center justify-end">
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground absolute top-1/2 right-full mr-1 -translate-y-1/2 opacity-0 group-hover/expense:opacity-100"
+                            onClick={() => startEdit(item)}
+                            title="Edit bank"
+                            aria-label={`Edit bank for ${item.name}`}
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                          <span className="tabular-nums">
+                            {formatUsd(item.amount)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </DrawerContent>
+      </Drawer>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogDescription>
+              You have unsaved edits. If you close this, that information will
+              be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+            >
+              Keep editing
+            </Button>
+            <Button type="button" variant="destructive" onClick={closeClean}>
+              Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
