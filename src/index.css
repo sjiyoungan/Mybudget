@@ -129,18 +129,9 @@
     }
 }
 
-/* Name | 16px | bi-weekly | 24px | monthly — gap is a real column, not leftover fill. */
-.amount-columns {
-  display: grid;
-  width: 100%;
-  grid-template-columns: minmax(0, 1fr) 16px auto 24px auto;
-  column-gap: 0;
-  row-gap: 0.25rem;
-}
-
 .account-drawer[data-slot="drawer-content"] {
-  width: min(92vw, calc(42rem + 24px)) !important;
-  max-width: min(92vw, calc(42rem + 24px)) !important;
+  width: min(92vw, calc(24rem + 24px)) !important;
+  max-width: min(92vw, calc(24rem + 24px)) !important;
 }
 
 .hover-fill {

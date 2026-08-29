@@ -1106,6 +1106,30 @@ function AccountLabel({
   )
 }
 
+const amountColClass = 'w-[4.5rem] shrink-0 text-right tabular-nums'
+
+function AmountCols({
+  biweekly,
+  monthly,
+  header = false,
+}: {
+  biweekly: string
+  monthly: string
+  header?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        'flex shrink-0 gap-6',
+        header && 'text-muted-foreground text-xs font-medium',
+      )}
+    >
+      <span className={amountColClass}>{biweekly}</span>
+      <span className={amountColClass}>{monthly}</span>
+    </div>
+  )
+}
+
 function AccountsCard() {
   const { accounts, expenses } = useBudget()
   const [open, setOpen] = useState(false)
@@ -1134,13 +1158,10 @@ function AccountsCard() {
           </p>
           <div className="border-border border-t" />
           <div className="pt-2">
-            <div className="amount-columns items-baseline">
-              <div className="text-muted-foreground col-span-5 grid grid-cols-subgrid text-xs font-medium">
-                <span />
-                <span />
-                <span className="text-right">Bi-weekly</span>
-                <span />
-                <span className="text-right">Monthly</span>
+            <div className="grid gap-y-1">
+              <div className="flex items-baseline">
+                <span className="min-w-0 flex-1" />
+                <AmountCols header biweekly="Bi-weekly" monthly="Monthly" />
               </div>
               {accounts.map((account) => {
                 const selected = drawerAccount === account.id
@@ -1155,22 +1176,20 @@ function AccountsCard() {
                       )
                     }
                     className={cn(
-                      'hover-fill col-span-5 grid cursor-pointer grid-cols-subgrid items-baseline rounded-lg py-2 text-left',
+                      'hover-fill flex w-full cursor-pointer items-baseline rounded-lg py-2 text-left',
                       selected && 'hover-fill-active',
                     )}
                   >
-                    <AccountLabel
-                      name={account.name}
-                      lastFour={account.lastFour}
+                    <span className="min-w-0 flex-1">
+                      <AccountLabel
+                        name={account.name}
+                        lastFour={account.lastFour}
+                      />
+                    </span>
+                    <AmountCols
+                      biweekly={formatUsd(need / 2)}
+                      monthly={formatUsd(need)}
                     />
-                    <span />
-                    <span className="text-right tabular-nums">
-                      {formatUsd(need / 2)}
-                    </span>
-                    <span />
-                    <span className="text-right tabular-nums">
-                      {formatUsd(need)}
-                    </span>
                   </button>
                 )
               })}
@@ -1590,13 +1609,10 @@ function AccountDrawer({
               No expenses assigned to this account yet.
             </p>
           ) : (
-            <div className="amount-columns items-baseline">
-              <div className="text-muted-foreground col-span-5 grid grid-cols-subgrid text-xs font-medium">
-                <span />
-                <span />
-                <span className="text-right">Bi-weekly</span>
-                <span />
-                <span className="text-right">Monthly</span>
+            <div className="grid gap-y-1">
+              <div className="flex items-baseline">
+                <span className="min-w-0 flex-1" />
+                <AmountCols header biweekly="Bi-weekly" monthly="Monthly" />
               </div>
               {items.map((item) => {
                 const isEditing = editingId === item.id
@@ -1604,9 +1620,9 @@ function AccountDrawer({
                   <div
                     key={item.id}
                     ref={isEditing ? editRowRef : undefined}
-                    className="hover-fill col-span-5 grid grid-cols-subgrid items-center rounded-lg py-2 pr-1 pl-1 [&:hover_.edit-pencil]:opacity-100"
+                    className="hover-fill flex items-center rounded-lg py-2 pr-1 pl-1 [&:hover_.edit-pencil]:opacity-100"
                   >
-                    <div className="flex min-w-0 items-center gap-1.5">
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
                       <span className="truncate">{item.name}</span>
                       {isEditing ? null : (
                         <Button
@@ -1623,7 +1639,7 @@ function AccountDrawer({
                       )}
                     </div>
                     {isEditing ? (
-                      <div className="col-span-4 flex items-center justify-end gap-1.5">
+                      <div className="flex shrink-0 items-center gap-1.5">
                         <div className="w-44">
                           <BankSelect
                             accounts={accounts}
@@ -1644,31 +1660,21 @@ function AccountDrawer({
                         </Button>
                       </div>
                     ) : (
-                      <>
-                        <span />
-                        <span className="text-right tabular-nums">
-                          {formatUsd(item.amount / 2)}
-                        </span>
-                        <span />
-                        <span className="text-right tabular-nums">
-                          {formatUsd(item.amount)}
-                        </span>
-                      </>
+                      <AmountCols
+                        biweekly={formatUsd(item.amount / 2)}
+                        monthly={formatUsd(item.amount)}
+                      />
                     )}
                   </div>
                 )
               })}
-              <div className="border-border col-span-5 mt-1 border-t" />
-              <div className="col-span-5 grid grid-cols-subgrid items-baseline py-2 pr-1 pl-1">
-                <span>Total</span>
-                <span />
-                <span className="text-right tabular-nums">
-                  {formatUsd(biweeklyTotal)}
-                </span>
-                <span />
-                <span className="text-right tabular-nums">
-                  {formatUsd(monthlyTotal)}
-                </span>
+              <div className="border-border mt-1 border-t" />
+              <div className="flex items-baseline py-2 pr-1 pl-1">
+                <span className="min-w-0 flex-1">Total</span>
+                <AmountCols
+                  biweekly={formatUsd(biweeklyTotal)}
+                  monthly={formatUsd(monthlyTotal)}
+                />
               </div>
             </div>
           )}
