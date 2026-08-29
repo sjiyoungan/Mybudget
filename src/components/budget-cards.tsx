@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { Menu, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -36,13 +36,11 @@ import { Separator } from '@/components/ui/separator'
 import { useBudget } from '@/lib/budget-context'
 import {
   billsAccount,
-  expenseCategories,
   formatDueDay,
   monthlyNeedForAccount,
   overflowAccount,
   totalForCategory,
   type AccountRole,
-  type ExpenseCategory,
   type RecurringExpense,
 } from '@/lib/budget'
 import { formatUsd } from '@/lib/format'
@@ -188,25 +186,30 @@ function BankSelect({
   )
 }
 
+type CategoryDraft = {
+  id: string
+  name: string
+}
+
 type ExpenseDraft = {
   id: string
   name: string
   amount: string
   dueDay: string
-  category: ExpenseCategory | ''
+  category: string
   accountId: string
 }
 
 const EXPENSE_ROW =
-  'grid-cols-[minmax(8rem,14rem)_5.75rem_4.75rem_minmax(8.5rem,11rem)_minmax(8rem,1fr)_28px]' as const
+  'grid-cols-[24px_minmax(8rem,14rem)_5.75rem_4.75rem_minmax(8rem,1fr)_28px]' as const
 
-function newExpenseDraft(accountId: string): ExpenseDraft {
+function newExpenseDraft(accountId: string, category = ''): ExpenseDraft {
   return {
     id: crypto.randomUUID(),
     name: '',
     amount: '',
     dueDay: '',
-    category: '',
+    category,
     accountId,
   }
 }
@@ -222,9 +225,16 @@ function expenseToDraft(item: RecurringExpense): ExpenseDraft {
   }
 }
 
-function expenseSnapshot(drafts: ExpenseDraft[]) {
-  return JSON.stringify(
-    drafts.map((draft) => ({
+function editorSnapshot(
+  categories: CategoryDraft[],
+  drafts: ExpenseDraft[],
+) {
+  return JSON.stringify({
+    categories: categories.map((item) => ({
+      id: item.id,
+      name: item.name.trim(),
+    })),
+    drafts: drafts.map((draft) => ({
       id: draft.id,
       name: draft.name.trim(),
       amount: draft.amount.trim(),
@@ -232,7 +242,7 @@ function expenseSnapshot(drafts: ExpenseDraft[]) {
       category: draft.category,
       accountId: draft.accountId,
     })),
-  )
+  })
 }
 
 function isDueDayInvalid(dueDay: string) {
@@ -244,20 +254,41 @@ function draftHasData(draft: ExpenseDraft) {
   return (
     draft.name.trim() !== '' ||
     draft.amount.trim() !== '' ||
-    draft.dueDay.trim() !== '' ||
-    draft.category !== ''
+    draft.dueDay.trim() !== ''
   )
 }
 
-function draftIsComplete(draft: ExpenseDraft) {
+function draftIsComplete(draft: ExpenseDraft, categoryIds: Set<string>) {
   const amount = parseAmount(draft.amount)
   return (
     draft.name.trim() !== '' &&
-    draft.category !== '' &&
+    categoryIds.has(draft.category) &&
     amount != null &&
     amount > 0 &&
     !isDueDayInvalid(draft.dueDay)
   )
+}
+
+function moveDraftToCategory(
+  drafts: ExpenseDraft[],
+  draftId: string,
+  category: string,
+) {
+  const from = drafts.findIndex((item) => item.id === draftId)
+  if (from < 0) return drafts
+  const next = [...drafts]
+  const [item] = next.splice(from, 1)
+  if (!item) return drafts
+  const updated = { ...item, category }
+  let insertAt = next.length
+  for (let i = next.length - 1; i >= 0; i -= 1) {
+    if (next[i]?.category === category) {
+      insertAt = i + 1
+      break
+    }
+  }
+  next.splice(insertAt, 0, updated)
+  return next
 }
 
 function ordinalSuffix(day: number) {
@@ -335,6 +366,130 @@ function ModalDueDayInput({
   )
 }
 
+function CategoryDropGroup({
+  active,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  children,
+}: {
+  active: boolean
+  onDragOver: (event: DragEvent<HTMLElement>) => void
+  onDragLeave: (event: DragEvent<HTMLElement>) => void
+  onDrop: (event: DragEvent<HTMLElement>) => void
+  children: ReactNode
+}) {
+  return (
+    <section
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={cn(
+        'space-y-2 rounded-lg p-1',
+        active && 'bg-neutral-50 ring-1 ring-neutral-200',
+      )}
+    >
+      {children}
+    </section>
+  )
+}
+
+function ExpenseDraftRow({
+  draft,
+  accounts,
+  dragging,
+  dueDayError,
+  drafts,
+  setDueDayError,
+  onUpdate,
+  onRemove,
+  onDragStart,
+  onDragEnd,
+  canRemove,
+}: {
+  draft: ExpenseDraft
+  accounts: { id: string; name: string }[]
+  dragging: boolean
+  dueDayError: boolean
+  drafts: ExpenseDraft[]
+  setDueDayError: (value: boolean) => void
+  onUpdate: (id: string, patch: Partial<ExpenseDraft>) => void
+  onRemove: () => void
+  onDragStart: (event: DragEvent<HTMLButtonElement>, id: string) => void
+  onDragEnd: () => void
+  canRemove: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        'grid items-center gap-2',
+        EXPENSE_ROW,
+        dragging && 'opacity-50',
+      )}
+    >
+      <button
+        type="button"
+        draggable
+        title="Drag to a category"
+        aria-label={`Move ${draft.name || 'expense'}`}
+        onDragStart={(event) => onDragStart(event, draft.id)}
+        onDragEnd={onDragEnd}
+        className="text-neutral-400 hover:text-foreground flex h-8 w-full cursor-grab items-center justify-center active:cursor-grabbing"
+      >
+        <Menu className="size-3.5" />
+      </button>
+      <Input
+        className="h-8"
+        value={draft.name}
+        onChange={(event) => onUpdate(draft.id, { name: event.target.value })}
+        placeholder="Name"
+        aria-label="Expense name"
+      />
+      <MoneyInput
+        value={draft.amount}
+        onChange={(value) => onUpdate(draft.id, { amount: value })}
+      />
+      <ModalDueDayInput
+        value={draft.dueDay}
+        invalid={dueDayError && isDueDayInvalid(draft.dueDay)}
+        onChange={(value) => {
+          onUpdate(draft.id, { dueDay: value })
+          if (dueDayError) {
+            setDueDayError(
+              drafts.some((item) =>
+                isDueDayInvalid(item.id === draft.id ? value : item.dueDay),
+              ),
+            )
+          }
+        }}
+        onCommit={(value) => {
+          setDueDayError(
+            drafts.some((item) =>
+              isDueDayInvalid(item.id === draft.id ? value : item.dueDay),
+            ),
+          )
+        }}
+      />
+      <BankSelect
+        accounts={accounts}
+        value={draft.accountId}
+        onChange={(id) => onUpdate(draft.id, { accountId: id })}
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="text-muted-foreground justify-self-end hover:bg-transparent"
+        disabled={!canRemove}
+        onClick={onRemove}
+        title="Remove expense"
+      >
+        <Trash2 className="size-3.5" />
+      </Button>
+    </div>
+  )
+}
+
 function EditExpensesDialog({
   open,
   onOpenChange,
@@ -342,44 +497,67 @@ function EditExpensesDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { accounts, expenses, replaceExpenses } = useBudget()
+  const { accounts, categories, expenses, replaceCategories, replaceExpenses } =
+    useBudget()
   const defaultAccountId = accounts[0]?.id ?? ''
-  const [drafts, setDrafts] = useState<ExpenseDraft[]>([
-    newExpenseDraft(defaultAccountId),
-  ])
+  const [categoryDrafts, setCategoryDrafts] = useState<CategoryDraft[]>([])
+  const [drafts, setDrafts] = useState<ExpenseDraft[]>([])
   const [baseline, setBaseline] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [dueDayError, setDueDayError] = useState(false)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dropCategoryId, setDropCategoryId] = useState<string | null>(null)
 
   useLayoutEffect(() => {
     if (!open) return
-    const next =
-      expenses.length > 0
-        ? expenses.map(expenseToDraft)
-        : [newExpenseDraft(accounts[0]?.id ?? '')]
-    setDrafts(next)
-    setBaseline(expenseSnapshot(next))
+    const nextCategories = categories.map((item) => ({ ...item }))
+    const nextDrafts = expenses.map(expenseToDraft)
+    setCategoryDrafts(nextCategories)
+    setDrafts(nextDrafts)
+    setBaseline(editorSnapshot(nextCategories, nextDrafts))
     setConfirmOpen(false)
     setRemoveId(null)
     setDueDayError(false)
+    setDraggingId(null)
+    setDropCategoryId(null)
   }, [open])
 
+  const namedCategoryIds = useMemo(
+    () =>
+      new Set(
+        categoryDrafts
+          .filter((item) => item.name.trim() !== '')
+          .map((item) => item.id),
+      ),
+    [categoryDrafts],
+  )
   const dirty = useMemo(
-    () => expenseSnapshot(drafts) !== baseline,
-    [drafts, baseline],
+    () => editorSnapshot(categoryDrafts, drafts) !== baseline,
+    [categoryDrafts, drafts, baseline],
   )
   const canSubmit =
     dirty &&
     !drafts.some((draft) => isDueDayInvalid(draft.dueDay)) &&
-    drafts.filter(draftHasData).every(draftIsComplete)
+    drafts.filter(draftHasData).every((draft) =>
+      draftIsComplete(draft, namedCategoryIds),
+    )
   const removeTarget = removeId
     ? drafts.find((draft) => draft.id === removeId)
     : undefined
+  const uncategorized = drafts.filter(
+    (draft) => !categoryDrafts.some((item) => item.id === draft.category),
+  )
 
   function updateDraft(id: string, patch: Partial<ExpenseDraft>) {
     setDrafts((current) =>
       current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
+    )
+  }
+
+  function updateCategory(id: string, name: string) {
+    setCategoryDrafts((current) =>
+      current.map((item) => (item.id === id ? { ...item, name } : item)),
     )
   }
 
@@ -411,17 +589,57 @@ function EditExpensesDialog({
 
   function handleSave() {
     if (!canSubmit) return
+    const nextCategories = categoryDrafts
+      .filter((item) => item.name.trim() !== '')
+      .map((item) => ({ id: item.id, name: item.name.trim() }))
+    const allowed = new Set(nextCategories.map((item) => item.id))
+    replaceCategories(nextCategories)
     replaceExpenses(
-      drafts.filter(draftIsComplete).map((draft) => ({
-        id: draft.id,
-        name: draft.name.trim(),
-        dueDay: draft.dueDay === '' ? null : parseDay(draft.dueDay),
-        amount: parseAmount(draft.amount) ?? 0,
-        accountId: draft.accountId || defaultAccountId,
-        category: draft.category as ExpenseCategory,
-      })),
+      drafts
+        .filter((draft) => draftIsComplete(draft, allowed))
+        .map((draft) => ({
+          id: draft.id,
+          name: draft.name.trim(),
+          dueDay: draft.dueDay === '' ? null : parseDay(draft.dueDay),
+          amount: parseAmount(draft.amount) ?? 0,
+          accountId: draft.accountId || defaultAccountId,
+          category: draft.category,
+        })),
     )
     closeClean()
+  }
+
+  function handleDragStart(event: DragEvent<HTMLButtonElement>, id: string) {
+    event.dataTransfer.setData('text/plain', id)
+    event.dataTransfer.effectAllowed = 'move'
+    setDraggingId(id)
+  }
+
+  function handleDragOver(event: DragEvent<HTMLElement>, categoryId: string) {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setDropCategoryId(categoryId)
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLElement>) {
+    const next = event.relatedTarget
+    if (next instanceof Node && event.currentTarget.contains(next)) return
+    setDropCategoryId(null)
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>, categoryId: string) {
+    event.preventDefault()
+    const id = event.dataTransfer.getData('text/plain') || draggingId
+    if (id) {
+      setDrafts((current) => moveDraftToCategory(current, id, categoryId))
+    }
+    setDraggingId(null)
+    setDropCategoryId(null)
+  }
+
+  function handleDragEnd() {
+    setDraggingId(null)
+    setDropCategoryId(null)
   }
 
   return (
@@ -474,114 +692,134 @@ function EditExpensesDialog({
             </DialogHeader>
           </div>
 
-          <div className="mt-5 space-y-2">
+          <div className="mt-5 max-h-[min(70vh,40rem)] space-y-4 overflow-y-auto">
             <div
               className={cn(
-                'grid gap-2 text-xs font-medium text-muted-foreground',
+                'bg-background sticky top-0 z-10 grid gap-2 pb-1 text-xs font-medium text-muted-foreground',
                 EXPENSE_ROW,
               )}
             >
+              <span />
               <span>Name</span>
               <span>Amount</span>
               <span>Due day</span>
-              <span>Category</span>
               <span>Bank</span>
               <span />
             </div>
 
-            {drafts.map((draft) => (
-              <div
-                key={draft.id}
-                className={cn('grid items-center gap-2', EXPENSE_ROW)}
+            {uncategorized.length > 0 ? (
+              <CategoryDropGroup
+                active={dropCategoryId === ''}
+                onDragOver={(event) => handleDragOver(event, '')}
+                onDragLeave={handleDragLeave}
+                onDrop={(event) => handleDrop(event, '')}
               >
-                <Input
-                  className="h-8"
-                  value={draft.name}
-                  onChange={(event) =>
-                    updateDraft(draft.id, { name: event.target.value })
-                  }
-                  placeholder="Name"
-                  aria-label="Expense name"
-                />
-                <MoneyInput
-                  value={draft.amount}
-                  onChange={(value) => updateDraft(draft.id, { amount: value })}
-                />
-                <ModalDueDayInput
-                  value={draft.dueDay}
-                  invalid={dueDayError && isDueDayInvalid(draft.dueDay)}
-                  onChange={(value) => {
-                    updateDraft(draft.id, { dueDay: value })
-                    if (dueDayError) {
-                      setDueDayError(
-                        drafts.some((item) =>
-                          isDueDayInvalid(
-                            item.id === draft.id ? value : item.dueDay,
-                          ),
-                        ),
-                      )
-                    }
-                  }}
-                  onCommit={(value) => {
-                    setDueDayError(
-                      drafts.some((item) =>
-                        isDueDayInvalid(
-                          item.id === draft.id ? value : item.dueDay,
-                        ),
-                      ),
-                    )
-                  }}
-                />
-                <Select
-                  value={draft.category || undefined}
-                  onValueChange={(value) =>
-                    updateDraft(draft.id, { category: value as ExpenseCategory })
-                  }
-                >
-                  <SelectTrigger className="w-full" aria-label="Category">
-                    <SelectValue placeholder="Category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {expenseCategories.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <BankSelect
-                  accounts={accounts}
-                  value={draft.accountId}
-                  onChange={(id) => updateDraft(draft.id, { accountId: id })}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-muted-foreground justify-self-end hover:bg-transparent"
-                  disabled={drafts.length === 1}
-                  onClick={() => requestRemove(draft.id)}
-                  title="Remove expense"
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-            ))}
+                <p className="text-muted-foreground text-xs font-medium">
+                  Uncategorized
+                </p>
+                {uncategorized.map((draft) => (
+                  <ExpenseDraftRow
+                    key={draft.id}
+                    draft={draft}
+                    accounts={accounts}
+                    dragging={draggingId === draft.id}
+                    dueDayError={dueDayError}
+                    drafts={drafts}
+                    setDueDayError={setDueDayError}
+                    onUpdate={updateDraft}
+                    onRemove={() => requestRemove(draft.id)}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                    canRemove={drafts.length > 1}
+                  />
+                ))}
+              </CategoryDropGroup>
+            ) : null}
 
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-1"
-              onClick={() =>
-                setDrafts((current) => [
-                  ...current,
-                  newExpenseDraft(defaultAccountId),
-                ])
-              }
-            >
-              <Plus className="size-3.5" />
-              Add expense
-            </Button>
+            {categoryDrafts.map((category) => {
+              const items = drafts.filter(
+                (draft) => draft.category === category.id,
+              )
+              return (
+                <CategoryDropGroup
+                  key={category.id}
+                  active={dropCategoryId === category.id}
+                  onDragOver={(event) => handleDragOver(event, category.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(event) => handleDrop(event, category.id)}
+                >
+                  <Input
+                    className="h-8 font-medium"
+                    value={category.name}
+                    onChange={(event) =>
+                      updateCategory(category.id, event.target.value)
+                    }
+                    placeholder="Category name"
+                    aria-label="Category name"
+                    autoFocus={
+                      category.name === '' &&
+                      category.id ===
+                        categoryDrafts[categoryDrafts.length - 1]?.id
+                    }
+                  />
+                  {items.map((draft) => (
+                    <ExpenseDraftRow
+                      key={draft.id}
+                      draft={draft}
+                      accounts={accounts}
+                      dragging={draggingId === draft.id}
+                      dueDayError={dueDayError}
+                      drafts={drafts}
+                      setDueDayError={setDueDayError}
+                      onUpdate={updateDraft}
+                      onRemove={() => requestRemove(draft.id)}
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      canRemove={drafts.length > 1}
+                    />
+                  ))}
+                  {items.length === 0 ? (
+                    <p className="text-muted-foreground px-1 py-2 text-xs">
+                      Drop an expense here
+                    </p>
+                  ) : null}
+                </CategoryDropGroup>
+              )
+            })}
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-1"
+                onClick={() =>
+                  setCategoryDrafts((current) => [
+                    ...current,
+                    { id: crypto.randomUUID(), name: '' },
+                  ])
+                }
+              >
+                <Plus className="size-3.5" />
+                Add category
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-1"
+                onClick={() =>
+                  setDrafts((current) => [
+                    ...current,
+                    newExpenseDraft(
+                      defaultAccountId,
+                      categoryDrafts[categoryDrafts.length - 1]?.id ?? '',
+                    ),
+                  ])
+                }
+              >
+                <Plus className="size-3.5" />
+                Add expense
+              </Button>
+            </div>
             {dueDayError ? (
               <p className="text-destructive text-xs">
                 Due day can&apos;t be more than the days in a month.
@@ -711,12 +949,10 @@ export function BudgetCards() {
 }
 
 function ExpensesCard() {
-  const { expenses } = useBudget()
+  const { categories, expenses } = useBudget()
   const [open, setOpen] = useState(false)
   const [viewAll, setViewAll] = useState(false)
-  const [drawerCategory, setDrawerCategory] = useState<ExpenseCategory | null>(
-    null,
-  )
+  const [drawerCategory, setDrawerCategory] = useState<string | null>(null)
 
   const total = expenses.reduce((sum, item) => sum + item.amount, 0)
 
@@ -749,7 +985,7 @@ function ExpensesCard() {
                 viewAll ? 'gap-y-3' : 'gap-y-1',
               )}
             >
-              {expenseCategories.map((item) => {
+              {categories.map((item) => {
                 const selected = drawerCategory === item.id
                 const details = expenses.filter(
                   (expense) => expense.category === item.id,
@@ -771,7 +1007,7 @@ function ExpensesCard() {
                         selected && 'hover-fill-active',
                       )}
                     >
-                      <span>{item.label}</span>
+                      <span>{item.name}</span>
                       <span className="text-right tabular-nums">
                         {formatUsd(totalForCategory(expenses, item.id))}
                       </span>
@@ -824,11 +1060,11 @@ function CategoryDrawer({
   category,
   onClose,
 }: {
-  category: ExpenseCategory | null
+  category: string | null
   onClose: () => void
 }) {
-  const { expenses } = useBudget()
-  const meta = expenseCategories.find((item) => item.id === category)
+  const { categories, expenses } = useBudget()
+  const meta = categories.find((item) => item.id === category)
   const items = expenses.filter((item) => item.category === category)
 
   return (
@@ -841,7 +1077,7 @@ function CategoryDrawer({
     >
       <DrawerContent className="data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-max data-[vaul-drawer-direction=right]:max-w-[min(92vw,52rem)] data-[vaul-drawer-direction=right]:sm:max-w-[min(92vw,52rem)]">
         <DrawerHeader>
-          <DrawerTitle>{meta?.label ?? 'Expenses'}</DrawerTitle>
+          <DrawerTitle>{meta?.name ?? 'Expenses'}</DrawerTitle>
         </DrawerHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
           {items.length === 0 ? (

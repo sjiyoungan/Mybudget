@@ -15,11 +15,13 @@ import {
   type BankAccount,
   type BudgetState,
   type Debt,
+  type ExpenseCategoryGroup,
   type RecurringExpense,
 } from '@/lib/budget'
 
 type BudgetContextValue = {
   accounts: BankAccount[]
+  categories: ExpenseCategoryGroup[]
   expenses: RecurringExpense[]
   debts: Debt[]
   addAccount: (input: {
@@ -37,6 +39,7 @@ type BudgetContextValue = {
   ) => void
   removeExpense: (id: string) => void
   replaceExpenses: (expenses: RecurringExpense[]) => void
+  replaceCategories: (categories: ExpenseCategoryGroup[]) => void
   addDebt: (input: Omit<Debt, 'id'>) => void
   removeDebt: (id: string) => void
 }
@@ -70,6 +73,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
   const value = useMemo<BudgetContextValue>(
     () => ({
       accounts: state.accounts,
+      categories: state.categories,
       expenses: state.expenses,
       debts: state.debts,
       addAccount({ name, kind, role }) {
@@ -140,6 +144,12 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         setState((current) => ({
           ...current,
           expenses: [...expenses].sort(compareExpensesByDueDay),
+        }))
+      },
+      replaceCategories(categories) {
+        setState((current) => ({
+          ...current,
+          categories,
         }))
       },
       addDebt(input) {

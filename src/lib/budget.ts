@@ -10,14 +10,19 @@ export type BankAccount = {
   balance: number
 }
 
-export const expenseCategories = [
-  { id: 'mortgage', label: 'Mortgage' },
-  { id: 'pets', label: 'Pets' },
-  { id: 'recurring', label: 'Recurring' },
-  { id: 'variable', label: 'Variable' },
-] as const
+export type ExpenseCategoryGroup = {
+  id: string
+  name: string
+}
 
-export type ExpenseCategory = (typeof expenseCategories)[number]['id']
+export const defaultExpenseCategories: ExpenseCategoryGroup[] = [
+  { id: 'mortgage', name: 'Mortgage' },
+  { id: 'pets', name: 'Pets' },
+  { id: 'recurring', name: 'Recurring' },
+  { id: 'variable', name: 'Variable' },
+]
+
+export type ExpenseCategory = string
 
 export type RecurringExpense = {
   id: string
@@ -25,7 +30,7 @@ export type RecurringExpense = {
   dueDay: number | null
   amount: number
   accountId: string
-  category: ExpenseCategory
+  category: string
 }
 
 export type Debt = {
@@ -39,6 +44,7 @@ export type Debt = {
 
 export type BudgetState = {
   accounts: BankAccount[]
+  categories: ExpenseCategoryGroup[]
   expenses: RecurringExpense[]
   debts: Debt[]
 }
@@ -62,6 +68,7 @@ export const defaultAccounts: BankAccount[] = [
 
 export const emptyBudget: BudgetState = {
   accounts: defaultAccounts,
+  categories: defaultExpenseCategories,
   expenses: [],
   debts: [],
 }
@@ -107,8 +114,38 @@ function sheetExpenses(accountId: string): RecurringExpense[] {
   ]
 }
 
-function isExpenseCategory(value: unknown): value is ExpenseCategory {
-  return expenseCategories.some((category) => category.id === value)
+function normalizeCategory(value: unknown): ExpenseCategoryGroup | null {
+  if (value == null || typeof value !== 'object') return null
+  const item = value as Partial<ExpenseCategoryGroup>
+  if (typeof item.id !== 'string' || typeof item.name !== 'string') return null
+  const name = item.name.trim()
+  if (!name) return null
+  return { id: item.id, name }
+}
+
+function normalizeCategories(
+  raw: unknown,
+  expenses: RecurringExpense[],
+): ExpenseCategoryGroup[] {
+  const fromState = Array.isArray(raw)
+    ? raw
+        .map(normalizeCategory)
+        .filter((item): item is ExpenseCategoryGroup => item != null)
+    : []
+  const list =
+    fromState.length > 0 ? [...fromState] : [...defaultExpenseCategories]
+  const known = new Set(list.map((item) => item.id))
+  for (const expense of expenses) {
+    if (expense.category && !known.has(expense.category)) {
+      list.push({ id: expense.category, name: expense.category })
+      known.add(expense.category)
+    }
+  }
+  return list
+}
+
+function isExpenseCategory(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0
 }
 
 function normalizeExpense(value: unknown): RecurringExpense | null {
@@ -156,13 +193,15 @@ export function loadBudget(): BudgetState {
     if (raw) {
       const parsed: unknown = JSON.parse(raw)
       if (isBudgetState(parsed)) {
+        const expenses = parsed.expenses
+          .map(normalizeExpense)
+          .filter((item): item is RecurringExpense => item != null)
         state = {
           accounts:
             parsed.accounts.length > 0 ? parsed.accounts : defaultAccounts,
-          expenses: parsed.expenses
-            .map(normalizeExpense)
-            .filter((item): item is RecurringExpense => item != null),
+          expenses,
           debts: parsed.debts,
+          categories: normalizeCategories(parsed.categories, expenses),
         }
       }
     }
@@ -232,7 +271,7 @@ export function overflowAccount(accounts: BankAccount[]) {
 
 export function totalForCategory(
   expenses: RecurringExpense[],
-  category: ExpenseCategory,
+  category: string,
 ) {
   return expenses
     .filter((item) => item.category === category)
