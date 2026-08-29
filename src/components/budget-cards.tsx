@@ -439,7 +439,7 @@ function EditExpensesDialog({
         }}
       >
         <DialogContent
-          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-0 pl-6 sm:max-w-none"
+          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
           showCloseButton={false}
           onPointerDownOutside={(event) => {
             event.preventDefault()
