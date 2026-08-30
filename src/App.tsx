@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
 import { DashboardPage } from '@/pages/dashboard-page'
+import { DebtPage } from '@/pages/debt-page'
 import { ExpensesPage } from '@/pages/expenses-page'
 import { IncomePage } from '@/pages/income-page'
 import { LoginPage } from '@/pages/login-page'
@@ -23,6 +24,7 @@ export default function App() {
       <Route path="/" element={<DashboardPage />} />
       <Route path="/income" element={<IncomePage />} />
       <Route path="/expenses" element={<ExpensesPage />} />
+      <Route path="/debt" element={<DebtPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

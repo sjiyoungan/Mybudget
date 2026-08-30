@@ -1,3 +1,5 @@
+import { applyDebtBalanceSnapshot, DEBT_BALANCE_SEED } from '@/lib/debt-plan'
+
 const STORAGE_KEY = 'mybudget.budget.v1'
 
 export type AccountRole = 'bills' | 'overflow' | 'other'
@@ -461,6 +463,15 @@ export function loadBudget(): BudgetState {
     }
     saveBudget(state)
     localStorage.setItem(DEBT_SHEET_SEED, '1')
+  }
+
+  if (!localStorage.getItem(DEBT_BALANCE_SEED)) {
+    state = {
+      ...state,
+      debts: applyDebtBalanceSnapshot(state.debts),
+    }
+    saveBudget(state)
+    localStorage.setItem(DEBT_BALANCE_SEED, '1')
   }
 
   return state

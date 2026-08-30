@@ -959,10 +959,6 @@ function EmptyNote({ children }: { children: string }) {
   return <p className="text-muted-foreground text-sm">{children}</p>
 }
 
-export function BudgetCards() {
-  return <DebtsCard />
-}
-
 export function ExpenseDetailCards() {
   return (
     <section className="grid items-start gap-6 lg:grid-cols-2">
@@ -1673,7 +1669,7 @@ function AccountDrawer({
   )
 }
 
-function DebtsCard() {
+export function DebtsCard() {
   const { debts } = useBudget()
   const [open, setOpen] = useState(false)
   const totalBalance = debts.reduce((sum, item) => sum + item.balance, 0)
@@ -1703,7 +1699,14 @@ function DebtsCard() {
                   key={item.id}
                   className="flex w-full items-baseline rounded-lg py-2"
                 >
-                  <span className="min-w-0 flex-1 truncate">{item.lender}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {item.lender}
+                    {item.apr > 0 ? (
+                      <span className="text-muted-foreground ml-2 text-xs tabular-nums">
+                        {item.apr}%
+                      </span>
+                    ) : null}
+                  </span>
                   <AmountCols
                     left={formatUsd(item.minimum)}
                     right={formatUsd(item.balance)}
