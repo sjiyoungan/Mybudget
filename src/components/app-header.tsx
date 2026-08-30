@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 
+import { CalculationsDialog } from '@/components/budget-cards'
 import { PaystubUploadButton } from '@/components/paystub-upload'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,6 +14,7 @@ import { useAuth } from '@/lib/auth-context'
 
 export function AppHeader() {
   const { signOut } = useAuth()
+  const [calculateOpen, setCalculateOpen] = useState(false)
 
   return (
     <header className="border-b">
@@ -38,8 +41,19 @@ export function AppHeader() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <PaystubUploadButton />
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setCalculateOpen(true)}
+          >
+            Calculate
+          </Button>
+          <PaystubUploadButton />
+        </div>
       </div>
+      <CalculationsDialog open={calculateOpen} onOpenChange={setCalculateOpen} />
     </header>
   )
 }

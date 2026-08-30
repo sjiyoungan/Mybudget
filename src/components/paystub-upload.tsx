@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react'
-import { Upload } from 'lucide-react'
+import { ChevronDown, Upload } from 'lucide-react'
 
 import {
   AlertDialog,
@@ -12,6 +12,12 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { formatLongDate } from '@/lib/format'
 import { parseAdpPaystub, type Paystub } from '@/lib/paystub'
 import { usePaystubs } from '@/lib/paystub-context'
@@ -58,6 +64,7 @@ export function PaystubUploadButton() {
   )
   const [message, setMessage] = useState<string | null>(null)
   const [pendingStub, setPendingStub] = useState<Paystub | null>(null)
+  const [expensesSoon, setExpensesSoon] = useState(false)
 
   const busy = progress != null
 
@@ -143,18 +150,31 @@ export function PaystubUploadButton() {
         className="sr-only"
         onChange={onInputChange}
       />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={busy}
-        onClick={() => inputRef.current?.click()}
-      >
-        <Upload data-icon="inline-start" />
-        {progress
-          ? `Reading ${progress.current}/${progress.total}…`
-          : 'Upload'}
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="outline" size="sm" disabled={busy}>
+            <Upload data-icon="inline-start" />
+            {progress
+              ? `Reading ${progress.current}/${progress.total}…`
+              : 'Upload'}
+            {progress ? null : (
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onSelect={() => {
+              inputRef.current?.click()
+            }}
+          >
+            Income
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setExpensesSoon(true)}>
+            Expenses
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <AlertDialog
         open={pendingStub != null}
@@ -200,6 +220,26 @@ export function PaystubUploadButton() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogAction onClick={() => setMessage(null)}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={expensesSoon}
+        onOpenChange={setExpensesSoon}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Expenses</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bank statement upload is next. For now, expenses stay on the
+              expenses page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setExpensesSoon(false)}>
               OK
             </AlertDialogAction>
           </AlertDialogFooter>
