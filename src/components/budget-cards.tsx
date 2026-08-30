@@ -1819,12 +1819,10 @@ function formatDuration(count: number) {
   if (count <= 0) return 'This month'
   const years = Math.floor(count / 12)
   const months = count % 12
-  const yearPart =
-    years === 0 ? '' : years === 1 ? '1 year' : `${years} years`
-  const monthPart =
-    months === 0 ? '' : months === 1 ? '1 month' : `${months} months`
-  if (yearPart && monthPart) return `${yearPart} and ${monthPart}`
-  return yearPart || monthPart
+  const parts: string[] = []
+  if (years > 0) parts.push(`${years} yr`)
+  if (months > 0) parts.push(`${months} mo`)
+  return parts.join(' ')
 }
 
 function formatMonthsLeft(last: PlannerMonth, now: Date) {
