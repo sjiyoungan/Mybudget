@@ -1714,22 +1714,13 @@ export function DebtsCard() {
           </div>
         </CardHeader>
         <CardContent className="grid">
-          <div className="grid grid-cols-2 pb-4">
-            <DebtMetric label="Total balance" amount={totalBalance} className="pr-4" />
-            <DebtMetric
-              label="Total minimums"
-              amount={totalMinimum}
-              className="border-border border-l pl-4"
-            />
-            <DebtMetric
-              label="Extra this month"
-              amount={extraThisMonth}
-              className="border-border border-t pt-4 pr-4"
-            />
+          <div className="metric-grid-row pb-4">
+            <DebtMetric label="Total balance" amount={totalBalance} />
+            <DebtMetric label="Total minimums" amount={totalMinimum} />
+            <DebtMetric label="Extra this month" amount={extraThisMonth} />
             <DebtMetric
               label="Interest paid this year"
               amount={ytdInterest}
-              className="border-border border-t border-l pt-4 pl-4"
             />
           </div>
           <div className="border-border border-t" />
@@ -1771,16 +1762,14 @@ export function DebtsCard() {
 function DebtMetric({
   label,
   amount,
-  className,
 }: {
   label: string
   amount: number
-  className?: string
 }) {
   return (
-    <div className={className}>
+    <div>
       <p className="text-muted-foreground text-sm">{label}</p>
-      <p className="mt-2 text-2xl font-medium tabular-nums">{formatUsd(amount)}</p>
+      <p className="mt-4 text-2xl font-medium tabular-nums">{formatUsd(amount)}</p>
     </div>
   )
 }
