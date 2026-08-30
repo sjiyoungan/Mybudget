@@ -46,6 +46,7 @@ import {
   loadDebtPlan,
   monthsUntilPayoff,
   paymentOverride,
+  plannedInterest,
   plannedThroughPayoff,
   projectDebtPlan,
   resolveCustomOrder,
@@ -132,6 +133,7 @@ export function DebtPage() {
   const upcoming = plannedThroughPayoff(months)
   const history = months.filter((row) => row.source === 'history')
   const freeOn = debtFreeLabel(months)
+  const interestPaid = plannedInterest(upcoming)
 
   return (
     <div className="min-h-svh bg-background">
@@ -145,13 +147,16 @@ export function DebtPage() {
               Dashboard
             </Link>
           </Button>
-          <h1 className="font-heading mt-4 text-3xl font-medium">Debt</h1>
+          <h1 className="font-heading mt-4 text-3xl font-medium">
+            Debt payoff planner
+          </h1>
         </div>
 
         <PlannerCard
           debts={debts}
           plan={plan}
           freeOn={freeOn}
+          interestPaid={interestPaid}
           history={history}
           upcoming={upcoming}
           onPlanChange={setPlan}
@@ -167,6 +172,7 @@ function PlannerCard({
   debts,
   plan,
   freeOn,
+  interestPaid,
   history,
   upcoming,
   onPlanChange,
@@ -174,6 +180,7 @@ function PlannerCard({
   debts: Debt[]
   plan: DebtPlanState
   freeOn: string
+  interestPaid: number
   history: PlannerMonth[]
   upcoming: PlannerMonth[]
   onPlanChange: (plan: DebtPlanState) => void
@@ -195,9 +202,14 @@ function PlannerCard({
     <Card className="pb-1">
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-baseline gap-3">
-            <CardTitle>Payoff planner</CardTitle>
-            <p className="text-muted-foreground text-sm">{freeOn}</p>
+          <div className="flex items-baseline gap-8">
+            <CardTitle>{debtFreeHeading(freeOn)}</CardTitle>
+            <p className="text-sm">
+              <span className="text-muted-foreground">Interest paid </span>
+              <span className="font-medium tabular-nums">
+                {formatUsdWhole(interestPaid)}
+              </span>
+            </p>
           </div>
           <div className="flex items-center gap-1">
             <StrategyMenu
@@ -244,6 +256,13 @@ function PlannerCard({
       />
     </Card>
   )
+}
+
+function debtFreeHeading(label: string) {
+  if (label === 'Paid off') return 'Paid off'
+  if (label === '—') return 'Debt-free'
+  if (label.startsWith('After')) return `Debt-free ${label.toLowerCase()}`
+  return `Debt-free on ${label}`
 }
 
 function StrategyMenu({

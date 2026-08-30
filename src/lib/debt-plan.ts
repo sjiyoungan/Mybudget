@@ -546,6 +546,12 @@ export function plannedThroughPayoff(months: PlannerMonth[]) {
   return planned.slice(0, paidOffAt + 1)
 }
 
+export function plannedInterest(months: PlannerMonth[]) {
+  return roundCents(
+    months.reduce((sum, row) => sum + row.totalInterest, 0),
+  )
+}
+
 export function formatYm(ym: string) {
   const [year, month] = ym.split('-').map(Number)
   if (!year || !month) return ym
