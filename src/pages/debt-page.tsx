@@ -216,6 +216,7 @@ function MonthTable({
   onFocus: (focus: MonthFocus) => void
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const [scrolled, setScrolled] = useState(false)
   const drag = useRef({
     active: false,
     moved: false,
@@ -249,6 +250,7 @@ function MonthTable({
       el.setPointerCapture(event.pointerId)
     }
     el.scrollLeft = drag.current.scroll - dx
+    setScrolled(el.scrollLeft > 0)
   }
 
   function onPointerUp(event: PointerEvent<HTMLDivElement>) {
@@ -264,6 +266,11 @@ function MonthTable({
     <div
       ref={scrollerRef}
       className="drag-scroll"
+      data-scrolled={scrolled ? '' : undefined}
+      onScroll={() => {
+        const el = scrollerRef.current
+        setScrolled((el?.scrollLeft ?? 0) > 0)
+      }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -278,21 +285,21 @@ function MonthTable({
       <table className="w-max min-w-full select-none text-sm">
         <thead>
           <tr className="text-muted-foreground text-left text-xs">
-            <th className="sticky left-0 z-20 w-20 bg-card py-2 pr-3 font-medium">
+            <th className="sticky left-0 z-20 w-[72px] bg-card py-2 pr-3 font-medium">
               Month
             </th>
-            <th className="sticky left-20 z-20 w-24 bg-card py-2 pr-4 font-medium">
+            <th className="sticky-edge sticky left-[72px] z-20 w-24 bg-card py-2 pr-4 font-medium">
               <span className="sr-only">Line</span>
             </th>
             {debts.map((debt) => (
               <th
                 key={debt.id}
-                className="px-3.5 py-2 text-right font-medium whitespace-nowrap"
+                className="px-5 py-2 text-right font-medium whitespace-nowrap"
               >
                 {debt.lender}
               </th>
             ))}
-            <th className="px-3.5 py-2 text-right font-medium">Total</th>
+            <th className="px-5 py-2 text-right font-medium">Total</th>
           </tr>
         </thead>
         <tbody>
@@ -350,7 +357,7 @@ function YearGroupRows({
         <td
           colSpan={2}
           className={cn(
-            'text-muted-foreground sticky left-0 z-10 bg-card text-xs font-medium',
+            'sticky-edge text-muted-foreground sticky left-0 z-10 bg-card text-xs font-medium',
             spaced ? 'pt-6 pb-1' : 'pb-1',
           )}
         >
@@ -437,7 +444,7 @@ function MonthBlock({
               />
             )
           })}
-          <td className="px-3.5 py-1.5 text-right tabular-nums">
+          <td className="px-5 py-1.5 text-right tabular-nums">
             {formatUsd(startTotal)}
           </td>
         </tr>
@@ -461,7 +468,7 @@ function MonthBlock({
             />
           )
         })}
-        <td className="text-muted-foreground px-3.5 py-1.5 text-right tabular-nums">
+        <td className="text-muted-foreground px-5 py-1.5 text-right tabular-nums">
           {row.totalPaid > 0.005 ? formatUsd(row.totalPaid) : ''}
         </td>
       </tr>
@@ -482,7 +489,7 @@ function MonthBlock({
             />
           )
         })}
-        <td className="px-3.5 py-1.5 text-right font-medium tabular-nums">
+        <td className="px-5 py-1.5 text-right font-medium tabular-nums">
           {formatUsd(row.remainingTotal)}
         </td>
       </tr>
@@ -506,7 +513,7 @@ function MonthCell({
   return (
     <td
       rowSpan={rowSpan}
-      className="sticky left-0 z-10 w-20 bg-card py-1.5 pr-3 align-top font-medium whitespace-nowrap"
+      className="sticky left-0 z-10 w-[72px] bg-card py-1.5 pr-3 align-top font-medium whitespace-nowrap"
     >
       {label}
     </td>
@@ -515,7 +522,7 @@ function MonthCell({
 
 function LabelCell({ children }: { children: string }) {
   return (
-    <td className="text-muted-foreground sticky left-20 z-10 w-24 bg-card py-1.5 pr-4 text-xs whitespace-nowrap">
+    <td className="sticky-edge text-muted-foreground sticky left-[72px] z-10 w-24 bg-card py-1.5 pr-4 text-xs whitespace-nowrap">
       {children}
     </td>
   )
@@ -545,7 +552,7 @@ function AmountCell({
         onClick={onClick}
         aria-label={label}
         className={cn(
-          'hover-fill min-w-24 w-full cursor-pointer px-3.5 py-1.5 text-right tabular-nums',
+          'hover-fill min-w-24 w-full cursor-pointer px-5 py-1.5 text-right tabular-nums',
           muted && 'text-muted-foreground',
           highlighted && !selected && 'bg-[#f6f6f6]',
           selected && 'hover-fill-active',
