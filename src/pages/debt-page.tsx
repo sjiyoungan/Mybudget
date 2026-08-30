@@ -800,6 +800,7 @@ function PaidCell({
       <input
         key={`${overridden ? 'o' : 'c'}-${Math.round(value)}`}
         data-no-drag
+        size={1}
         className="paid-input select-text"
         inputMode="decimal"
         aria-label="Paid"
