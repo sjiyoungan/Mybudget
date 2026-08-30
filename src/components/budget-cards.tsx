@@ -1851,6 +1851,7 @@ type DebtDraft = {
   lender: string
   minimum: string
   balance: string
+  apr: string
 }
 
 function debtSnapshot(drafts: DebtDraft[]) {
@@ -1860,6 +1861,7 @@ function debtSnapshot(drafts: DebtDraft[]) {
       lender: draft.lender.trim(),
       minimum: draft.minimum.trim(),
       balance: draft.balance.trim(),
+      apr: draft.apr.trim(),
     })),
   )
 }
@@ -1867,6 +1869,13 @@ function debtSnapshot(drafts: DebtDraft[]) {
 function moneyField(value: string) {
   if (value.trim() === '') return 0
   return parseAmount(value)
+}
+
+function aprField(value: string) {
+  if (value.trim() === '') return 0
+  const parsed = parseAmount(value)
+  if (parsed == null || parsed < 0) return null
+  return parsed
 }
 
 export function EditDebtsDialog({
@@ -1890,6 +1899,7 @@ export function EditDebtsDialog({
       lender: debt.lender,
       minimum: String(debt.minimum),
       balance: String(debt.balance),
+      apr: String(debt.apr),
     }))
     setDrafts(next)
     setBaseline(debtSnapshot(next))
@@ -1911,7 +1921,8 @@ export function EditDebtsDialog({
       existingIds.has(draft.id) ||
       draft.lender.trim() !== '' ||
       draft.minimum.trim() !== '' ||
-      draft.balance.trim() !== '',
+      draft.balance.trim() !== '' ||
+      draft.apr.trim() !== '',
   )
   const canSubmit =
     dirty &&
@@ -1919,7 +1930,8 @@ export function EditDebtsDialog({
       (draft) =>
         draft.lender.trim() !== '' &&
         moneyField(draft.minimum) != null &&
-        moneyField(draft.balance) != null,
+        moneyField(draft.balance) != null &&
+        aprField(draft.apr) != null,
     )
   const removeTarget = removeId
     ? drafts.find((draft) => draft.id === removeId)
@@ -1953,7 +1965,8 @@ export function EditDebtsDialog({
       existingIds.has(id) ||
       draft.lender.trim() !== '' ||
       draft.minimum.trim() !== '' ||
-      draft.balance.trim() !== ''
+      draft.balance.trim() !== '' ||
+      draft.apr.trim() !== ''
     ) {
       setRemoveId(id)
       return
@@ -1968,14 +1981,15 @@ export function EditDebtsDialog({
       .map((draft) => {
         const minimum = moneyField(draft.minimum)
         const balance = moneyField(draft.balance)
-        if (minimum == null || balance == null) return null
+        const apr = aprField(draft.apr)
+        if (minimum == null || balance == null || apr == null) return null
         const current = previous.get(draft.id)
         return {
           id: draft.id,
           lender: draft.lender.trim(),
           dueDay: current?.dueDay ?? null,
           minimum,
-          apr: current?.apr ?? 0,
+          apr,
           balance,
         } satisfies Debt
       })
@@ -1989,7 +2003,7 @@ export function EditDebtsDialog({
     setFocusId(id)
     setDrafts((current) => [
       ...current,
-      { id, lender: '', minimum: '', balance: '' },
+      { id, lender: '', minimum: '', balance: '', apr: '' },
     ])
   }
 
@@ -2044,16 +2058,17 @@ export function EditDebtsDialog({
           </div>
 
           <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-y-auto">
-            <div className="grid grid-cols-[minmax(10rem,16rem)_6.5rem_6.5rem_28px] items-center gap-2 text-xs font-medium text-muted-foreground">
+            <div className="grid grid-cols-[minmax(10rem,16rem)_6.5rem_6.5rem_5.5rem_28px] items-center gap-2 text-xs font-medium text-muted-foreground">
               <span>Lender</span>
               <span className="text-right">Minimum</span>
               <span className="text-right">Balance</span>
+              <span className="text-right">APR</span>
               <span />
             </div>
             {drafts.map((draft) => (
               <div
                 key={draft.id}
-                className="grid grid-cols-[minmax(10rem,16rem)_6.5rem_6.5rem_28px] items-center gap-2"
+                className="grid grid-cols-[minmax(10rem,16rem)_6.5rem_6.5rem_5.5rem_28px] items-center gap-2"
               >
                 <Input
                   className="h-8"
@@ -2084,6 +2099,16 @@ export function EditDebtsDialog({
                   placeholder="0"
                   inputMode="decimal"
                   aria-label="Balance"
+                />
+                <Input
+                  className="h-8 text-right tabular-nums"
+                  value={draft.apr}
+                  onChange={(event) =>
+                    updateDraft(draft.id, { apr: event.target.value })
+                  }
+                  placeholder="0"
+                  inputMode="decimal"
+                  aria-label="APR"
                 />
                 <Button
                   type="button"
