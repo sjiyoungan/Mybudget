@@ -203,13 +203,11 @@ function PlannerCard({
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-8">
-            <CardTitle>{debtFreeHeading(freeOn)}</CardTitle>
-            <p className="text-sm">
-              <span className="text-muted-foreground">Interest paid </span>
-              <span className="font-medium tabular-nums">
-                {formatUsdWhole(interestPaid)}
-              </span>
-            </p>
+            <HeaderStat label="Debt-free" value={freeOn} />
+            <HeaderStat
+              label="Interest paid"
+              value={formatUsdWhole(interestPaid)}
+            />
           </div>
           <div className="flex items-center gap-1">
             <StrategyMenu
@@ -258,11 +256,13 @@ function PlannerCard({
   )
 }
 
-function debtFreeHeading(label: string) {
-  if (label === 'Paid off') return 'Paid off'
-  if (label === '—') return 'Debt-free'
-  if (label.startsWith('After')) return `Debt-free ${label.toLowerCase()}`
-  return `Debt-free on ${label}`
+function HeaderStat({ label, value }: { label: string; value: string }) {
+  return (
+    <p className="text-sm">
+      <span className="text-muted-foreground">{label} · </span>
+      <span className="font-medium tabular-nums">{value}</span>
+    </p>
+  )
 }
 
 function StrategyMenu({
