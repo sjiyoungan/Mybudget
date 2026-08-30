@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 
@@ -58,8 +58,6 @@ export function DebtPage() {
     () => projectDebtPlan(debts, plan, 18, now),
     [debts, plan, now],
   )
-  const thisYear = now.getFullYear()
-  const thisMonth = now.getMonth()
   const affirm = affirmTotals(plan.affirmLoans)
   const upcoming = months.filter((row) => row.source === 'plan')
   const history = months.filter((row) => row.source === 'history')
@@ -85,8 +83,6 @@ export function DebtPage() {
           onPlanChange={setPlan}
           history={history}
           upcoming={upcoming}
-          currentYear={thisYear}
-          currentMonth={thisMonth}
         />
 
         <AffirmCard loans={plan.affirmLoans} totals={affirm} />
@@ -101,16 +97,12 @@ function PlannerCard({
   onPlanChange,
   history,
   upcoming,
-  currentYear,
-  currentMonth,
 }: {
   debts: { id: string; lender: string }[]
   plan: DebtPlanState
   onPlanChange: (plan: DebtPlanState) => void
   history: PlannerMonth[]
   upcoming: PlannerMonth[]
-  currentYear: number
-  currentMonth: number
 }) {
   const [view, setView] = useState<PlannerView>('planner')
   const [focus, setFocus] = useState<MonthFocus | null>(null)
@@ -158,10 +150,7 @@ function PlannerCard({
           <MonthTable
             debts={debts}
             months={rows}
-            extraOnly={view === 'planner'}
             showStart={view === 'planner'}
-            currentYear={currentYear}
-            currentMonth={currentMonth}
             focus={focus}
             onFocus={setFocus}
           />
@@ -216,25 +205,77 @@ function ViewTab({
 function MonthTable({
   debts,
   months,
-  extraOnly,
   showStart,
-  currentYear,
-  currentMonth,
   focus,
   onFocus,
 }: {
   debts: { id: string; lender: string }[]
   months: PlannerMonth[]
-  extraOnly: boolean
   showStart: boolean
-  currentYear: number
-  currentMonth: number
   focus: MonthFocus | null
   onFocus: (focus: MonthFocus) => void
 }) {
+  const scrollerRef = useRef<HTMLDivElement>(null)
+  const drag = useRef({
+    active: false,
+    moved: false,
+    startX: 0,
+    scroll: 0,
+    pointerId: -1,
+  })
+  const years = groupMonthsByYear(months)
+
+  function onPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return
+    const el = scrollerRef.current
+    if (!el) return
+    drag.current = {
+      active: true,
+      moved: false,
+      startX: event.clientX,
+      scroll: el.scrollLeft,
+      pointerId: event.pointerId,
+    }
+  }
+
+  function onPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!drag.current.active) return
+    const el = scrollerRef.current
+    if (!el) return
+    const dx = event.clientX - drag.current.startX
+    if (!drag.current.moved && Math.abs(dx) < 6) return
+    if (!drag.current.moved) {
+      drag.current.moved = true
+      el.setPointerCapture(event.pointerId)
+    }
+    el.scrollLeft = drag.current.scroll - dx
+  }
+
+  function onPointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (!drag.current.active) return
+    const el = scrollerRef.current
+    if (drag.current.moved && el?.hasPointerCapture(event.pointerId)) {
+      el.releasePointerCapture(event.pointerId)
+    }
+    drag.current.active = false
+  }
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-max min-w-full text-sm">
+    <div
+      ref={scrollerRef}
+      className="drag-scroll"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onClickCapture={(event) => {
+        if (!drag.current.moved) return
+        event.preventDefault()
+        event.stopPropagation()
+        drag.current.moved = false
+      }}
+    >
+      <table className="w-max min-w-full select-none text-sm">
         <thead>
           <tr className="text-muted-foreground text-left text-xs">
             <th className="sticky left-0 z-20 bg-card py-2 pr-3 font-medium">
@@ -255,54 +296,104 @@ function MonthTable({
           </tr>
         </thead>
         <tbody>
-          {months.map((row, index) => {
-            const current =
-              row.year === currentYear && row.month === currentMonth
-            return (
-              <MonthBlock
-                key={`${row.source}-${row.year}-${row.month}`}
-                debts={debts}
-                row={row}
-                extraOnly={extraOnly}
-                showStart={showStart && index === 0}
-                current={current}
-                focus={focus}
-                onFocus={onFocus}
-              />
-            )
-          })}
+          {years.map((group, groupIndex) => (
+            <YearGroupRows
+              key={group.year}
+              year={group.year}
+              months={group.months}
+              debts={debts}
+              showStart={showStart && groupIndex === 0}
+              spaced={groupIndex > 0}
+              focus={focus}
+              onFocus={onFocus}
+            />
+          ))}
         </tbody>
       </table>
     </div>
   )
 }
 
+function groupMonthsByYear(months: PlannerMonth[]) {
+  const groups: { year: number; months: PlannerMonth[] }[] = []
+  for (const row of months) {
+    const last = groups[groups.length - 1]
+    if (last && last.year === row.year) {
+      last.months.push(row)
+    } else {
+      groups.push({ year: row.year, months: [row] })
+    }
+  }
+  return groups
+}
+
+function YearGroupRows({
+  year,
+  months,
+  debts,
+  showStart,
+  spaced,
+  focus,
+  onFocus,
+}: {
+  year: number
+  months: PlannerMonth[]
+  debts: { id: string; lender: string }[]
+  showStart: boolean
+  spaced: boolean
+  focus: MonthFocus | null
+  onFocus: (focus: MonthFocus) => void
+}) {
+  return (
+    <>
+      <tr>
+        <td
+          colSpan={2}
+          className={cn(
+            'text-muted-foreground sticky left-0 z-10 bg-card text-xs font-medium',
+            spaced ? 'pt-6 pb-1' : 'pb-1',
+          )}
+        >
+          {year}
+        </td>
+        <td
+          colSpan={debts.length + 1}
+          className={spaced ? 'pt-6' : undefined}
+        />
+      </tr>
+      {months.map((row, index) => (
+        <MonthBlock
+          key={`${row.source}-${row.year}-${row.month}`}
+          debts={debts}
+          row={row}
+          showStart={showStart && index === 0}
+          focus={focus}
+          onFocus={onFocus}
+        />
+      ))}
+    </>
+  )
+}
+
 function MonthBlock({
   debts,
   row,
-  extraOnly,
   showStart,
-  current,
   focus,
   onFocus,
 }: {
   debts: { id: string; lender: string }[]
   row: PlannerMonth
-  extraOnly: boolean
   showStart: boolean
-  current: boolean
   focus: MonthFocus | null
   onFocus: (focus: MonthFocus) => void
 }) {
   const paidById = new Map(row.lines.map((line) => [line.debtId, line]))
-  const label = formatYearMonth(row.year, row.month)
+  const label = formatMonthName(row.month)
   const rowSpan = showStart ? 3 : 2
-  const rowClass = cn(current && 'bg-[#f6f6f6]')
-  const sticky = current ? 'bg-[#f6f6f6]' : 'bg-card'
   const startTotal = roundCents(
     row.lines.reduce((sum, line) => sum + line.start, 0),
   )
-  const paidTotal = extraOnly ? row.extraPaid : row.totalPaid
 
   function selectDebt(debtId: string) {
     onFocus({
@@ -323,22 +414,23 @@ function MonthBlock({
     )
   }
 
+  function extraOn(debtId: string) {
+    return (paidById.get(debtId)?.extra ?? 0) > 0.005
+  }
+
   return (
     <>
       {showStart ? (
-        <tr className={rowClass}>
-          <MonthCell
-            label={label}
-            rowSpan={rowSpan}
-            className={sticky}
-          />
-          <LabelCell className={sticky}>Start</LabelCell>
+        <tr>
+          <MonthCell label={label} rowSpan={rowSpan} />
+          <LabelCell>Start</LabelCell>
           {debts.map((debt) => {
             const line = paidById.get(debt.id)
             return (
               <AmountCell
                 key={`${debt.id}-start`}
                 value={line?.start ?? 0}
+                highlighted={extraOn(debt.id)}
                 selected={selected(debt.id)}
                 label={`${debt.lender} start`}
                 onClick={() => selectDebt(debt.id)}
@@ -350,20 +442,19 @@ function MonthBlock({
           </td>
         </tr>
       ) : null}
-      <tr className={rowClass}>
-        {showStart ? null : (
-          <MonthCell label={label} rowSpan={rowSpan} className={sticky} />
-        )}
-        <LabelCell className={sticky}>Paid</LabelCell>
+      <tr>
+        {showStart ? null : <MonthCell label={label} rowSpan={rowSpan} />}
+        <LabelCell>Paid</LabelCell>
         {debts.map((debt) => {
           const line = paidById.get(debt.id)
-          const amount = extraOnly ? (line?.extra ?? 0) : (line?.paid ?? 0)
+          const amount = line?.paid ?? 0
           return (
             <AmountCell
               key={`${debt.id}-paid`}
               value={amount}
               empty={amount <= 0.005}
               muted
+              highlighted={extraOn(debt.id)}
               selected={selected(debt.id)}
               label={`${debt.lender} paid`}
               onClick={() => selectDebt(debt.id)}
@@ -371,11 +462,11 @@ function MonthBlock({
           )
         })}
         <td className="text-muted-foreground px-2 py-1.5 text-right tabular-nums">
-          {paidTotal > 0.005 ? formatUsd(paidTotal) : ''}
+          {row.totalPaid > 0.005 ? formatUsd(row.totalPaid) : ''}
         </td>
       </tr>
-      <tr className={cn('border-border border-b', rowClass)}>
-        <LabelCell className={sticky}>End balance</LabelCell>
+      <tr className="border-border border-b">
+        <LabelCell>End balance</LabelCell>
         {debts.map((debt) => {
           const line = paidById.get(debt.id)
           const balance = line?.balance ?? 0
@@ -384,6 +475,7 @@ function MonthBlock({
               key={`${debt.id}-bal`}
               value={balance}
               muted={balance <= 0.005}
+              highlighted={extraOn(debt.id)}
               selected={selected(debt.id)}
               label={`${debt.lender} end balance`}
               onClick={() => selectDebt(debt.id)}
@@ -398,42 +490,32 @@ function MonthBlock({
   )
 }
 
+function formatMonthName(month: number) {
+  return new Date(2026, month, 1).toLocaleDateString('en-US', {
+    month: 'short',
+  })
+}
+
 function MonthCell({
   label,
   rowSpan,
-  className,
 }: {
   label: string
   rowSpan: number
-  className: string
 }) {
   return (
     <td
       rowSpan={rowSpan}
-      className={cn(
-        'sticky left-0 z-10 w-24 py-1.5 pr-3 align-top font-medium whitespace-nowrap',
-        className,
-      )}
+      className="sticky left-0 z-10 w-24 bg-card py-1.5 pr-3 align-top font-medium whitespace-nowrap"
     >
       {label}
     </td>
   )
 }
 
-function LabelCell({
-  children,
-  className,
-}: {
-  children: string
-  className: string
-}) {
+function LabelCell({ children }: { children: string }) {
   return (
-    <td
-      className={cn(
-        'text-muted-foreground sticky left-24 z-10 w-28 py-1.5 pr-4 text-xs whitespace-nowrap',
-        className,
-      )}
-    >
+    <td className="text-muted-foreground sticky left-24 z-10 w-28 bg-card py-1.5 pr-4 text-xs whitespace-nowrap">
       {children}
     </td>
   )
@@ -443,6 +525,7 @@ function AmountCell({
   value,
   empty = false,
   muted = false,
+  highlighted = false,
   selected,
   label,
   onClick,
@@ -450,12 +533,13 @@ function AmountCell({
   value: number
   empty?: boolean
   muted?: boolean
+  highlighted?: boolean
   selected: boolean
   label: string
   onClick: () => void
 }) {
   return (
-    <td className="p-0">
+    <td className={cn('p-0', highlighted && !selected && 'bg-[#f6f6f6]')}>
       <button
         type="button"
         onClick={onClick}
@@ -463,6 +547,7 @@ function AmountCell({
         className={cn(
           'hover-fill min-w-24 w-full cursor-pointer px-2 py-1.5 text-right tabular-nums',
           muted && 'text-muted-foreground',
+          highlighted && !selected && 'bg-[#f6f6f6]',
           selected && 'hover-fill-active',
         )}
       >

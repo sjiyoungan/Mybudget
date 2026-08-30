@@ -129,9 +129,17 @@
     }
 }
 
-.account-drawer[data-slot="drawer-content"] {
-  width: min(92vw, calc(24rem + 24px)) !important;
-  max-width: min(92vw, calc(24rem + 24px)) !important;
+.drag-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  cursor: grab;
+}
+.drag-scroll:active {
+  cursor: grabbing;
+}
+.drag-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .gear-button {
