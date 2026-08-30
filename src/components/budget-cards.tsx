@@ -42,11 +42,11 @@ import {
   type RecurringExpense,
 } from '@/lib/budget'
 import {
-  formatYearMonth,
   loadDebtPlan,
   payoffMonth,
   projectDebtPlan,
   yearToDateInterest,
+  type PlannerMonth,
 } from '@/lib/debt-plan'
 import { formatUsd } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -1801,9 +1801,7 @@ export function DebtsCard() {
                     creditor={item.lender}
                     minimum={formatUsd(item.minimum)}
                     balance={formatUsd(item.balance)}
-                    paidOff={
-                      last ? formatYearMonth(last.year, last.month) : '—'
-                    }
+                    paidOff={last ? formatMonthsLeft(last, now) : '—'}
                   />
                 )
               })}
@@ -1815,6 +1813,14 @@ export function DebtsCard() {
       <EditDebtsDialog open={open} onOpenChange={setOpen} />
     </>
   )
+}
+
+function formatMonthsLeft(last: PlannerMonth, now: Date) {
+  const count =
+    (last.year - now.getFullYear()) * 12 + (last.month - now.getMonth())
+  if (count <= 0) return 'This month'
+  if (count === 1) return '1 month'
+  return `${count} months`
 }
 
 function DebtMetric({
