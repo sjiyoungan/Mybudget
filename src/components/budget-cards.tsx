@@ -1126,6 +1126,37 @@ function AmountCols({
   )
 }
 
+function DebtListRow({
+  creditor,
+  minimum,
+  balance,
+  header = false,
+}: {
+  creditor: string
+  minimum: string
+  balance: string
+  header?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        'grid w-full grid-cols-3 items-baseline',
+        header
+          ? 'text-muted-foreground text-xs font-medium uppercase'
+          : 'py-2',
+      )}
+    >
+      <span className="min-w-0 truncate">{creditor}</span>
+      <span className={cn('text-right', !header && 'tabular-nums')}>
+        {minimum}
+      </span>
+      <span className={cn('text-right', !header && 'tabular-nums')}>
+        {balance}
+      </span>
+    </div>
+  )
+}
+
 function AccountsCard() {
   const { accounts, expenses } = useBudget()
   const [open, setOpen] = useState(false)
@@ -1700,14 +1731,14 @@ export function DebtsCard() {
 
   return (
     <>
-      <Card className="self-start gap-0 overflow-hidden">
-        <div className="relative">
+      <Card className="self-start gap-0 overflow-hidden pt-0">
+        <div className="hover-fill relative">
           <Link
             to="/debt"
-            className="hover-fill absolute inset-0 z-0 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="absolute inset-0 z-0 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             aria-label="Open debt details"
           />
-          <CardHeader className="relative z-10 pointer-events-none">
+          <CardHeader className="relative z-10 pointer-events-none pt-(--card-spacing)">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <CardTitle className="text-xl font-semibold tracking-tight">
@@ -1723,7 +1754,7 @@ export function DebtsCard() {
               <ChevronRight className="text-muted-foreground size-4" />
             </div>
           </CardHeader>
-          <div className="relative z-10 pointer-events-none px-(--card-spacing) pb-4">
+          <div className="relative z-10 pointer-events-none px-(--card-spacing) pt-4 pb-4">
             <div className="metric-grid-row">
               <DebtMetric label="Total balance" amount={totalBalance} />
               <DebtMetric label="Total minimums" amount={totalMinimum} />
@@ -1739,23 +1770,19 @@ export function DebtsCard() {
           <div className="border-border border-t" />
           <div className="pt-6">
             <div className="grid gap-y-1">
-              <div className="flex items-baseline">
-                <span className="text-muted-foreground min-w-0 flex-1 text-xs font-medium">
-                  Creditor
-                </span>
-                <AmountCols header left="Minimum" right="Balance" />
-              </div>
+              <DebtListRow
+                header
+                creditor="Creditor"
+                minimum="Minimum"
+                balance="Balance"
+              />
               {debts.map((item) => (
-                <div
+                <DebtListRow
                   key={item.id}
-                  className="flex w-full items-baseline rounded-lg py-2"
-                >
-                  <span className="min-w-0 flex-1 truncate">{item.lender}</span>
-                  <AmountCols
-                    left={formatUsd(item.minimum)}
-                    right={formatUsd(item.balance)}
-                  />
-                </div>
+                  creditor={item.lender}
+                  minimum={formatUsd(item.minimum)}
+                  balance={formatUsd(item.balance)}
+                />
               ))}
             </div>
           </div>
