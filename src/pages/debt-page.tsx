@@ -38,6 +38,9 @@ import { cn } from '@/lib/utils'
 
 type PlannerView = 'planner' | 'history'
 
+const MONTH_COL = 72
+const LABEL_COL = 96
+
 type MonthFocus = {
   year: number
   month: number
@@ -263,34 +266,38 @@ function MonthTable({
   }
 
   return (
-    <div
-      ref={scrollerRef}
-      className="drag-scroll"
-      data-scrolled={scrolled ? '' : undefined}
-      onScroll={() => {
-        const el = scrollerRef.current
-        setScrolled((el?.scrollLeft ?? 0) > 0)
-      }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      onClickCapture={(event) => {
-        if (!drag.current.moved) return
-        event.preventDefault()
-        event.stopPropagation()
-        drag.current.moved = false
-      }}
-    >
-      <table className="w-max min-w-full select-none text-sm">
-        <thead>
-          <tr className="text-muted-foreground text-left text-xs">
-            <th className="sticky left-0 z-20 w-[72px] bg-card py-2 pr-3 font-medium">
-              Month
-            </th>
-            <th className="sticky-edge sticky left-[72px] z-20 w-24 bg-card py-2 pr-4 font-medium">
-              <span className="sr-only">Line</span>
-            </th>
+    <div className="planner-scroll relative">
+      <div
+        ref={scrollerRef}
+        className="drag-scroll"
+        onScroll={() => {
+          const el = scrollerRef.current
+          setScrolled((el?.scrollLeft ?? 0) > 0)
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onClickCapture={(event) => {
+          if (!drag.current.moved) return
+          event.preventDefault()
+          event.stopPropagation()
+          drag.current.moved = false
+        }}
+      >
+        <table className="w-max min-w-full border-separate border-spacing-0 select-none text-sm">
+          <colgroup>
+            <col style={{ width: MONTH_COL }} />
+            <col style={{ width: LABEL_COL }} />
+          </colgroup>
+          <thead>
+            <tr className="text-muted-foreground text-left text-xs">
+              <th className="sticky left-0 z-20 bg-card py-2 pr-3 font-medium">
+                Month
+              </th>
+              <th className="sticky z-20 bg-card py-2 pr-4 font-medium" style={{ left: MONTH_COL }}>
+                <span className="sr-only">Line</span>
+              </th>
             {debts.map((debt) => (
               <th
                 key={debt.id}
@@ -317,6 +324,12 @@ function MonthTable({
           ))}
         </tbody>
       </table>
+      </div>
+      <div
+        className="sticky-edge"
+        data-scrolled={scrolled ? '' : undefined}
+        style={{ width: MONTH_COL + LABEL_COL }}
+      />
     </div>
   )
 }
@@ -357,7 +370,7 @@ function YearGroupRows({
         <td
           colSpan={2}
           className={cn(
-            'sticky-edge text-muted-foreground sticky left-0 z-10 bg-card text-xs font-medium',
+            'text-muted-foreground sticky left-0 z-10 bg-card text-xs font-medium',
             spaced ? 'pt-6 pb-1' : 'pb-1',
           )}
         >
@@ -460,7 +473,7 @@ function MonthBlock({
               key={`${debt.id}-paid`}
               value={amount}
               empty={amount <= 0.005}
-              muted
+              muted={!extraOn(debt.id)}
               highlighted={extraOn(debt.id)}
               selected={selected(debt.id)}
               label={`${debt.lender} paid`}
@@ -513,7 +526,7 @@ function MonthCell({
   return (
     <td
       rowSpan={rowSpan}
-      className="sticky left-0 z-10 w-[72px] bg-card py-1.5 pr-3 align-top font-medium whitespace-nowrap"
+      className="sticky left-0 z-10 bg-card py-1.5 pr-3 align-top font-medium whitespace-nowrap"
     >
       {label}
     </td>
@@ -522,7 +535,10 @@ function MonthCell({
 
 function LabelCell({ children }: { children: string }) {
   return (
-    <td className="sticky-edge text-muted-foreground sticky left-[72px] z-10 w-24 bg-card py-1.5 pr-4 text-xs whitespace-nowrap">
+    <td
+      className="text-muted-foreground sticky z-10 bg-card py-1.5 pr-4 text-xs whitespace-nowrap"
+      style={{ left: MONTH_COL }}
+    >
       {children}
     </td>
   )

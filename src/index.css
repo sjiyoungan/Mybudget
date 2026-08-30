@@ -134,6 +134,8 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
   cursor: grab;
+  position: relative;
+  z-index: 0;
 }
 .drag-scroll:active {
   cursor: grabbing;
@@ -142,12 +144,30 @@
   display: none;
 }
 
-.sticky-edge {
-  border-right: 2px solid var(--foreground);
+.planner-scroll {
+  isolation: isolate;
 }
-.drag-scroll[data-scrolled] .sticky-edge {
+.sticky-edge {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  border-right: 1px solid var(--border);
+}
+.sticky-edge[data-scrolled] {
   border-right-color: transparent;
   box-shadow: 6px 0 10px rgb(0 0 0 / 0.16);
+}
+.sticky-edge[data-scrolled]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: 16px;
+  background: linear-gradient(to right, rgb(0 0 0 / 0.16), transparent);
 }
 
 .gear-button {
