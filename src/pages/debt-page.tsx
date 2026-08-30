@@ -66,7 +66,7 @@ type PlannerView = 'planner' | 'history'
 
 const MONTH_COL = 72
 const LABEL_COL = 96
-const EXTRA_FILL = 'bg-[#FDF9FA]'
+const EXTRA_FILL = 'bg-[#F3E6E9]'
 const EXTRA_DARK = 'text-[#3A121C]'
 const EXTRA_LIGHT = 'text-[#C9A8AE]'
 const PLAN_HORIZON = 120
