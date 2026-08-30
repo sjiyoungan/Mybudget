@@ -209,8 +209,9 @@ export function resolveCustomOrder(debtIds: string[], order: string[]) {
   return [...kept, ...missing]
 }
 
-/** Stable 1st-to-last extra-payment order for the selected strategy. */
+/** Stable 1st-to-last extra-payment order. Highest interest is re-ranked each month. */
 export function strategyDebtOrder(debts: Debt[], plan: DebtPlanState) {
+  if (plan.strategy === 'highest-interest') return [...debts]
   const startBalances = new Map(debts.map((debt) => [debt.id, debt.balance]))
   const interestById = new Map(
     debts.map((debt) => [
@@ -444,9 +445,18 @@ export function projectDebtPlan(
       Math.max(0, plan.monthlyBudget - allocated - lockedTotal),
     )
     const owingIds = new Set(owing.map((debt) => debt.id))
-    const waterfall = ranked.filter(
-      (debt) => owingIds.has(debt.id) && !locked.has(debt.id),
-    )
+    const unlocked = owing.filter((debt) => !locked.has(debt.id))
+    const waterfall =
+      plan.strategy === 'highest-interest'
+        ? extraPaymentOrder(
+            unlocked,
+            plan,
+            balances,
+            new Map(lines.map((line) => [line.debtId, line.interest])),
+          )
+        : ranked.filter(
+            (debt) => owingIds.has(debt.id) && !locked.has(debt.id),
+          )
     for (const debt of waterfall) {
       if (leftover <= 0) break
       const due = afterInterest.get(debt.id) ?? 0

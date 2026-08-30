@@ -1086,7 +1086,7 @@ function AccountLabel({
 
 const amountColClass = 'w-20 shrink-0 text-right tabular-nums'
 
-function CardGearButton({
+export function CardGearButton({
   label,
   onClick,
 }: {
@@ -1869,7 +1869,7 @@ function moneyField(value: string) {
   return parseAmount(value)
 }
 
-function EditDebtsDialog({
+export function EditDebtsDialog({
   open,
   onOpenChange,
 }: {

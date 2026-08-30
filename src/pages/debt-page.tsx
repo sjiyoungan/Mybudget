@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, Check, ChevronDown, Menu } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
+import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -187,6 +188,7 @@ function PlannerCard({
 }) {
   const [view, setView] = useState<PlannerView>('planner')
   const [customOpen, setCustomOpen] = useState(false)
+  const [debtsOpen, setDebtsOpen] = useState(false)
   const columns = useMemo(() => strategyDebtOrder(debts, plan), [debts, plan])
   const rows = view === 'planner' ? upcoming : [...history].reverse()
 
@@ -199,7 +201,8 @@ function PlannerCard({
   }
 
   return (
-    <Card className="pb-1">
+    <>
+      <Card className="pb-1">
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-8">
@@ -223,6 +226,10 @@ function PlannerCard({
               label="History"
               active={view === 'history'}
               onClick={() => setView('history')}
+            />
+            <CardGearButton
+              label="Edit debts"
+              onClick={() => setDebtsOpen(true)}
             />
           </div>
         </div>
@@ -252,7 +259,9 @@ function PlannerCard({
           setCustomOpen(false)
         }}
       />
-    </Card>
+      </Card>
+      <EditDebtsDialog open={debtsOpen} onOpenChange={setDebtsOpen} />
+    </>
   )
 }
 
