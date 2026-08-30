@@ -35,7 +35,7 @@ export function DashboardPage() {
             to="/income"
             className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <Card className="transition-colors hover:bg-muted/40">
+            <Card className="hover-fill">
               <CardHeader className="gap-5">
                 <div className="flex items-start justify-between gap-2">
                   <CardDescription>Income</CardDescription>
@@ -49,7 +49,7 @@ export function DashboardPage() {
             to="/expenses"
             className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <Card className="transition-colors hover:bg-muted/40">
+            <Card className="hover-fill">
               <CardHeader className="gap-5">
                 <div className="flex items-start justify-between gap-2">
                   <CardDescription>Expenses</CardDescription>

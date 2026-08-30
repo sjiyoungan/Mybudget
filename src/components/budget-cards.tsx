@@ -1700,42 +1700,49 @@ export function DebtsCard() {
 
   return (
     <>
-      <Card className="self-start">
-        <CardHeader>
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle className="text-xl font-semibold tracking-tight">
-              Debt
-            </CardTitle>
-            <div className="flex items-center">
-              <CardGearButton
-                label="Edit debts"
-                onClick={() => setOpen(true)}
+      <Card className="self-start gap-0 overflow-hidden">
+        <div className="relative">
+          <Link
+            to="/debt"
+            className="hover-fill absolute inset-0 z-0 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            aria-label="Open debt details"
+          />
+          <CardHeader className="relative z-10 pointer-events-none">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-xl font-semibold tracking-tight">
+                  Debt
+                </CardTitle>
+                <div className="pointer-events-auto">
+                  <CardGearButton
+                    label="Edit debts"
+                    onClick={() => setOpen(true)}
+                  />
+                </div>
+              </div>
+              <ChevronRight className="text-muted-foreground size-4" />
+            </div>
+          </CardHeader>
+          <div className="relative z-10 pointer-events-none px-(--card-spacing) pb-4">
+            <div className="metric-grid-row">
+              <DebtMetric label="Total balance" amount={totalBalance} />
+              <DebtMetric label="Total minimums" amount={totalMinimum} />
+              <DebtMetric label="Extra this month" amount={extraThisMonth} />
+              <DebtMetric
+                label="Interest paid this year"
+                amount={ytdInterest}
               />
-              <Link
-                to="/debt"
-                className="gear-button inline-flex size-7 items-center justify-center rounded-md text-foreground"
-                aria-label="Open debt details"
-              >
-                <ChevronRight className="size-4" />
-              </Link>
             </div>
           </div>
-        </CardHeader>
+        </div>
         <CardContent className="grid">
-          <div className="metric-grid-row pb-4">
-            <DebtMetric label="Total balance" amount={totalBalance} />
-            <DebtMetric label="Total minimums" amount={totalMinimum} />
-            <DebtMetric label="Extra this month" amount={extraThisMonth} />
-            <DebtMetric
-              label="Interest paid this year"
-              amount={ytdInterest}
-            />
-          </div>
           <div className="border-border border-t" />
-          <div className="pt-2">
+          <div className="pt-6">
             <div className="grid gap-y-1">
               <div className="flex items-baseline">
-                <span className="min-w-0 flex-1" />
+                <span className="text-muted-foreground min-w-0 flex-1 text-xs font-medium">
+                  Creditor
+                </span>
                 <AmountCols header left="Minimum" right="Balance" />
               </div>
               {debts.map((item) => (
@@ -1743,14 +1750,7 @@ export function DebtsCard() {
                   key={item.id}
                   className="flex w-full items-baseline rounded-lg py-2"
                 >
-                  <span className="min-w-0 flex-1 truncate">
-                    {item.lender}
-                    {item.apr > 0 ? (
-                      <span className="text-muted-foreground ml-2 text-xs tabular-nums">
-                        {item.apr}%
-                      </span>
-                    ) : null}
-                  </span>
+                  <span className="min-w-0 flex-1 truncate">{item.lender}</span>
                   <AmountCols
                     left={formatUsd(item.minimum)}
                     right={formatUsd(item.balance)}
@@ -1777,7 +1777,7 @@ function DebtMetric({
   return (
     <div>
       <p className="text-muted-foreground text-sm">{label}</p>
-      <p className="mt-4 text-2xl font-medium tabular-nums">{formatUsd(amount)}</p>
+      <p className="mt-2 text-xl font-medium tabular-nums">{formatUsd(amount)}</p>
     </div>
   )
 }
