@@ -39,6 +39,7 @@ import {
   loadDebtPlan,
   monthsUntilPayoff,
   paymentOverride,
+  plannedThroughPayoff,
   projectDebtPlan,
   resolveCustomOrder,
   saveDebtPlan,
@@ -56,7 +57,6 @@ type PlannerView = 'planner' | 'history'
 const MONTH_COL = 72
 const LABEL_COL = 96
 const EXTRA_FILL = 'bg-[#f6f6f6]'
-const PLANNER_MONTHS = 18
 const PLAN_HORIZON = 120
 
 export function DebtPage() {
@@ -73,7 +73,7 @@ export function DebtPage() {
     [debts, plan, now],
   )
   const affirm = affirmTotals(plan.affirmLoans)
-  const upcoming = months.filter((row) => row.source === 'plan')
+  const upcoming = plannedThroughPayoff(months)
   const history = months.filter((row) => row.source === 'history')
   const freeOn = debtFreeLabel(months)
 
@@ -97,7 +97,7 @@ export function DebtPage() {
           plan={plan}
           freeOn={freeOn}
           history={history}
-          upcoming={upcoming.slice(0, PLANNER_MONTHS)}
+          upcoming={upcoming}
           onPlanChange={setPlan}
         />
 

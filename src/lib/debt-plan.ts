@@ -531,6 +531,13 @@ export function debtFreeLabel(months: PlannerMonth[], horizonYears = 10) {
   return formatYearMonth(clear.year, clear.month)
 }
 
+export function plannedThroughPayoff(months: PlannerMonth[]) {
+  const planned = months.filter((row) => row.source === 'plan')
+  const paidOffAt = planned.findIndex((row) => row.remainingTotal <= 0.005)
+  if (paidOffAt === -1) return planned
+  return planned.slice(0, paidOffAt + 1)
+}
+
 export function formatYm(ym: string) {
   const [year, month] = ym.split('-').map(Number)
   if (!year || !month) return ym
