@@ -1,4 +1,7 @@
 import {
+  createContext,
+  useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -6,6 +9,7 @@ import {
   type DragEvent,
   type PointerEvent,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Check, ChevronDown, Menu } from 'lucide-react'
 
@@ -47,9 +51,11 @@ import {
   resolveCustomOrder,
   saveDebtPlan,
   setMonthPayment,
+  strategyDebtOrder,
   strategyLabel,
   type DebtPlanState,
   type PayoffStrategy,
+  type PlannerLine,
   type PlannerMonth,
 } from '@/lib/debt-plan'
 import { formatUsd, formatUsdWhole } from '@/lib/format'
@@ -63,6 +69,51 @@ const EXTRA_FILL = 'bg-[#FDF9FA]'
 const EXTRA_DARK = 'text-[#3A121C]'
 const EXTRA_LIGHT = 'text-[#C9A8AE]'
 const PLAN_HORIZON = 120
+const TIP_DELAY_MS = 2000
+
+type MonthTip = {
+  key: string
+  line: PlannerLine
+  top: number
+  left: number
+}
+
+type TipApi = {
+  enter: (key: string, line: PlannerLine, el: HTMLElement) => void
+  leave: (event: PointerEvent<HTMLElement>, key: string) => void
+  hide: () => void
+}
+
+const TipContext = createContext<TipApi>({
+  enter: () => {},
+  leave: () => {},
+  hide: () => {},
+})
+
+function lineHasDetail(line: PlannerLine) {
+  return (
+    line.start > 0.005 ||
+    line.paid > 0.005 ||
+    line.interest > 0.005 ||
+    Math.abs(line.charged) > 0.005 ||
+    line.balance > 0.005
+  )
+}
+
+function tipPosition(el: HTMLElement) {
+  const rect = el.getBoundingClientRect()
+  const width = 176
+  const gap = 8
+  let left = rect.right + gap
+  if (left + width > window.innerWidth - 8) {
+    left = Math.max(8, rect.left - width - gap)
+  }
+  const top = Math.min(
+    Math.max(8, rect.top),
+    window.innerHeight - 120,
+  )
+  return { top, left }
+}
 
 export function DebtPage() {
   const { debts } = useBudget()
@@ -129,6 +180,7 @@ function PlannerCard({
 }) {
   const [view, setView] = useState<PlannerView>('planner')
   const [customOpen, setCustomOpen] = useState(false)
+  const columns = useMemo(() => strategyDebtOrder(debts, plan), [debts, plan])
   const rows = view === 'planner' ? upcoming : [...history].reverse()
 
   function chooseStrategy(strategy: PayoffStrategy) {
@@ -167,7 +219,7 @@ function PlannerCard({
       </CardHeader>
       <CardContent className="px-0">
         <MonthTable
-          debts={debts}
+          debts={columns}
           plan={plan}
           months={rows}
           showStart={view === 'planner'}
@@ -408,6 +460,10 @@ function MonthTable({
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const [scrolled, setScrolled] = useState(false)
+  const [tip, setTip] = useState<MonthTip | null>(null)
+  const pendingRef = useRef<{ key: string; timer: number } | null>(null)
+  const hideRef = useRef<number | null>(null)
+  const shownKeyRef = useRef<string | null>(null)
   const drag = useRef({
     active: false,
     moved: false,
@@ -416,6 +472,76 @@ function MonthTable({
     pointerId: -1,
   })
   const years = groupMonthsByYear(months)
+
+  const clearPending = useCallback(() => {
+    if (pendingRef.current) {
+      window.clearTimeout(pendingRef.current.timer)
+      pendingRef.current = null
+    }
+  }, [])
+
+  const clearHide = useCallback(() => {
+    if (hideRef.current != null) {
+      window.clearTimeout(hideRef.current)
+      hideRef.current = null
+    }
+  }, [])
+
+  const hideTip = useCallback(() => {
+    clearPending()
+    clearHide()
+    shownKeyRef.current = null
+    setTip(null)
+  }, [clearHide, clearPending])
+
+  const enter = useCallback(
+    (key: string, line: PlannerLine, el: HTMLElement) => {
+      if (drag.current.moved) return
+      if (!lineHasDetail(line)) {
+        hideTip()
+        return
+      }
+      clearHide()
+      if (shownKeyRef.current === key) {
+        setTip({ key, line, ...tipPosition(el) })
+        return
+      }
+      if (pendingRef.current?.key === key) return
+      clearPending()
+      const timer = window.setTimeout(() => {
+        pendingRef.current = null
+        if (drag.current.moved) return
+        shownKeyRef.current = key
+        setTip({ key, line, ...tipPosition(el) })
+      }, TIP_DELAY_MS)
+      pendingRef.current = { key, timer }
+    },
+    [clearHide, clearPending, hideTip],
+  )
+
+  const leave = useCallback(
+    (event: PointerEvent<HTMLElement>, key: string) => {
+      const next = event.relatedTarget
+      if (
+        next instanceof Element &&
+        (next.closest(`[data-debt-tip="${CSS.escape(key)}"]`) ||
+          next.closest('[data-debt-tip-pop]'))
+      ) {
+        return
+      }
+      clearPending()
+      clearHide()
+      hideRef.current = window.setTimeout(hideTip, 120)
+    },
+    [clearHide, clearPending, hideTip],
+  )
+
+  useEffect(() => () => hideTip(), [hideTip])
+
+  const tipApi = useMemo(
+    () => ({ enter, leave, hide: hideTip }),
+    [enter, hideTip, leave],
+  )
 
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return
@@ -445,6 +571,7 @@ function MonthTable({
     if (!drag.current.moved) {
       drag.current.moved = true
       el.setPointerCapture(event.pointerId)
+      hideTip()
     }
     el.scrollLeft = drag.current.scroll - dx
     setScrolled(el.scrollLeft > 0)
@@ -460,6 +587,7 @@ function MonthTable({
   }
 
   return (
+    <TipContext.Provider value={tipApi}>
     <div className="planner-scroll relative">
       <div
         ref={scrollerRef}
@@ -467,6 +595,7 @@ function MonthTable({
         onScroll={() => {
           const el = scrollerRef.current
           setScrolled((el?.scrollLeft ?? 0) > 0)
+          hideTip()
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -528,7 +657,20 @@ function MonthTable({
         data-scrolled={scrolled ? '' : undefined}
         style={{ left: MONTH_COL + LABEL_COL }}
       />
+      {tip
+        ? createPortal(
+            <MonthDetailTip
+              tip={tip}
+              onEnter={() => {
+                clearHide()
+              }}
+              onLeave={(event) => leave(event, tip.key)}
+            />,
+            document.body,
+          )
+        : null}
     </div>
+    </TipContext.Provider>
   )
 }
 
@@ -687,6 +829,8 @@ function MonthBlock({
               <PaidCell
                 key={`${debt.id}-paid`}
                 value={amount}
+                detailKey={`${row.year}-${row.month}-${debt.id}`}
+                detail={line}
                 overridden={
                   paymentOverride(plan, debt.id, row.year, row.month) != null
                 }
@@ -703,6 +847,8 @@ function MonthBlock({
             <AmountCell
               key={`${debt.id}-paid`}
               value={amount}
+              detailKey={`${row.year}-${row.month}-${debt.id}`}
+              detail={line}
               muted={extraOn(debt.id)}
               faint={!extraOn(debt.id)}
               highlighted={extraOn(debt.id)}
@@ -722,6 +868,8 @@ function MonthBlock({
             <AmountCell
               key={`${debt.id}-bal`}
               value={balance}
+              detailKey={`${row.year}-${row.month}-${debt.id}`}
+              detail={line}
               showZero={paidOff(debt.id)}
               highlighted={extraOn(debt.id)}
             />
@@ -816,20 +964,34 @@ function AmountCell({
   faint = false,
   highlighted = false,
   showZero = false,
+  detailKey,
+  detail,
 }: {
   value: number
   muted?: boolean
   faint?: boolean
   highlighted?: boolean
   showZero?: boolean
+  detailKey?: string
+  detail?: PlannerLine
 }) {
+  const tip = useContext(TipContext)
   return (
     <td
+      data-debt-tip={detailKey}
       className={cn(
         'min-w-24 px-5 py-1.5 text-right tabular-nums',
         extraTone(highlighted, muted, faint),
         highlighted && EXTRA_FILL,
       )}
+      onPointerEnter={(event) => {
+        if (!detailKey || !detail) return
+        tip.enter(detailKey, detail, event.currentTarget)
+      }}
+      onPointerLeave={(event) => {
+        if (!detailKey) return
+        tip.leave(event, detailKey)
+      }}
     >
       {plannerUsd(value, showZero)}
     </td>
@@ -842,6 +1004,8 @@ function PaidCell({
   muted = false,
   faint = false,
   highlighted = false,
+  detailKey,
+  detail,
   onCommit,
 }: {
   value: number
@@ -849,9 +1013,12 @@ function PaidCell({
   muted?: boolean
   faint?: boolean
   highlighted?: boolean
+  detailKey?: string
+  detail?: PlannerLine
   onCommit: (amount: number | null) => void
 }) {
   const display = plannerUsd(value)
+  const tip = useContext(TipContext)
 
   function commit(raw: string) {
     const trimmed = raw.trim()
@@ -867,11 +1034,20 @@ function PaidCell({
 
   return (
     <td
+      data-debt-tip={detailKey}
       className={cn(
         'min-w-24 px-5 py-1.5 text-right tabular-nums',
         extraTone(highlighted, muted, faint),
         highlighted && EXTRA_FILL,
       )}
+      onPointerEnter={(event) => {
+        if (!detailKey || !detail) return
+        tip.enter(detailKey, detail, event.currentTarget)
+      }}
+      onPointerLeave={(event) => {
+        if (!detailKey) return
+        tip.leave(event, detailKey)
+      }}
     >
       <input
         key={`${overridden ? 'o' : 'c'}-${Math.round(value)}`}
@@ -882,6 +1058,7 @@ function PaidCell({
         aria-label="Paid"
         defaultValue={display}
         onFocus={(event) => {
+          tip.hide()
           event.currentTarget.value =
             Math.round(value) === 0 ? '' : String(Math.round(value))
           event.currentTarget.select()
@@ -900,6 +1077,44 @@ function PaidCell({
         onPointerDown={(event) => event.stopPropagation()}
       />
     </td>
+  )
+}
+
+function MonthDetailTip({
+  tip,
+  onEnter,
+  onLeave,
+}: {
+  tip: MonthTip
+  onEnter: () => void
+  onLeave: (event: PointerEvent<HTMLElement>) => void
+}) {
+  const rows = [
+    ['Paid', tip.line.paid],
+    ['Interest', tip.line.interest],
+    ['Charged', tip.line.charged],
+    ['End', tip.line.balance],
+  ] as const
+
+  return (
+    <div
+      data-debt-tip-pop
+      className="pointer-events-auto fixed z-50 rounded-lg bg-white px-3 py-2 text-sm shadow-md ring-1 ring-foreground/10"
+      style={{ top: tip.top, left: tip.left }}
+      onPointerEnter={onEnter}
+      onPointerLeave={onLeave}
+    >
+      <div className="grid grid-cols-[auto_auto] items-baseline gap-x-5 gap-y-1">
+        {rows.map(([label, amount]) => (
+          <div key={label} className="contents">
+            <span className="text-muted-foreground text-xs">{label}</span>
+            <span className="text-right tabular-nums">
+              {formatUsdWhole(amount)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
