@@ -478,7 +478,8 @@ function MonthBlock({
               key={`${debt.id}-paid`}
               value={amount}
               empty={amount <= 0.005}
-              muted={!extraOn(debt.id)}
+              muted={extraOn(debt.id)}
+              faint={!extraOn(debt.id)}
               highlighted={extraOn(debt.id)}
               selected={selected(debt.id)}
               label={`${debt.lender} paid`}
@@ -490,7 +491,7 @@ function MonthBlock({
           {row.totalPaid > 0.005 ? formatUsd(row.totalPaid) : ''}
         </td>
       </tr>
-      <tr className="border-border border-b">
+      <tr>
         <LabelCell>End balance</LabelCell>
         {debts.map((debt) => {
           const line = paidById.get(debt.id)
@@ -509,6 +510,14 @@ function MonthBlock({
         })}
         <td className="px-5 py-1.5 text-right font-medium tabular-nums">
           {formatUsd(row.remainingTotal)}
+        </td>
+      </tr>
+      <tr>
+        <td colSpan={2} className="sticky left-0 z-10 bg-card p-0">
+          <div className="bg-border h-px" />
+        </td>
+        <td colSpan={debts.length + 1} className="p-0">
+          <div className="bg-border h-px" />
         </td>
       </tr>
     </>
@@ -553,6 +562,7 @@ function AmountCell({
   value,
   empty = false,
   muted = false,
+  faint = false,
   highlighted = false,
   selected,
   label,
@@ -561,6 +571,7 @@ function AmountCell({
   value: number
   empty?: boolean
   muted?: boolean
+  faint?: boolean
   highlighted?: boolean
   selected: boolean
   label: string
@@ -575,6 +586,7 @@ function AmountCell({
         className={cn(
           'hover-fill min-w-24 w-full cursor-pointer px-5 py-1.5 text-right tabular-nums',
           muted && 'text-muted-foreground',
+          faint && 'text-muted-foreground/40',
           highlighted && !selected && 'bg-[#f6f6f6]',
           selected && 'hover-fill-active',
         )}
