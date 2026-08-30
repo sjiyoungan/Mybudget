@@ -292,21 +292,21 @@ function MonthTable({
           </colgroup>
           <thead>
             <tr className="text-muted-foreground text-left text-xs">
-              <th className="sticky left-0 z-20 bg-card pt-2 pr-3 pb-0 font-medium">
+              <th className="sticky left-0 z-20 bg-card pt-2 pr-3 pb-2 font-medium">
                 Month
               </th>
-              <th className="sticky z-20 bg-card pt-2 pr-4 pb-0 font-medium" style={{ left: MONTH_COL }}>
+              <th className="sticky z-20 bg-card pt-2 pr-4 pb-2 font-medium" style={{ left: MONTH_COL }}>
                 <span className="sr-only">Line</span>
               </th>
             {debts.map((debt) => (
               <th
                 key={debt.id}
-                className="px-5 pt-2 pb-0 text-center font-medium whitespace-nowrap"
+                className="px-5 pt-2 pb-2 text-center font-medium whitespace-nowrap"
               >
                 {debt.lender}
               </th>
             ))}
-            <th className="total-rule px-5 pt-2 pb-0 text-right font-medium">
+            <th className="total-rule px-5 pt-2 pb-2 text-right font-medium">
               Total
             </th>
           </tr>
