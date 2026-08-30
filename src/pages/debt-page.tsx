@@ -33,7 +33,7 @@ const EXTRA_FILL = 'bg-[#f6f6f6]'
 
 export function DebtPage() {
   const { debts } = useBudget()
-  const [plan, setPlan] = useState<DebtPlanState>(() => loadDebtPlan())
+  const [plan] = useState<DebtPlanState>(() => loadDebtPlan())
   const now = useMemo(() => new Date(), [])
 
   useEffect(() => {
