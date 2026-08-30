@@ -59,7 +59,9 @@ type PlannerView = 'planner' | 'history'
 
 const MONTH_COL = 72
 const LABEL_COL = 96
-const EXTRA_FILL = 'bg-[#f6f6f6]'
+const EXTRA_FILL = 'bg-[#FDF9FA]'
+const EXTRA_DARK = 'text-[#3A121C]'
+const EXTRA_LIGHT = 'text-[#C9A8AE]'
 const PLAN_HORIZON = 120
 
 export function DebtPage() {
@@ -163,7 +165,7 @@ function PlannerCard({
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-0">
         <MonthTable
           debts={debts}
           plan={plan}
@@ -478,7 +480,7 @@ function MonthTable({
           </colgroup>
           <thead>
             <tr className="text-muted-foreground text-left text-xs">
-              <th className="sticky left-0 z-20 bg-card pt-2 pr-3 pb-2 font-medium">
+              <th className="sticky left-0 z-20 bg-card pt-2 pr-3 pb-2 pl-4 font-medium">
                 Month
               </th>
               <th className="sticky z-20 bg-card pt-2 pr-4 pb-2 font-medium" style={{ left: MONTH_COL }}>
@@ -492,7 +494,7 @@ function MonthTable({
                 {debt.lender}
               </th>
             ))}
-            <th className="total-rule px-5 pt-2 pb-2 text-right font-medium">
+            <th className="total-rule pt-2 pr-4 pb-2 pl-5 text-right font-medium">
               Total
             </th>
           </tr>
@@ -576,7 +578,7 @@ function YearGroupRows({
           <td
             colSpan={2}
             className={cn(
-              'text-muted-foreground sticky left-0 z-10 bg-card text-xs font-medium',
+              'text-muted-foreground sticky left-0 z-10 bg-card pl-4 text-xs font-medium',
               spaced ? 'pt-6 pb-1' : 'pb-1',
             )}
           >
@@ -653,7 +655,7 @@ function MonthBlock({
       {showStart ? (
         <>
           <tr>
-            <td className="text-muted-foreground sticky left-0 z-10 bg-card py-1.5 pr-3 text-xs font-medium">
+            <td className="text-muted-foreground sticky left-0 z-10 bg-card py-1.5 pr-3 pl-4 text-xs font-medium">
               {year}
             </td>
             <LabelCell>Start</LabelCell>
@@ -667,7 +669,7 @@ function MonthBlock({
                 />
               )
             })}
-            <td className="total-rule px-5 py-1.5 text-right tabular-nums">
+            <td className="total-rule py-1.5 pr-4 pl-5 text-right tabular-nums">
               {plannerUsd(startTotal)}
             </td>
           </tr>
@@ -707,7 +709,7 @@ function MonthBlock({
             />
           )
         })}
-        <td className="total-rule text-muted-foreground px-5 py-1.5 text-right tabular-nums">
+        <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-5 text-right tabular-nums">
           {plannerUsd(row.totalPaid)}
         </td>
       </tr>
@@ -725,7 +727,7 @@ function MonthBlock({
             />
           )
         })}
-        <td className="total-rule px-5 py-1.5 text-right font-medium tabular-nums">
+        <td className="total-rule py-1.5 pr-4 pl-5 text-right font-medium tabular-nums">
           {plannerUsd(
             row.remainingTotal,
             row.remainingTotal <= 0.005 && row.totalPaid > 0.005,
@@ -780,7 +782,7 @@ function MonthCell({
   return (
     <td
       rowSpan={rowSpan}
-      className="month-label sticky left-0 z-10 bg-card py-1.5 pr-3 align-top font-medium whitespace-nowrap"
+      className="month-label sticky left-0 z-10 bg-card py-1.5 pr-3 pl-4 align-top font-medium whitespace-nowrap"
     >
       {label}
     </td>
@@ -796,6 +798,16 @@ function LabelCell({ children }: { children: string }) {
       {children}
     </td>
   )
+}
+
+function extraTone(highlighted: boolean, muted: boolean, faint: boolean) {
+  if (!highlighted) {
+    return cn(
+      muted && 'text-muted-foreground',
+      faint && 'text-muted-foreground/40',
+    )
+  }
+  return muted || faint ? EXTRA_LIGHT : EXTRA_DARK
 }
 
 function AmountCell({
@@ -815,8 +827,7 @@ function AmountCell({
     <td
       className={cn(
         'min-w-24 px-5 py-1.5 text-right tabular-nums',
-        muted && 'text-muted-foreground',
-        faint && 'text-muted-foreground/40',
+        extraTone(highlighted, muted, faint),
         highlighted && EXTRA_FILL,
       )}
     >
@@ -858,8 +869,7 @@ function PaidCell({
     <td
       className={cn(
         'min-w-24 px-5 py-1.5 text-right tabular-nums',
-        muted && 'text-muted-foreground',
-        faint && 'text-muted-foreground/40',
+        extraTone(highlighted, muted, faint),
         highlighted && EXTRA_FILL,
       )}
     >
