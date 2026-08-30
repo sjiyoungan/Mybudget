@@ -637,7 +637,15 @@ function MonthBlock({
   )
 
   function extraOn(debtId: string) {
-    return (paidById.get(debtId)?.extra ?? 0) > 0.005
+    const line = paidById.get(debtId)
+    if (!line) return false
+    if (line.extra > 0.005) return true
+    return line.paid > 0.005 && line.balance <= 0.005 && line.start > 0.005
+  }
+
+  function paidOff(debtId: string) {
+    const line = paidById.get(debtId)
+    return (line?.paid ?? 0) > 0.005 && (line?.balance ?? 0) <= 0.005
   }
 
   return (
@@ -712,12 +720,16 @@ function MonthBlock({
             <AmountCell
               key={`${debt.id}-bal`}
               value={balance}
+              showZero={paidOff(debt.id)}
               highlighted={extraOn(debt.id)}
             />
           )
         })}
         <td className="total-rule px-5 py-1.5 text-right font-medium tabular-nums">
-          {plannerUsd(row.remainingTotal)}
+          {plannerUsd(
+            row.remainingTotal,
+            row.remainingTotal <= 0.005 && row.totalPaid > 0.005,
+          )}
         </td>
       </tr>
       {last ? null : <HairlineRow debtCount={debts.length} />}
@@ -747,8 +759,9 @@ function HairlineRow({
   )
 }
 
-function plannerUsd(value: number) {
-  return Math.round(value) === 0 ? '' : formatUsdWhole(value)
+function plannerUsd(value: number, showZero = false) {
+  if (Math.round(value) !== 0) return formatUsdWhole(value)
+  return showZero ? formatUsdWhole(0) : ''
 }
 
 function formatMonthName(month: number) {
@@ -790,11 +803,13 @@ function AmountCell({
   muted = false,
   faint = false,
   highlighted = false,
+  showZero = false,
 }: {
   value: number
   muted?: boolean
   faint?: boolean
   highlighted?: boolean
+  showZero?: boolean
 }) {
   return (
     <td
@@ -805,7 +820,7 @@ function AmountCell({
         highlighted && EXTRA_FILL,
       )}
     >
-      {plannerUsd(value)}
+      {plannerUsd(value, showZero)}
     </td>
   )
 }
