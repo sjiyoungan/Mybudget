@@ -1815,12 +1815,22 @@ export function DebtsCard() {
   )
 }
 
-function formatMonthsLeft(last: PlannerMonth, now: Date) {
-  const count =
-    (last.year - now.getFullYear()) * 12 + (last.month - now.getMonth())
+function formatDuration(count: number) {
   if (count <= 0) return 'This month'
-  if (count === 1) return '1 month'
-  return `${count} months`
+  const years = Math.floor(count / 12)
+  const months = count % 12
+  const yearPart =
+    years === 0 ? '' : years === 1 ? '1 year' : `${years} years`
+  const monthPart =
+    months === 0 ? '' : months === 1 ? '1 month' : `${months} months`
+  if (yearPart && monthPart) return `${yearPart} and ${monthPart}`
+  return yearPart || monthPart
+}
+
+function formatMonthsLeft(last: PlannerMonth, now: Date) {
+  return formatDuration(
+    (last.year - now.getFullYear()) * 12 + (last.month - now.getMonth()),
+  )
 }
 
 function DebtMetric({
