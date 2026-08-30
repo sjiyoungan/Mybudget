@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
-import { DebtsCard } from '@/components/budget-cards'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -30,8 +29,6 @@ import {
   payoffMonth,
   projectDebtPlan,
   saveDebtPlan,
-  yearToDateExtra,
-  yearToDateInterest,
   type DebtPlanState,
   type PlannerMonth,
 } from '@/lib/debt-plan'
@@ -53,13 +50,6 @@ export function DebtPage() {
   )
   const thisYear = now.getFullYear()
   const thisMonth = now.getMonth()
-  const totalBalance = debts.reduce((sum, item) => sum + item.balance, 0)
-  const totalMinimum = debts.reduce((sum, item) => sum + item.minimum, 0)
-  const currentPlan = months.find(
-    (row) => row.source === 'plan' && row.year === thisYear && row.month === thisMonth,
-  )
-  const ytdInterest = yearToDateInterest(months, thisYear, thisMonth)
-  const ytdExtra = yearToDateExtra(months, thisYear, thisMonth)
   const affirm = affirmTotals(plan.affirmLoans)
   const upcoming = months.filter((row) => row.source === 'plan')
   const history = months.filter((row) => row.source === 'history')
@@ -79,25 +69,6 @@ export function DebtPage() {
           <h1 className="font-heading mt-4 text-3xl font-medium">Debt</h1>
         </div>
 
-        <section className="metric-grid">
-          <SummaryStat label="Total balance" amount={totalBalance} />
-          <SummaryStat label="Total minimums" amount={totalMinimum} />
-          <SummaryStat
-            label="Extra this month"
-            amount={currentPlan?.extraPaid ?? 0}
-          />
-          <SummaryStat label="Interest paid this year" amount={ytdInterest} />
-        </section>
-
-        <p className="text-muted-foreground -mt-3 text-sm">
-          Extra paid this year: {formatUsd(ytdExtra)}. Snowball leftover goes to{' '}
-          {debts.find((item) => item.id === plan.snowballDebtId)?.lender ??
-            'the selected card'}
-          .
-        </p>
-
-        <DebtsCard />
-
         <PlannerCard
           debts={debts}
           plan={plan}
@@ -113,15 +84,6 @@ export function DebtPage() {
           totals={affirm}
         />
       </main>
-    </div>
-  )
-}
-
-function SummaryStat({ label, amount }: { label: string; amount: number }) {
-  return (
-    <div className="w-full">
-      <p className="text-muted-foreground text-sm">{label}</p>
-      <p className="mt-4 text-2xl font-normal tabular-nums">{formatUsd(amount)}</p>
     </div>
   )
 }

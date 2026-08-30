@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
-import { Check, Menu, Pencil, Plus, Settings, Trash2 } from 'lucide-react'
+import { Check, ChevronRight, Menu, Pencil, Plus, Settings, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -40,6 +41,11 @@ import {
   type Debt,
   type RecurringExpense,
 } from '@/lib/budget'
+import {
+  loadDebtPlan,
+  projectDebtPlan,
+  yearToDateInterest,
+} from '@/lib/debt-plan'
 import { formatUsd } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -1672,21 +1678,60 @@ function AccountDrawer({
 export function DebtsCard() {
   const { debts } = useBudget()
   const [open, setOpen] = useState(false)
+  const now = useMemo(() => new Date(), [])
+  const months = useMemo(() => {
+    const plan = loadDebtPlan()
+    return projectDebtPlan(debts, plan, 18, now)
+  }, [debts, now])
   const totalBalance = debts.reduce((sum, item) => sum + item.balance, 0)
+  const totalMinimum = debts.reduce((sum, item) => sum + item.minimum, 0)
+  const extraThisMonth =
+    months.find(
+      (row) =>
+        row.source === 'plan' &&
+        row.year === now.getFullYear() &&
+        row.month === now.getMonth(),
+    )?.extraPaid ?? 0
+  const ytdInterest = yearToDateInterest(
+    months,
+    now.getFullYear(),
+    now.getMonth(),
+  )
 
   return (
     <>
       <Card className="self-start">
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
-            <CardTitle>Debt</CardTitle>
+            <Link
+              to="/debt"
+              className="flex min-w-0 items-center gap-1 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <CardTitle>Debt</CardTitle>
+              <ChevronRight className="text-muted-foreground size-4" />
+            </Link>
             <CardGearButton label="Edit debts" onClick={() => setOpen(true)} />
           </div>
         </CardHeader>
         <CardContent className="grid">
-          <p className="pb-4 text-2xl font-medium tabular-nums">
-            {formatUsd(totalBalance)}
-          </p>
+          <div className="grid grid-cols-2 pb-4">
+            <DebtMetric label="Total balance" amount={totalBalance} className="pr-4" />
+            <DebtMetric
+              label="Total minimums"
+              amount={totalMinimum}
+              className="border-border border-l pl-4"
+            />
+            <DebtMetric
+              label="Extra this month"
+              amount={extraThisMonth}
+              className="border-border border-t pt-4 pr-4"
+            />
+            <DebtMetric
+              label="Interest paid this year"
+              amount={ytdInterest}
+              className="border-border border-t border-l pt-4 pl-4"
+            />
+          </div>
           <div className="border-border border-t" />
           <div className="pt-2">
             <div className="grid gap-y-1">
@@ -1720,6 +1765,23 @@ export function DebtsCard() {
 
       <EditDebtsDialog open={open} onOpenChange={setOpen} />
     </>
+  )
+}
+
+function DebtMetric({
+  label,
+  amount,
+  className,
+}: {
+  label: string
+  amount: number
+  className?: string
+}) {
+  return (
+    <div className={className}>
+      <p className="text-muted-foreground text-sm">{label}</p>
+      <p className="mt-2 text-2xl font-medium tabular-nums">{formatUsd(amount)}</p>
+    </div>
   )
 }
 

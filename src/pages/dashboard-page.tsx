@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
+import { DebtsCard } from '@/components/budget-cards'
 import {
   Card,
   CardDescription,
@@ -16,16 +17,12 @@ import { usePaystubs } from '@/lib/paystub-context'
 
 export function DashboardPage() {
   const { paystubs } = usePaystubs()
-  const { expenses, debts } = useBudget()
+  const { expenses } = useBudget()
 
   const income = useMemo(() => currentMonthNet(paystubs), [paystubs])
   const expenseTotal = useMemo(
     () => expenses.reduce((sum, item) => sum + item.amount, 0),
     [expenses],
-  )
-  const totalDebt = useMemo(
-    () => debts.reduce((sum, item) => sum + item.balance, 0),
-    [debts],
   )
 
   return (
@@ -33,7 +30,7 @@ export function DashboardPage() {
       <AppHeader />
 
       <main className="mx-auto grid max-w-5xl gap-6 px-6 py-8">
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-2">
           <Link
             to="/income"
             className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -62,21 +59,9 @@ export function DashboardPage() {
               </CardHeader>
             </Card>
           </Link>
-          <Link
-            to="/debt"
-            className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <Card className="transition-colors hover:bg-muted/40">
-              <CardHeader className="gap-5">
-                <div className="flex items-start justify-between gap-2">
-                  <CardDescription>Total debt</CardDescription>
-                  <ChevronRight className="text-muted-foreground size-4" />
-                </div>
-                <CardTitle className="text-2xl">{formatUsd(totalDebt)}</CardTitle>
-              </CardHeader>
-            </Card>
-          </Link>
         </section>
+
+        <DebtsCard />
       </main>
     </div>
   )
