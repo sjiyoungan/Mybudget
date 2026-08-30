@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
-import { Link } from 'react-router-dom'
 import {
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react'
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type PointerEvent,
+} from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowLeft, Check, ChevronDown, Menu } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
@@ -30,6 +32,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { type Debt } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
 import {
   PAYOFF_STRATEGIES,
@@ -115,7 +118,7 @@ function PlannerCard({
   upcoming,
   onPlanChange,
 }: {
-  debts: { id: string; lender: string }[]
+  debts: Debt[]
   plan: DebtPlanState
   freeOn: string
   history: PlannerMonth[]
@@ -176,6 +179,9 @@ function PlannerCard({
         open={customOpen}
         debts={debts}
         order={plan.customOrder}
+        interestById={new Map(
+          (upcoming[0]?.lines ?? []).map((line) => [line.debtId, line.interest]),
+        )}
         onOpenChange={setCustomOpen}
         onSave={(customOrder) => {
           onPlanChange({ ...plan, strategy: 'custom', customOrder })
@@ -222,76 +228,121 @@ function StrategyMenu({
   )
 }
 
+const ORDER_GRID =
+  'grid grid-cols-[1.25rem_1.25rem_minmax(0,1fr)_5.5rem_5.5rem_5.5rem] items-center gap-x-2'
+
 function CustomOrderDialog({
   open,
   debts,
   order,
+  interestById,
   onOpenChange,
   onSave,
 }: {
   open: boolean
-  debts: { id: string; lender: string }[]
+  debts: Debt[]
   order: string[]
+  interestById: Map<string, number>
   onOpenChange: (open: boolean) => void
   onSave: (order: string[]) => void
 }) {
   const [draft, setDraft] = useState<string[]>([])
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const draggingIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!open) return
     setDraft(resolveCustomOrder(debts.map((debt) => debt.id), order))
+    draggingIdRef.current = null
+    setDraggingId(null)
   }, [open, debts, order])
 
-  function move(index: number, delta: number) {
-    const next = index + delta
-    if (next < 0 || next >= draft.length) return
-    const copy = [...draft]
-    const [item] = copy.splice(index, 1)
-    copy.splice(next, 0, item)
-    setDraft(copy)
+  function onDragStart(event: DragEvent<HTMLButtonElement>, id: string) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', id)
+    draggingIdRef.current = id
+    setDraggingId(id)
+  }
+
+  function onDragOver(event: DragEvent<HTMLLIElement>, id: string) {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    const fromId = draggingIdRef.current
+    if (!fromId || fromId === id) return
+    setDraft((current) => {
+      const from = current.indexOf(fromId)
+      const to = current.indexOf(id)
+      if (from === -1 || to === -1 || from === to) return current
+      const next = [...current]
+      next.splice(from, 1)
+      next.splice(to, 0, fromId)
+      return next
+    })
+  }
+
+  function onDragEnd() {
+    draggingIdRef.current = null
+    setDraggingId(null)
   }
 
   const named = draft
     .map((id) => debts.find((debt) => debt.id === id))
-    .filter((debt): debt is { id: string; lender: string } => debt != null)
+    .filter((debt): debt is Debt => debt != null)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+      <DialogContent className="p-6 sm:max-w-lg" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Payoff order</DialogTitle>
           <DialogDescription>
-            Extra payments go to 1st until it is paid off, then 2nd, and so on.
+            Extra payments go to 1st until it is paid off. Drag to reorder.
+            Interest is for the upcoming month.
           </DialogDescription>
         </DialogHeader>
-        <ol className="mt-2 grid">
+        <div className={cn(ORDER_GRID, 'text-muted-foreground mt-2 px-1 text-xs')}>
+          <span />
+          <span />
+          <span>Creditor</span>
+          <span className="text-right">Balance</span>
+          <span className="text-right">Minimum</span>
+          <span className="text-right">Interest</span>
+        </div>
+        <ol className="grid select-none">
           {named.map((debt, index) => (
             <li
               key={debt.id}
-              className="flex items-center gap-2 rounded-lg px-1 py-1"
+              data-debt-id={debt.id}
+              onDragOver={(event) => onDragOver(event, debt.id)}
+              onDrop={(event) => event.preventDefault()}
+              className={cn(
+                ORDER_GRID,
+                'rounded-lg px-1 py-1.5',
+                draggingId === debt.id && 'bg-[#f6f6f6] opacity-60',
+              )}
             >
-              <span className="text-muted-foreground w-5 text-sm tabular-nums">
+              <span className="text-muted-foreground text-sm tabular-nums">
                 {index + 1}
               </span>
-              <span className="min-w-0 flex-1 text-sm">{debt.lender}</span>
               <button
                 type="button"
-                className="gear-button rounded-md p-1 disabled:opacity-30"
-                aria-label={`Move ${debt.lender} up`}
-                disabled={index === 0}
-                onClick={() => move(index, -1)}
+                draggable
+                className="text-muted-foreground flex size-5 cursor-grab items-center justify-center touch-none active:cursor-grabbing"
+                aria-label={`Drag ${debt.lender}`}
+                onDragStart={(event) => onDragStart(event, debt.id)}
+                onDragEnd={onDragEnd}
               >
-                <ChevronUp className="size-4" />
+                <Menu className="size-3.5" />
               </button>
-              <button
-                type="button"
-                className="gear-button rounded-md p-1 disabled:opacity-30"
-                aria-label={`Move ${debt.lender} down`}
-                disabled={index === named.length - 1}
-                onClick={() => move(index, 1)}
-              >
-                <ChevronDown className="size-4" />
-              </button>
+              <span className="min-w-0 truncate text-sm">{debt.lender}</span>
+              <span className="text-right text-sm tabular-nums">
+                {formatUsdWhole(debt.balance)}
+              </span>
+              <span className="text-right text-sm tabular-nums">
+                {formatUsdWhole(debt.minimum)}
+              </span>
+              <span className="text-right text-sm tabular-nums">
+                {formatUsdWhole(interestById.get(debt.id) ?? 0)}
+              </span>
             </li>
           ))}
         </ol>
