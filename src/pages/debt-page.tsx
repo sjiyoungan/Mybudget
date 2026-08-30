@@ -71,7 +71,7 @@ const EXTRA_FILL = 'bg-[#F3E6E9]'
 const EXTRA_DARK = 'text-[#3A121C]'
 const EXTRA_LIGHT = 'text-[#C9A8AE]'
 const PLAN_HORIZON = 120
-const TIP_DELAY_MS = 2000
+const TIP_DELAY_MS = 1000
 
 type MonthTip = {
   key: string
