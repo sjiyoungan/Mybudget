@@ -11,26 +11,15 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer'
-import { Input } from '@/components/ui/input'
 import { useBudget } from '@/lib/budget-context'
 import {
   affirmTotals,
-  formatYearMonth,
   formatYm,
   loadDebtPlan,
   monthsUntilPayoff,
   projectDebtPlan,
   saveDebtPlan,
-  setMonthCharge,
   type DebtPlanState,
-  type PlannerLine,
   type PlannerMonth,
 } from '@/lib/debt-plan'
 import { formatUsd, formatUsdWhole } from '@/lib/format'
@@ -40,13 +29,7 @@ type PlannerView = 'planner' | 'history'
 
 const MONTH_COL = 72
 const LABEL_COL = 96
-
-type MonthFocus = {
-  year: number
-  month: number
-  source: PlannerMonth['source']
-  debtId: string
-}
+const EXTRA_FILL = 'bg-[#f6f6f6]'
 
 export function DebtPage() {
   const { debts } = useBudget()
@@ -82,8 +65,6 @@ export function DebtPage() {
 
         <PlannerCard
           debts={debts}
-          plan={plan}
-          onPlanChange={setPlan}
           history={history}
           upcoming={upcoming}
         />
@@ -96,87 +77,43 @@ export function DebtPage() {
 
 function PlannerCard({
   debts,
-  plan,
-  onPlanChange,
   history,
   upcoming,
 }: {
   debts: { id: string; lender: string }[]
-  plan: DebtPlanState
-  onPlanChange: (plan: DebtPlanState) => void
   history: PlannerMonth[]
   upcoming: PlannerMonth[]
 }) {
   const [view, setView] = useState<PlannerView>('planner')
-  const [focus, setFocus] = useState<MonthFocus | null>(null)
   const rows = view === 'planner' ? upcoming : [...history].reverse()
-  const focusedMonth = focus
-    ? (view === 'planner' ? upcoming : history).find(
-        (row) =>
-          row.year === focus.year &&
-          row.month === focus.month &&
-          row.source === focus.source,
-      )
-    : undefined
-  const focusedLine = focusedMonth?.lines.find(
-    (line) => line.debtId === focus?.debtId,
-  )
-  const focusedDebt = debts.find((debt) => debt.id === focus?.debtId)
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle>Payoff planner</CardTitle>
-            <div className="flex gap-1">
-              <ViewTab
-                label="Planner"
-                active={view === 'planner'}
-                onClick={() => {
-                  setView('planner')
-                  setFocus(null)
-                }}
-              />
-              <ViewTab
-                label="History"
-                active={view === 'history'}
-                onClick={() => {
-                  setView('history')
-                  setFocus(null)
-                }}
-              />
-            </div>
+    <Card className="pb-1">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle>Payoff planner</CardTitle>
+          <div className="flex gap-1">
+            <ViewTab
+              label="Planner"
+              active={view === 'planner'}
+              onClick={() => setView('planner')}
+            />
+            <ViewTab
+              label="History"
+              active={view === 'history'}
+              onClick={() => setView('history')}
+            />
           </div>
-        </CardHeader>
-        <CardContent>
-          <MonthTable
-            debts={debts}
-            months={rows}
-            showStart={view === 'planner'}
-            focus={focus}
-            onFocus={setFocus}
-          />
-        </CardContent>
-      </Card>
-
-      <MonthDetailDrawer
-        open={focus != null && focusedLine != null && focusedDebt != null}
-        debtName={focusedDebt?.lender ?? ''}
-        month={focusedMonth}
-        line={focusedLine}
-        canEditSpend={focusedMonth?.source === 'plan'}
-        onOpenChange={(open) => {
-          if (!open) setFocus(null)
-        }}
-        onSpendChange={(amount) => {
-          if (!focus) return
-          onPlanChange(
-            setMonthCharge(plan, focus.year, focus.month, focus.debtId, amount),
-          )
-        }}
-      />
-    </>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <MonthTable
+          debts={debts}
+          months={rows}
+          showStart={view === 'planner'}
+        />
+      </CardContent>
+    </Card>
   )
 }
 
@@ -209,14 +146,10 @@ function MonthTable({
   debts,
   months,
   showStart,
-  focus,
-  onFocus,
 }: {
   debts: { id: string; lender: string }[]
   months: PlannerMonth[]
   showStart: boolean
-  focus: MonthFocus | null
-  onFocus: (focus: MonthFocus) => void
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const [scrolled, setScrolled] = useState(false)
@@ -278,12 +211,6 @@ function MonthTable({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onClickCapture={(event) => {
-          if (!drag.current.moved) return
-          event.preventDefault()
-          event.stopPropagation()
-          drag.current.moved = false
-        }}
       >
         <table className="w-max min-w-full border-separate border-spacing-0 select-none text-sm">
           <colgroup>
@@ -321,8 +248,7 @@ function MonthTable({
               debts={debts}
               showStart={showStart && groupIndex === 0}
               spaced={groupIndex > 0}
-              focus={focus}
-              onFocus={onFocus}
+              lastGroup={groupIndex === years.length - 1}
             />
           ))}
         </tbody>
@@ -361,16 +287,14 @@ function YearGroupRows({
   debts,
   showStart,
   spaced,
-  focus,
-  onFocus,
+  lastGroup,
 }: {
   year: number
   months: PlannerMonth[]
   debts: { id: string; lender: string }[]
   showStart: boolean
   spaced: boolean
-  focus: MonthFocus | null
-  onFocus: (focus: MonthFocus) => void
+  lastGroup: boolean
 }) {
   return (
     <>
@@ -399,8 +323,7 @@ function YearGroupRows({
           debts={debts}
           row={row}
           showStart={showStart && index === 0}
-          focus={focus}
-          onFocus={onFocus}
+          last={lastGroup && index === months.length - 1}
         />
       ))}
     </>
@@ -412,40 +335,19 @@ function MonthBlock({
   debts,
   row,
   showStart,
-  focus,
-  onFocus,
+  last,
 }: {
   year: number
   debts: { id: string; lender: string }[]
   row: PlannerMonth
   showStart: boolean
-  focus: MonthFocus | null
-  onFocus: (focus: MonthFocus) => void
+  last: boolean
 }) {
   const paidById = new Map(row.lines.map((line) => [line.debtId, line]))
   const label = formatMonthName(row.month)
   const startTotal = roundCents(
     row.lines.reduce((sum, line) => sum + line.start, 0),
   )
-
-  function selectDebt(debtId: string) {
-    onFocus({
-      year: row.year,
-      month: row.month,
-      source: row.source,
-      debtId,
-    })
-  }
-
-  function selected(debtId: string) {
-    return (
-      focus != null &&
-      focus.year === row.year &&
-      focus.month === row.month &&
-      focus.source === row.source &&
-      focus.debtId === debtId
-    )
-  }
 
   function extraOn(debtId: string) {
     return (paidById.get(debtId)?.extra ?? 0) > 0.005
@@ -467,9 +369,6 @@ function MonthBlock({
                   key={`${debt.id}-start`}
                   value={line?.start ?? 0}
                   highlighted={extraOn(debt.id)}
-                  selected={selected(debt.id)}
-                  label={`${debt.lender} start`}
-                  onClick={() => selectDebt(debt.id)}
                 />
               )
             })}
@@ -493,9 +392,6 @@ function MonthBlock({
               muted={extraOn(debt.id)}
               faint={!extraOn(debt.id)}
               highlighted={extraOn(debt.id)}
-              selected={selected(debt.id)}
-              label={`${debt.lender} paid`}
-              onClick={() => selectDebt(debt.id)}
             />
           )
         })}
@@ -513,9 +409,6 @@ function MonthBlock({
               key={`${debt.id}-bal`}
               value={balance}
               highlighted={extraOn(debt.id)}
-              selected={selected(debt.id)}
-              label={`${debt.lender} end balance`}
-              onClick={() => selectDebt(debt.id)}
             />
           )
         })}
@@ -523,7 +416,7 @@ function MonthBlock({
           {plannerUsd(row.remainingTotal)}
         </td>
       </tr>
-      <HairlineRow debtCount={debts.length} />
+      {last ? null : <HairlineRow debtCount={debts.length} />}
     </>
   )
 }
@@ -570,7 +463,7 @@ function MonthCell({
   return (
     <td
       rowSpan={rowSpan}
-      className="sticky left-0 z-10 bg-card py-1.5 pr-3 align-top font-medium whitespace-nowrap"
+      className="month-label sticky left-0 z-10 bg-card py-1.5 pr-3 align-top font-medium whitespace-nowrap"
     >
       {label}
     </td>
@@ -593,118 +486,23 @@ function AmountCell({
   muted = false,
   faint = false,
   highlighted = false,
-  selected,
-  label,
-  onClick,
 }: {
   value: number
   muted?: boolean
   faint?: boolean
   highlighted?: boolean
-  selected: boolean
-  label: string
-  onClick: () => void
 }) {
-  const display = plannerUsd(value)
   return (
-    <td className={cn('p-0', highlighted && !selected && 'bg-[#f6f6f6]')}>
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={label}
-        className={cn(
-          'hover-fill min-w-24 w-full cursor-pointer px-5 py-1.5 text-right tabular-nums',
-          muted && 'text-muted-foreground',
-          faint && 'text-muted-foreground/40',
-          highlighted && !selected && 'bg-[#f6f6f6]',
-          selected && 'hover-fill-active',
-        )}
-      >
-        {display}
-      </button>
-    </td>
-  )
-}
-
-function MonthDetailDrawer({
-  open,
-  debtName,
-  month,
-  line,
-  canEditSpend,
-  onOpenChange,
-  onSpendChange,
-}: {
-  open: boolean
-  debtName: string
-  month?: PlannerMonth
-  line?: PlannerLine
-  canEditSpend: boolean
-  onOpenChange: (open: boolean) => void
-  onSpendChange: (amount: number) => void
-}) {
-  const [spend, setSpend] = useState('')
-
-  useEffect(() => {
-    setSpend(line ? String(line.charged) : '')
-  }, [line, month?.year, month?.month])
-
-  const title = month
-    ? `${debtName} · ${formatYearMonth(month.year, month.month)}`
-    : debtName
-
-  return (
-    <Drawer
-      direction="right"
-      open={open}
-      onOpenChange={onOpenChange}
+    <td
+      className={cn(
+        'min-w-24 px-5 py-1.5 text-right tabular-nums',
+        muted && 'text-muted-foreground',
+        faint && 'text-muted-foreground/40',
+        highlighted && EXTRA_FILL,
+      )}
     >
-      <DrawerContent className="account-drawer data-[vaul-drawer-direction=right]:h-full">
-        <DrawerHeader>
-          <DrawerTitle>{title}</DrawerTitle>
-          <DrawerDescription>
-            Interest, spend, and extra stay in this detail.
-          </DrawerDescription>
-        </DrawerHeader>
-        {line ? (
-          <div className="grid gap-3 px-4 pb-6">
-            <DetailLine label="Start" value={formatUsd(line.start)} />
-            <DetailLine label="Interest" value={formatUsd(line.interest)} />
-            {canEditSpend ? (
-              <label className="grid grid-cols-[1fr_auto] items-center gap-3 text-sm">
-                <span className="text-muted-foreground">Spent</span>
-                <Input
-                  className="h-8 w-28 text-right tabular-nums"
-                  inputMode="decimal"
-                  value={spend}
-                  onChange={(event) => setSpend(event.target.value)}
-                  onBlur={() => {
-                    const parsed = Number.parseFloat(spend)
-                    onSpendChange(Number.isFinite(parsed) ? parsed : 0)
-                  }}
-                />
-              </label>
-            ) : (
-              <DetailLine label="Spent" value={formatUsd(line.charged)} />
-            )}
-            <DetailLine label="Paid" value={formatUsd(line.paid)} />
-            {line.extra > 0.005 ? (
-              <DetailLine label="Extra" value={formatUsd(line.extra)} />
-            ) : null}
-            <DetailLine label="End balance" value={formatUsd(line.balance)} />
-          </div>
-        ) : null}
-      </DrawerContent>
-    </Drawer>
-  )
-}
-
-function DetailLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="tabular-nums">{value}</span>
-    </div>
+      {plannerUsd(value)}
+    </td>
   )
 }
 

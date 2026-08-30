@@ -183,6 +183,11 @@
   box-shadow: inset 1px 0 0 var(--border);
 }
 
+.planner-scroll table tr:has(.month-label:hover) > td,
+.planner-scroll table tr:has(.month-label:hover) + tr > td {
+  background-color: #f6f6f6 !important;
+}
+
 .gear-button {
   border: none;
   background-color: transparent;
