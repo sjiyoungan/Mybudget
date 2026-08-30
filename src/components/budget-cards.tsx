@@ -1702,15 +1702,23 @@ export function DebtsCard() {
     <>
       <Card className="self-start">
         <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <Link
-              to="/debt"
-              className="flex min-w-0 items-center gap-1 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              <CardTitle>Debt</CardTitle>
-              <ChevronRight className="text-muted-foreground size-4" />
-            </Link>
-            <CardGearButton label="Edit debts" onClick={() => setOpen(true)} />
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-xl font-semibold tracking-tight">
+              Debt
+            </CardTitle>
+            <div className="flex items-center">
+              <CardGearButton
+                label="Edit debts"
+                onClick={() => setOpen(true)}
+              />
+              <Link
+                to="/debt"
+                className="gear-button inline-flex size-7 items-center justify-center rounded-md text-foreground"
+                aria-label="Open debt details"
+              >
+                <ChevronRight className="size-4" />
+              </Link>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="grid">
