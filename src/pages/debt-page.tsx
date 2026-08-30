@@ -33,7 +33,7 @@ import {
   type PlannerLine,
   type PlannerMonth,
 } from '@/lib/debt-plan'
-import { formatUsd } from '@/lib/format'
+import { formatUsd, formatUsdWhole } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 type PlannerView = 'planner' | 'history'
@@ -301,13 +301,16 @@ function MonthTable({
             {debts.map((debt) => (
               <th
                 key={debt.id}
-                className="px-5 py-2 text-right font-medium whitespace-nowrap"
+                className="px-5 py-2 text-center font-medium whitespace-nowrap"
               >
                 {debt.lender}
               </th>
             ))}
-            <th className="px-5 py-2 text-right font-medium">Total</th>
+            <th className="total-rule px-5 py-2 text-right font-medium">
+              Total
+            </th>
           </tr>
+          <HairlineRow debtCount={debts.length} sticky="sticky left-0 z-20 bg-card p-0" />
         </thead>
         <tbody>
           {years.map((group, groupIndex) => (
@@ -382,9 +385,10 @@ function YearGroupRows({
           {year}
         </td>
         <td
-          colSpan={debts.length + 1}
+          colSpan={debts.length}
           className={spaced ? 'pt-6' : undefined}
         />
+        <td className={cn('total-rule', spaced && 'pt-6')} />
       </tr>
       {months.map((row, index) => (
         <MonthBlock
@@ -415,7 +419,6 @@ function MonthBlock({
 }) {
   const paidById = new Map(row.lines.map((line) => [line.debtId, line]))
   const label = formatMonthName(row.month)
-  const rowSpan = showStart ? 3 : 2
   const startTotal = roundCents(
     row.lines.reduce((sum, line) => sum + line.start, 0),
   )
@@ -446,29 +449,32 @@ function MonthBlock({
   return (
     <>
       {showStart ? (
-        <tr>
-          <MonthCell label={label} rowSpan={rowSpan} />
-          <LabelCell>Start</LabelCell>
-          {debts.map((debt) => {
-            const line = paidById.get(debt.id)
-            return (
-              <AmountCell
-                key={`${debt.id}-start`}
-                value={line?.start ?? 0}
-                highlighted={extraOn(debt.id)}
-                selected={selected(debt.id)}
-                label={`${debt.lender} start`}
-                onClick={() => selectDebt(debt.id)}
-              />
-            )
-          })}
-          <td className="px-5 py-1.5 text-right tabular-nums">
-            {formatUsd(startTotal)}
-          </td>
-        </tr>
+        <>
+          <tr>
+            <td className="sticky left-0 z-10 bg-card" />
+            <LabelCell>Start</LabelCell>
+            {debts.map((debt) => {
+              const line = paidById.get(debt.id)
+              return (
+                <AmountCell
+                  key={`${debt.id}-start`}
+                  value={line?.start ?? 0}
+                  highlighted={extraOn(debt.id)}
+                  selected={selected(debt.id)}
+                  label={`${debt.lender} start`}
+                  onClick={() => selectDebt(debt.id)}
+                />
+              )
+            })}
+            <td className="total-rule px-5 py-1.5 text-right tabular-nums">
+              {plannerUsd(startTotal)}
+            </td>
+          </tr>
+          <HairlineRow debtCount={debts.length} />
+        </>
       ) : null}
       <tr>
-        {showStart ? null : <MonthCell label={label} rowSpan={rowSpan} />}
+        <MonthCell label={label} rowSpan={2} />
         <LabelCell>Paid</LabelCell>
         {debts.map((debt) => {
           const line = paidById.get(debt.id)
@@ -477,7 +483,6 @@ function MonthBlock({
             <AmountCell
               key={`${debt.id}-paid`}
               value={amount}
-              empty={amount <= 0.005}
               muted={extraOn(debt.id)}
               faint={!extraOn(debt.id)}
               highlighted={extraOn(debt.id)}
@@ -487,8 +492,8 @@ function MonthBlock({
             />
           )
         })}
-        <td className="text-muted-foreground px-5 py-1.5 text-right tabular-nums">
-          {row.totalPaid > 0.005 ? formatUsd(row.totalPaid) : ''}
+        <td className="total-rule text-muted-foreground px-5 py-1.5 text-right tabular-nums">
+          {plannerUsd(row.totalPaid)}
         </td>
       </tr>
       <tr>
@@ -500,7 +505,6 @@ function MonthBlock({
             <AmountCell
               key={`${debt.id}-bal`}
               value={balance}
-              muted={balance <= 0.005}
               highlighted={extraOn(debt.id)}
               selected={selected(debt.id)}
               label={`${debt.lender} end balance`}
@@ -508,20 +512,39 @@ function MonthBlock({
             />
           )
         })}
-        <td className="px-5 py-1.5 text-right font-medium tabular-nums">
-          {formatUsd(row.remainingTotal)}
+        <td className="total-rule px-5 py-1.5 text-right font-medium tabular-nums">
+          {plannerUsd(row.remainingTotal)}
         </td>
       </tr>
-      <tr>
-        <td colSpan={2} className="sticky left-0 z-10 bg-card p-0">
-          <div className="bg-border h-px" />
-        </td>
-        <td colSpan={debts.length + 1} className="p-0">
-          <div className="bg-border h-px" />
-        </td>
-      </tr>
+      <HairlineRow debtCount={debts.length} />
     </>
   )
+}
+
+function HairlineRow({
+  debtCount,
+  sticky = 'sticky left-0 z-10 bg-card p-0',
+}: {
+  debtCount: number
+  sticky?: string
+}) {
+  return (
+    <tr>
+      <td colSpan={2} className={sticky}>
+        <div className="bg-border h-px" />
+      </td>
+      <td colSpan={debtCount} className="p-0">
+        <div className="bg-border h-px" />
+      </td>
+      <td className="total-rule p-0">
+        <div className="bg-border h-px" />
+      </td>
+    </tr>
+  )
+}
+
+function plannerUsd(value: number) {
+  return Math.round(value) === 0 ? '' : formatUsdWhole(value)
 }
 
 function formatMonthName(month: number) {
@@ -560,7 +583,6 @@ function LabelCell({ children }: { children: string }) {
 
 function AmountCell({
   value,
-  empty = false,
   muted = false,
   faint = false,
   highlighted = false,
@@ -569,7 +591,6 @@ function AmountCell({
   onClick,
 }: {
   value: number
-  empty?: boolean
   muted?: boolean
   faint?: boolean
   highlighted?: boolean
@@ -577,6 +598,7 @@ function AmountCell({
   label: string
   onClick: () => void
 }) {
+  const display = plannerUsd(value)
   return (
     <td className={cn('p-0', highlighted && !selected && 'bg-[#f6f6f6]')}>
       <button
@@ -591,7 +613,7 @@ function AmountCell({
           selected && 'hover-fill-active',
         )}
       >
-        {empty ? '' : formatUsd(value)}
+        {display}
       </button>
     </td>
   )

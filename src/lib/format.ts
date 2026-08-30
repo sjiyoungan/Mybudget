@@ -7,6 +7,14 @@ export function formatUsd(amount: number) {
   return usd.format(amount)
 }
 
+export function formatUsdWhole(amount: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(Math.round(amount))
+}
+
 export function formatLongDate(iso: string) {
   const [year, month, day] = iso.split('-').map(Number)
   return new Date(year, month - 1, day).toLocaleDateString('en-US', {

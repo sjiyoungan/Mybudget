@@ -179,6 +179,10 @@
   );
 }
 
+.total-rule {
+  box-shadow: inset 1px 0 0 var(--border);
+}
+
 .gear-button {
   border: none;
   background-color: transparent;
