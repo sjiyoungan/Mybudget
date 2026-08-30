@@ -330,6 +330,11 @@ function MonthTable({
         data-scrolled={scrolled ? '' : undefined}
         style={{ width: MONTH_COL + LABEL_COL }}
       />
+      <div
+        className="sticky-shadow"
+        data-scrolled={scrolled ? '' : undefined}
+        style={{ left: MONTH_COL + LABEL_COL }}
+      />
     </div>
   )
 }

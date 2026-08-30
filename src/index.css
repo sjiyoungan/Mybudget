@@ -158,16 +158,25 @@
 }
 .sticky-edge[data-scrolled] {
   border-right-color: transparent;
-  box-shadow: 6px 0 10px rgb(0 0 0 / 0.16);
 }
-.sticky-edge[data-scrolled]::after {
-  content: "";
+.sticky-shadow {
+  pointer-events: none;
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 100%;
+  z-index: 20;
   width: 16px;
-  background: linear-gradient(to right, rgb(0 0 0 / 0.16), transparent);
+}
+.sticky-shadow[data-scrolled]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    rgb(0 0 0 / 0.08),
+    rgb(0 0 0 / 0.03) 40%,
+    transparent
+  );
 }
 
 .gear-button {
