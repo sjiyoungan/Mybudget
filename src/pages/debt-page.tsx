@@ -292,21 +292,21 @@ function MonthTable({
           </colgroup>
           <thead>
             <tr className="text-muted-foreground text-left text-xs">
-              <th className="sticky left-0 z-20 bg-card py-2 pr-3 font-medium">
+              <th className="sticky left-0 z-20 bg-card pt-2 pr-3 pb-0 font-medium">
                 Month
               </th>
-              <th className="sticky z-20 bg-card py-2 pr-4 font-medium" style={{ left: MONTH_COL }}>
+              <th className="sticky z-20 bg-card pt-2 pr-4 pb-0 font-medium" style={{ left: MONTH_COL }}>
                 <span className="sr-only">Line</span>
               </th>
             {debts.map((debt) => (
               <th
                 key={debt.id}
-                className="px-5 py-2 text-center font-medium whitespace-nowrap"
+                className="px-5 pt-2 pb-0 text-center font-medium whitespace-nowrap"
               >
                 {debt.lender}
               </th>
             ))}
-            <th className="total-rule px-5 py-2 text-right font-medium">
+            <th className="total-rule px-5 pt-2 pb-0 text-right font-medium">
               Total
             </th>
           </tr>
@@ -374,25 +374,28 @@ function YearGroupRows({
 }) {
   return (
     <>
-      <tr>
-        <td
-          colSpan={2}
-          className={cn(
-            'text-muted-foreground sticky left-0 z-10 bg-card text-xs font-medium',
-            spaced ? 'pt-6 pb-1' : 'pb-1',
-          )}
-        >
-          {year}
-        </td>
-        <td
-          colSpan={debts.length}
-          className={spaced ? 'pt-6' : undefined}
-        />
-        <td className={cn('total-rule', spaced && 'pt-6')} />
-      </tr>
+      {showStart ? null : (
+        <tr>
+          <td
+            colSpan={2}
+            className={cn(
+              'text-muted-foreground sticky left-0 z-10 bg-card text-xs font-medium',
+              spaced ? 'pt-6 pb-1' : 'pb-1',
+            )}
+          >
+            {year}
+          </td>
+          <td
+            colSpan={debts.length}
+            className={spaced ? 'pt-6' : undefined}
+          />
+          <td className={cn('total-rule', spaced && 'pt-6')} />
+        </tr>
+      )}
       {months.map((row, index) => (
         <MonthBlock
           key={`${row.source}-${row.year}-${row.month}`}
+          year={year}
           debts={debts}
           row={row}
           showStart={showStart && index === 0}
@@ -405,12 +408,14 @@ function YearGroupRows({
 }
 
 function MonthBlock({
+  year,
   debts,
   row,
   showStart,
   focus,
   onFocus,
 }: {
+  year: number
   debts: { id: string; lender: string }[]
   row: PlannerMonth
   showStart: boolean
@@ -451,7 +456,9 @@ function MonthBlock({
       {showStart ? (
         <>
           <tr>
-            <td className="sticky left-0 z-10 bg-card" />
+            <td className="text-muted-foreground sticky left-0 z-10 bg-card py-1.5 pr-3 text-xs font-medium">
+              {year}
+            </td>
             <LabelCell>Start</LabelCell>
             {debts.map((debt) => {
               const line = paidById.get(debt.id)
