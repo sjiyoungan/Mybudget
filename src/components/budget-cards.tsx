@@ -42,7 +42,9 @@ import {
   type RecurringExpense,
 } from '@/lib/budget'
 import {
+  formatYearMonth,
   loadDebtPlan,
+  payoffMonth,
   projectDebtPlan,
   yearToDateInterest,
 } from '@/lib/debt-plan'
@@ -1130,17 +1132,19 @@ function DebtListRow({
   creditor,
   minimum,
   balance,
+  paidOff,
   header = false,
 }: {
   creditor: string
   minimum: string
   balance: string
+  paidOff: string
   header?: boolean
 }) {
   return (
     <div
       className={cn(
-        'grid w-full grid-cols-3 items-baseline',
+        'grid w-full grid-cols-4 items-baseline',
         header
           ? 'text-muted-foreground text-xs font-medium uppercase'
           : 'py-2',
@@ -1152,6 +1156,14 @@ function DebtListRow({
       </span>
       <span className={cn('text-right', !header && 'tabular-nums')}>
         {balance}
+      </span>
+      <span
+        className={cn(
+          'whitespace-nowrap text-right',
+          !header && 'tabular-nums',
+        )}
+      >
+        {paidOff}
       </span>
     </div>
   )
@@ -1712,8 +1724,12 @@ export function DebtsCard() {
   const now = useMemo(() => new Date(), [])
   const months = useMemo(() => {
     const plan = loadDebtPlan()
-    return projectDebtPlan(debts, plan, 18, now)
+    return projectDebtPlan(debts, plan, 120, now)
   }, [debts, now])
+  const upcoming = useMemo(
+    () => months.filter((row) => row.source === 'plan'),
+    [months],
+  )
   const totalBalance = debts.reduce((sum, item) => sum + item.balance, 0)
   const totalMinimum = debts.reduce((sum, item) => sum + item.minimum, 0)
   const extraThisMonth =
@@ -1775,15 +1791,22 @@ export function DebtsCard() {
                 creditor="Creditor"
                 minimum="Minimum"
                 balance="Balance"
+                paidOff="Paid off"
               />
-              {debts.map((item) => (
-                <DebtListRow
-                  key={item.id}
-                  creditor={item.lender}
-                  minimum={formatUsd(item.minimum)}
-                  balance={formatUsd(item.balance)}
-                />
-              ))}
+              {debts.map((item) => {
+                const last = payoffMonth(upcoming, item.id)
+                return (
+                  <DebtListRow
+                    key={item.id}
+                    creditor={item.lender}
+                    minimum={formatUsd(item.minimum)}
+                    balance={formatUsd(item.balance)}
+                    paidOff={
+                      last ? formatYearMonth(last.year, last.month) : '—'
+                    }
+                  />
+                )
+              })}
             </div>
           </div>
         </CardContent>
