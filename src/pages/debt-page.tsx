@@ -68,6 +68,7 @@ type PlannerView = 'planner' | 'history'
 const MONTH_COL = 72
 const LABEL_COL = 96
 const EXTRA_FILL = 'bg-[#F3E6E9]'
+const EXTRA_LINE = 'bg-[#E0D0D3]'
 const EXTRA_DARK = 'text-[#3A121C]'
 const EXTRA_LIGHT = 'text-[#C9A8AE]'
 const PLAN_HORIZON = 120
@@ -655,7 +656,11 @@ function MonthTable({
               Total
             </th>
           </tr>
-          <HairlineRow debtCount={debts.length} sticky="sticky left-0 z-20 bg-card p-0" />
+          <HairlineRow
+            debts={debts}
+            highlighted={extraFlags(debts, months[0])}
+            sticky="sticky left-0 z-20 bg-card p-0"
+          />
         </thead>
         <tbody>
           {years.map((group, groupIndex) => (
@@ -663,6 +668,7 @@ function MonthTable({
               key={group.year}
               year={group.year}
               months={group.months}
+              nextMonth={years[groupIndex + 1]?.months[0]}
               debts={debts}
               plan={plan}
               showStart={showStart && groupIndex === 0}
@@ -702,6 +708,23 @@ function MonthTable({
   )
 }
 
+function extraFocus(line: PlannerLine | undefined) {
+  if (!line) return false
+  if (line.extra > 0.005) return true
+  return line.paid > 0.005 && line.balance <= 0.005 && line.start > 0.005
+}
+
+function extraFlags(
+  debts: { id: string }[],
+  ...rows: (PlannerMonth | undefined)[]
+) {
+  return debts.map((debt) =>
+    rows.some((row) =>
+      extraFocus(row?.lines.find((line) => line.debtId === debt.id)),
+    ),
+  )
+}
+
 function groupMonthsByYear(months: PlannerMonth[]) {
   const groups: { year: number; months: PlannerMonth[] }[] = []
   for (const row of months) {
@@ -718,6 +741,7 @@ function groupMonthsByYear(months: PlannerMonth[]) {
 function YearGroupRows({
   year,
   months,
+  nextMonth,
   debts,
   plan,
   showStart,
@@ -728,6 +752,7 @@ function YearGroupRows({
 }: {
   year: number
   months: PlannerMonth[]
+  nextMonth?: PlannerMonth
   debts: { id: string; lender: string }[]
   plan: DebtPlanState
   showStart: boolean
@@ -768,6 +793,9 @@ function YearGroupRows({
           debts={debts}
           plan={plan}
           row={row}
+          nextRow={
+            index + 1 < months.length ? months[index + 1] : nextMonth
+          }
           showStart={showStart && index === 0}
           last={lastGroup && index === months.length - 1}
           editPaid={editPaid}
@@ -783,6 +811,7 @@ function MonthBlock({
   debts,
   plan,
   row,
+  nextRow,
   showStart,
   last,
   editPaid,
@@ -792,6 +821,7 @@ function MonthBlock({
   debts: { id: string; lender: string }[]
   plan: DebtPlanState
   row: PlannerMonth
+  nextRow?: PlannerMonth
   showStart: boolean
   last: boolean
   editPaid: boolean
@@ -809,10 +839,7 @@ function MonthBlock({
   )
 
   function extraOn(debtId: string) {
-    const line = paidById.get(debtId)
-    if (!line) return false
-    if (line.extra > 0.005) return true
-    return line.paid > 0.005 && line.balance <= 0.005 && line.start > 0.005
+    return extraFocus(paidById.get(debtId))
   }
 
   function paidOff(debtId: string) {
@@ -843,7 +870,10 @@ function MonthBlock({
               {plannerUsd(startTotal)}
             </td>
           </tr>
-          <HairlineRow debtCount={debts.length} />
+          <HairlineRow
+            debts={debts}
+            highlighted={extraFlags(debts, row)}
+          />
         </>
       ) : null}
       <tr>
@@ -910,16 +940,23 @@ function MonthBlock({
           )}
         </td>
       </tr>
-      {last ? null : <HairlineRow debtCount={debts.length} />}
+      {last ? null : (
+        <HairlineRow
+          debts={debts}
+          highlighted={extraFlags(debts, row, nextRow)}
+        />
+      )}
     </>
   )
 }
 
 function HairlineRow({
-  debtCount,
+  debts,
+  highlighted,
   sticky = 'sticky left-0 z-10 bg-card p-0',
 }: {
-  debtCount: number
+  debts: { id: string }[]
+  highlighted: boolean[]
   sticky?: string
 }) {
   return (
@@ -927,9 +964,13 @@ function HairlineRow({
       <td colSpan={2} className={sticky}>
         <div className="bg-border h-px" />
       </td>
-      <td colSpan={debtCount} className="p-0">
-        <div className="bg-border h-px" />
-      </td>
+      {debts.map((debt, index) => (
+        <td key={debt.id} className="p-0">
+          <div
+            className={cn('h-px', highlighted[index] ? EXTRA_LINE : 'bg-border')}
+          />
+        </td>
+      ))}
       <td className="total-rule p-0">
         <div className="bg-border h-px" />
       </td>
