@@ -45,6 +45,7 @@ import {
   loadDebtPlan,
   payoffMonth,
   projectDebtPlan,
+  sortDebtsByPayoff,
   yearToDateInterest,
   type PlannerMonth,
 } from '@/lib/debt-plan'
@@ -1730,6 +1731,10 @@ export function DebtsCard() {
     () => months.filter((row) => row.source === 'plan'),
     [months],
   )
+  const listed = useMemo(
+    () => sortDebtsByPayoff(debts, upcoming),
+    [debts, upcoming],
+  )
   const totalBalance = debts.reduce((sum, item) => sum + item.balance, 0)
   const totalMinimum = debts.reduce((sum, item) => sum + item.minimum, 0)
   const extraThisMonth =
@@ -1793,7 +1798,7 @@ export function DebtsCard() {
                 balance="Balance"
                 paidOff="Paid off"
               />
-              {debts.map((item) => {
+              {listed.map((item) => {
                 const last = payoffMonth(upcoming, item.id)
                 return (
                   <DebtListRow

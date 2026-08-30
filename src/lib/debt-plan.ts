@@ -532,6 +532,28 @@ export function payoffMonth(months: PlannerMonth[], debtId: string) {
   return months[index + 1] ?? null
 }
 
+/** Earliest planned payoff first. Debts outside the horizon stay last. */
+export function sortDebtsByPayoff<T extends { id: string; balance: number }>(
+  debts: T[],
+  months: PlannerMonth[],
+) {
+  const rank = new Map(
+    debts.map((debt, index) => {
+      if (debt.balance <= 0.005) return [debt.id, { when: -1, index }] as const
+      const last = payoffMonth(months, debt.id)
+      const when = last ? last.year * 12 + last.month : Number.POSITIVE_INFINITY
+      return [debt.id, { when, index }] as const
+    }),
+  )
+  return [...debts].sort((a, b) => {
+    const left = rank.get(a.id)
+    const right = rank.get(b.id)
+    if (!left || !right) return 0
+    if (left.when !== right.when) return left.when - right.when
+    return left.index - right.index
+  })
+}
+
 export function formatYearMonth(year: number, month: number) {
   return new Date(year, month, 1).toLocaleDateString('en-US', {
     month: 'short',
