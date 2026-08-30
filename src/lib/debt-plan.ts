@@ -20,11 +20,13 @@ export type DebtPlanState = {
   monthlyBudget: number
   snowballDebtId: string
   recurringCharges: Record<string, number>
+  chargesByMonth: Record<string, Record<string, number>>
   affirmLoans: AffirmLoan[]
 }
 
 export type PlannerLine = {
   debtId: string
+  start: number
   interest: number
   charged: number
   paid: number
@@ -76,8 +78,26 @@ export function defaultDebtPlan(): DebtPlanState {
     monthlyBudget: defaultMonthlyDebtBudget,
     snowballDebtId: defaultSnowballDebtId,
     recurringCharges: { ...seededRecurringCharges },
+    chargesByMonth: {},
     affirmLoans: seededAffirmLoans.map((loan) => ({ ...loan })),
   }
+}
+
+export function monthKey(year: number, month: number) {
+  return `${year}-${String(month + 1).padStart(2, '0')}`
+}
+
+export function chargedForDebt(
+  plan: DebtPlanState,
+  debtId: string,
+  year: number,
+  month: number,
+) {
+  const override = plan.chargesByMonth[monthKey(year, month)]?.[debtId]
+  if (typeof override === 'number' && Number.isFinite(override)) {
+    return roundCents(override)
+  }
+  return roundCents(plan.recurringCharges[debtId] ?? 0)
 }
 
 export function loadDebtPlan(): DebtPlanState {
@@ -101,6 +121,7 @@ export function loadDebtPlan(): DebtPlanState {
         item.recurringCharges && typeof item.recurringCharges === 'object'
           ? { ...fallback.recurringCharges, ...item.recurringCharges }
           : fallback.recurringCharges,
+      chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
       affirmLoans: Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
         ? item.affirmLoans.filter(isAffirmLoan)
         : fallback.affirmLoans,
@@ -125,6 +146,44 @@ function isAffirmLoan(value: unknown): value is AffirmLoan {
   )
 }
 
+function normalizeChargesByMonth(value: unknown) {
+  if (value == null || typeof value !== 'object') return {}
+  const next: Record<string, Record<string, number>> = {}
+  for (const [key, charges] of Object.entries(value as Record<string, unknown>)) {
+    if (charges == null || typeof charges !== 'object') continue
+    const month: Record<string, number> = {}
+    for (const [debtId, amount] of Object.entries(
+      charges as Record<string, unknown>,
+    )) {
+      if (typeof amount === 'number' && Number.isFinite(amount)) {
+        month[debtId] = roundCents(amount)
+      }
+    }
+    if (Object.keys(month).length > 0) next[key] = month
+  }
+  return next
+}
+
+export function setMonthCharge(
+  plan: DebtPlanState,
+  year: number,
+  month: number,
+  debtId: string,
+  amount: number,
+): DebtPlanState {
+  const key = monthKey(year, month)
+  return {
+    ...plan,
+    chargesByMonth: {
+      ...plan.chargesByMonth,
+      [key]: {
+        ...plan.chargesByMonth[key],
+        [debtId]: roundCents(amount),
+      },
+    },
+  }
+}
+
 function extraPaidOnLine(paid: number, minimum: number, balanceBeforePay: number) {
   const minDue = Math.min(minimum, Math.max(0, balanceBeforePay))
   return roundCents(Math.max(0, paid - minDue))
@@ -133,6 +192,7 @@ function extraPaidOnLine(paid: number, minimum: number, balanceBeforePay: number
 function historyMonth(
   debts: Debt[],
   row: SeededHistoryMonth,
+  previous: Map<string, number>,
 ): PlannerMonth {
   const mins = new Map(debts.map((debt) => [debt.id, debt.minimum]))
   const lines: PlannerLine[] = debts.map((debt) => {
@@ -140,26 +200,30 @@ function historyMonth(
       Object.prototype.hasOwnProperty.call(row.paid, debt.id) ||
       Object.prototype.hasOwnProperty.call(row.balance, debt.id)
     if (!tracked) {
+      const start = previous.get(debt.id) ?? 0
       return {
         debtId: debt.id,
+        start,
         interest: 0,
         charged: 0,
         paid: 0,
         extra: 0,
-        balance: 0,
+        balance: start,
       }
     }
     const paid = row.paid[debt.id] ?? 0
     const interest = row.interest[debt.id] ?? 0
     const charged = row.charged[debt.id] ?? 0
     const balance = row.balance[debt.id] ?? 0
-    const beforePay = balance + paid
+    const start =
+      previous.get(debt.id) ?? roundCents(balance + paid - interest - charged)
     return {
       debtId: debt.id,
+      start,
       interest,
       charged,
       paid,
-      extra: extraPaidOnLine(paid, mins.get(debt.id) ?? 0, beforePay),
+      extra: extraPaidOnLine(paid, mins.get(debt.id) ?? 0, start + interest + charged),
       balance,
     }
   })
@@ -181,7 +245,12 @@ export function projectDebtPlan(
   monthsAhead = 18,
   now = new Date(),
 ): PlannerMonth[] {
-  const history = seededDebtHistory.map((row) => historyMonth(debts, row))
+  const previous = new Map<string, number>()
+  const history = seededDebtHistory.map((row) => {
+    const month = historyMonth(debts, row, previous)
+    for (const line of month.lines) previous.set(line.debtId, line.balance)
+    return month
+  })
   const balances = new Map(debts.map((debt) => [debt.id, debt.balance]))
   const projected: PlannerMonth[] = []
   let year = now.getFullYear()
@@ -200,6 +269,7 @@ export function projectDebtPlan(
         afterInterest.set(debt.id, 0)
         lines.push({
           debtId: debt.id,
+          start: 0,
           interest: 0,
           charged: 0,
           paid: 0,
@@ -208,12 +278,13 @@ export function projectDebtPlan(
         })
         continue
       }
-      const charged = plan.recurringCharges[debt.id] ?? 0
+      const charged = chargedForDebt(plan, debt.id, year, month)
       const interest = roundCents(start * (debt.apr / 100) / 12)
       totalInterest += interest
       afterInterest.set(debt.id, roundCents(start + interest + charged))
       lines.push({
         debtId: debt.id,
+        start,
         interest,
         charged,
         paid: 0,

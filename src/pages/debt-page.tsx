@@ -11,14 +11,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer'
+import { Input } from '@/components/ui/input'
 import { useBudget } from '@/lib/budget-context'
 import {
   affirmTotals,
@@ -26,14 +26,24 @@ import {
   formatYm,
   loadDebtPlan,
   monthsUntilPayoff,
-  payoffMonth,
   projectDebtPlan,
   saveDebtPlan,
+  setMonthCharge,
   type DebtPlanState,
+  type PlannerLine,
   type PlannerMonth,
 } from '@/lib/debt-plan'
 import { formatUsd } from '@/lib/format'
 import { cn } from '@/lib/utils'
+
+type PlannerView = 'planner' | 'history'
+
+type MonthFocus = {
+  year: number
+  month: number
+  source: PlannerMonth['source']
+  debtId: string
+}
 
 export function DebtPage() {
   const { debts } = useBudget()
@@ -79,10 +89,7 @@ export function DebtPage() {
           currentMonth={thisMonth}
         />
 
-        <AffirmCard
-          loans={plan.affirmLoans}
-          totals={affirm}
-        />
+        <AffirmCard loans={plan.affirmLoans} totals={affirm} />
       </main>
     </div>
   )
@@ -105,110 +112,142 @@ function PlannerCard({
   currentYear: number
   currentMonth: number
 }) {
-  const payoffNotes = debts
-    .map((debt) => {
-      const month = payoffMonth(upcoming, debt.id)
-      if (!month) return null
-      return {
-        id: debt.id,
-        lender: debt.lender,
-        when: formatYearMonth(month.year, month.month),
-      }
-    })
-    .filter((item): item is { id: string; lender: string; when: string } => item != null)
+  const [view, setView] = useState<PlannerView>('planner')
+  const [focus, setFocus] = useState<MonthFocus | null>(null)
+  const rows = view === 'planner' ? upcoming : [...history].reverse()
+  const focusedMonth = focus
+    ? (view === 'planner' ? upcoming : history).find(
+        (row) =>
+          row.year === focus.year &&
+          row.month === focus.month &&
+          row.source === focus.source,
+      )
+    : undefined
+  const focusedLine = focusedMonth?.lines.find(
+    (line) => line.debtId === focus?.debtId,
+  )
+  const focusedDebt = debts.find((debt) => debt.id === focus?.debtId)
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Payoff planner</CardTitle>
-        <CardDescription>
-          Minimums on every card, leftover of the monthly budget onto the snowball
-          card. P BoA also gets the $682 recurring charge from the sheet.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="grid gap-1 text-sm">
-            <span className="text-muted-foreground">Monthly debt budget</span>
-            <Input
-              className="h-8 w-32 tabular-nums"
-              inputMode="decimal"
-              value={plan.monthlyBudget}
-              onChange={(event) => {
-                const parsed = Number.parseFloat(event.target.value)
-                onPlanChange({
-                  ...plan,
-                  monthlyBudget: Number.isFinite(parsed) ? parsed : 0,
-                })
-              }}
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="text-muted-foreground">Paying extra on</span>
-            <Select
-              value={plan.snowballDebtId}
-              onValueChange={(value) =>
-                onPlanChange({ ...plan, snowballDebtId: value })
-              }
-            >
-              <SelectTrigger className="h-8 min-w-40" size="sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {debts.map((debt) => (
-                  <SelectItem key={debt.id} value={debt.id}>
-                    {debt.lender}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Payoff planner</CardTitle>
+            <div className="flex gap-1">
+              <ViewTab
+                label="Planner"
+                active={view === 'planner'}
+                onClick={() => {
+                  setView('planner')
+                  setFocus(null)
+                }}
+              />
+              <ViewTab
+                label="History"
+                active={view === 'history'}
+                onClick={() => {
+                  setView('history')
+                  setFocus(null)
+                }}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <MonthTable
+            debts={debts}
+            months={rows}
+            extraOnly={view === 'planner'}
+            showStart={view === 'planner'}
+            currentYear={currentYear}
+            currentMonth={currentMonth}
+            focus={focus}
+            onFocus={setFocus}
+          />
+        </CardContent>
+      </Card>
 
-        {payoffNotes.length > 0 ? (
-          <p className="text-sm">
-            {payoffNotes.map((note, index) => (
-              <span key={note.id}>
-                {index > 0 ? ' · ' : null}
-                <span className="font-medium">{note.lender}</span>
-                <span className="text-muted-foreground"> {note.when}</span>
-              </span>
-            ))}
-          </p>
-        ) : null}
+      <MonthDetailDrawer
+        open={focus != null && focusedLine != null && focusedDebt != null}
+        debtName={focusedDebt?.lender ?? ''}
+        month={focusedMonth}
+        line={focusedLine}
+        canEditSpend={focusedMonth?.source === 'plan'}
+        onOpenChange={(open) => {
+          if (!open) setFocus(null)
+        }}
+        onSpendChange={(amount) => {
+          if (!focus) return
+          onPlanChange(
+            setMonthCharge(plan, focus.year, focus.month, focus.debtId, amount),
+          )
+        }}
+      />
+    </>
+  )
+}
 
-        <MonthTable
-          debts={debts}
-          months={[...history, ...upcoming]}
-          currentYear={currentYear}
-          currentMonth={currentMonth}
-        />
-      </CardContent>
-    </Card>
+function ViewTab({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'rounded-lg px-3 py-1.5 text-sm',
+        active
+          ? 'bg-[#f0f0f0] font-medium'
+          : 'text-muted-foreground hover-fill',
+      )}
+    >
+      {label}
+    </button>
   )
 }
 
 function MonthTable({
   debts,
   months,
+  extraOnly,
+  showStart,
   currentYear,
   currentMonth,
+  focus,
+  onFocus,
 }: {
   debts: { id: string; lender: string }[]
   months: PlannerMonth[]
+  extraOnly: boolean
+  showStart: boolean
   currentYear: number
   currentMonth: number
+  focus: MonthFocus | null
+  onFocus: (focus: MonthFocus) => void
 }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-max min-w-full text-sm">
         <thead>
           <tr className="text-muted-foreground text-left text-xs">
-            <th className="sticky left-0 z-10 bg-card py-2 pr-4 font-medium">
+            <th className="sticky left-0 z-20 bg-card py-2 pr-3 font-medium">
               Month
             </th>
+            <th className="sticky left-24 z-20 bg-card py-2 pr-4 font-medium">
+              <span className="sr-only">Line</span>
+            </th>
             {debts.map((debt) => (
-              <th key={debt.id} className="px-2 py-2 text-right font-medium">
+              <th
+                key={debt.id}
+                className="px-2 py-2 text-right font-medium whitespace-nowrap"
+              >
                 {debt.lender}
               </th>
             ))}
@@ -216,7 +255,7 @@ function MonthTable({
           </tr>
         </thead>
         <tbody>
-          {months.map((row) => {
+          {months.map((row, index) => {
             const current =
               row.year === currentYear && row.month === currentMonth
             return (
@@ -224,7 +263,11 @@ function MonthTable({
                 key={`${row.source}-${row.year}-${row.month}`}
                 debts={debts}
                 row={row}
+                extraOnly={extraOnly}
+                showStart={showStart && index === 0}
                 current={current}
+                focus={focus}
+                onFocus={onFocus}
               />
             )
           })}
@@ -237,58 +280,114 @@ function MonthTable({
 function MonthBlock({
   debts,
   row,
+  extraOnly,
+  showStart,
   current,
+  focus,
+  onFocus,
 }: {
   debts: { id: string; lender: string }[]
   row: PlannerMonth
+  extraOnly: boolean
+  showStart: boolean
   current: boolean
+  focus: MonthFocus | null
+  onFocus: (focus: MonthFocus) => void
 }) {
   const paidById = new Map(row.lines.map((line) => [line.debtId, line]))
   const label = formatYearMonth(row.year, row.month)
+  const rowSpan = showStart ? 3 : 2
   const rowClass = cn(current && 'bg-[#f6f6f6]')
+  const sticky = current ? 'bg-[#f6f6f6]' : 'bg-card'
+  const startTotal = roundCents(
+    row.lines.reduce((sum, line) => sum + line.start, 0),
+  )
+  const paidTotal = extraOnly ? row.extraPaid : row.totalPaid
+
+  function selectDebt(debtId: string) {
+    onFocus({
+      year: row.year,
+      month: row.month,
+      source: row.source,
+      debtId,
+    })
+  }
+
+  function selected(debtId: string) {
+    return (
+      focus != null &&
+      focus.year === row.year &&
+      focus.month === row.month &&
+      focus.source === row.source &&
+      focus.debtId === debtId
+    )
+  }
 
   return (
     <>
+      {showStart ? (
+        <tr className={rowClass}>
+          <MonthCell
+            label={label}
+            rowSpan={rowSpan}
+            className={sticky}
+          />
+          <LabelCell className={sticky}>Start</LabelCell>
+          {debts.map((debt) => {
+            const line = paidById.get(debt.id)
+            return (
+              <AmountCell
+                key={`${debt.id}-start`}
+                value={line?.start ?? 0}
+                selected={selected(debt.id)}
+                label={`${debt.lender} start`}
+                onClick={() => selectDebt(debt.id)}
+              />
+            )
+          })}
+          <td className="px-2 py-1.5 text-right tabular-nums">
+            {formatUsd(startTotal)}
+          </td>
+        </tr>
+      ) : null}
       <tr className={rowClass}>
-        <td className={cn('sticky left-0 z-10 py-1.5 pr-4 align-top', current ? 'bg-[#f6f6f6]' : 'bg-card')}>
-          <p className="font-medium">{label}</p>
-          <p className="text-muted-foreground text-xs">
-            {row.source === 'history' ? 'Paid' : 'Plan'}
-          </p>
-        </td>
+        {showStart ? null : (
+          <MonthCell label={label} rowSpan={rowSpan} className={sticky} />
+        )}
+        <LabelCell className={sticky}>Paid</LabelCell>
         {debts.map((debt) => {
           const line = paidById.get(debt.id)
-          const paid = line?.paid ?? 0
+          const amount = extraOnly ? (line?.extra ?? 0) : (line?.paid ?? 0)
           return (
-            <td
+            <AmountCell
               key={`${debt.id}-paid`}
-              className="text-muted-foreground px-2 py-1.5 text-right tabular-nums"
-            >
-              {paid > 0 ? formatUsd(paid) : '—'}
-            </td>
+              value={amount}
+              empty={amount <= 0.005}
+              muted
+              selected={selected(debt.id)}
+              label={`${debt.lender} paid`}
+              onClick={() => selectDebt(debt.id)}
+            />
           )
         })}
-        <td className="px-2 py-1.5 text-right tabular-nums">
-          {formatUsd(row.totalPaid)}
+        <td className="text-muted-foreground px-2 py-1.5 text-right tabular-nums">
+          {paidTotal > 0.005 ? formatUsd(paidTotal) : ''}
         </td>
       </tr>
       <tr className={cn('border-border border-b', rowClass)}>
-        <td className={cn('sticky left-0 z-10 py-1.5 pr-4 text-muted-foreground text-xs', current ? 'bg-[#f6f6f6]' : 'bg-card')}>
-          End balance
-        </td>
+        <LabelCell className={sticky}>End balance</LabelCell>
         {debts.map((debt) => {
           const line = paidById.get(debt.id)
           const balance = line?.balance ?? 0
           return (
-            <td
+            <AmountCell
               key={`${debt.id}-bal`}
-              className={cn(
-                'px-2 py-1.5 text-right tabular-nums',
-                balance <= 0.005 && 'text-muted-foreground',
-              )}
-            >
-              {formatUsd(balance)}
-            </td>
+              value={balance}
+              muted={balance <= 0.005}
+              selected={selected(debt.id)}
+              label={`${debt.lender} end balance`}
+              onClick={() => selectDebt(debt.id)}
+            />
           )
         })}
         <td className="px-2 py-1.5 text-right font-medium tabular-nums">
@@ -297,6 +396,166 @@ function MonthBlock({
       </tr>
     </>
   )
+}
+
+function MonthCell({
+  label,
+  rowSpan,
+  className,
+}: {
+  label: string
+  rowSpan: number
+  className: string
+}) {
+  return (
+    <td
+      rowSpan={rowSpan}
+      className={cn(
+        'sticky left-0 z-10 w-24 py-1.5 pr-3 align-top font-medium whitespace-nowrap',
+        className,
+      )}
+    >
+      {label}
+    </td>
+  )
+}
+
+function LabelCell({
+  children,
+  className,
+}: {
+  children: string
+  className: string
+}) {
+  return (
+    <td
+      className={cn(
+        'text-muted-foreground sticky left-24 z-10 w-28 py-1.5 pr-4 text-xs whitespace-nowrap',
+        className,
+      )}
+    >
+      {children}
+    </td>
+  )
+}
+
+function AmountCell({
+  value,
+  empty = false,
+  muted = false,
+  selected,
+  label,
+  onClick,
+}: {
+  value: number
+  empty?: boolean
+  muted?: boolean
+  selected: boolean
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <td className="p-0">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className={cn(
+          'hover-fill min-w-24 w-full cursor-pointer px-2 py-1.5 text-right tabular-nums',
+          muted && 'text-muted-foreground',
+          selected && 'hover-fill-active',
+        )}
+      >
+        {empty ? '' : formatUsd(value)}
+      </button>
+    </td>
+  )
+}
+
+function MonthDetailDrawer({
+  open,
+  debtName,
+  month,
+  line,
+  canEditSpend,
+  onOpenChange,
+  onSpendChange,
+}: {
+  open: boolean
+  debtName: string
+  month?: PlannerMonth
+  line?: PlannerLine
+  canEditSpend: boolean
+  onOpenChange: (open: boolean) => void
+  onSpendChange: (amount: number) => void
+}) {
+  const [spend, setSpend] = useState('')
+
+  useEffect(() => {
+    setSpend(line ? String(line.charged) : '')
+  }, [line, month?.year, month?.month])
+
+  const title = month
+    ? `${debtName} · ${formatYearMonth(month.year, month.month)}`
+    : debtName
+
+  return (
+    <Drawer
+      direction="right"
+      open={open}
+      onOpenChange={onOpenChange}
+    >
+      <DrawerContent className="account-drawer data-[vaul-drawer-direction=right]:h-full">
+        <DrawerHeader>
+          <DrawerTitle>{title}</DrawerTitle>
+          <DrawerDescription>
+            Interest, spend, and extra stay in this detail.
+          </DrawerDescription>
+        </DrawerHeader>
+        {line ? (
+          <div className="grid gap-3 px-4 pb-6">
+            <DetailLine label="Start" value={formatUsd(line.start)} />
+            <DetailLine label="Interest" value={formatUsd(line.interest)} />
+            {canEditSpend ? (
+              <label className="grid grid-cols-[1fr_auto] items-center gap-3 text-sm">
+                <span className="text-muted-foreground">Spent</span>
+                <Input
+                  className="h-8 w-28 text-right tabular-nums"
+                  inputMode="decimal"
+                  value={spend}
+                  onChange={(event) => setSpend(event.target.value)}
+                  onBlur={() => {
+                    const parsed = Number.parseFloat(spend)
+                    onSpendChange(Number.isFinite(parsed) ? parsed : 0)
+                  }}
+                />
+              </label>
+            ) : (
+              <DetailLine label="Spent" value={formatUsd(line.charged)} />
+            )}
+            <DetailLine label="Paid" value={formatUsd(line.paid)} />
+            {line.extra > 0.005 ? (
+              <DetailLine label="Extra" value={formatUsd(line.extra)} />
+            ) : null}
+            <DetailLine label="End balance" value={formatUsd(line.balance)} />
+          </div>
+        ) : null}
+      </DrawerContent>
+    </Drawer>
+  )
+}
+
+function DetailLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </div>
+  )
+}
+
+function roundCents(value: number) {
+  return Math.round(value * 100) / 100
 }
 
 function AffirmCard({
