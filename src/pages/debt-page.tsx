@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
@@ -11,15 +16,36 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useBudget } from '@/lib/budget-context'
 import {
+  PAYOFF_STRATEGIES,
   affirmTotals,
+  debtFreeLabel,
   formatYm,
   loadDebtPlan,
   monthsUntilPayoff,
+  paymentOverride,
   projectDebtPlan,
+  resolveCustomOrder,
   saveDebtPlan,
+  setMonthPayment,
+  strategyLabel,
   type DebtPlanState,
+  type PayoffStrategy,
   type PlannerMonth,
 } from '@/lib/debt-plan'
 import { formatUsd, formatUsdWhole } from '@/lib/format'
@@ -30,10 +56,12 @@ type PlannerView = 'planner' | 'history'
 const MONTH_COL = 72
 const LABEL_COL = 96
 const EXTRA_FILL = 'bg-[#f6f6f6]'
+const PLANNER_MONTHS = 18
+const PLAN_HORIZON = 120
 
 export function DebtPage() {
   const { debts } = useBudget()
-  const [plan] = useState<DebtPlanState>(() => loadDebtPlan())
+  const [plan, setPlan] = useState<DebtPlanState>(() => loadDebtPlan())
   const now = useMemo(() => new Date(), [])
 
   useEffect(() => {
@@ -41,12 +69,13 @@ export function DebtPage() {
   }, [plan])
 
   const months = useMemo(
-    () => projectDebtPlan(debts, plan, 18, now),
+    () => projectDebtPlan(debts, plan, PLAN_HORIZON, now),
     [debts, plan, now],
   )
   const affirm = affirmTotals(plan.affirmLoans)
   const upcoming = months.filter((row) => row.source === 'plan')
   const history = months.filter((row) => row.source === 'history')
+  const freeOn = debtFreeLabel(months)
 
   return (
     <div className="min-h-svh bg-background">
@@ -65,8 +94,11 @@ export function DebtPage() {
 
         <PlannerCard
           debts={debts}
+          plan={plan}
+          freeOn={freeOn}
           history={history}
-          upcoming={upcoming}
+          upcoming={upcoming.slice(0, PLANNER_MONTHS)}
+          onPlanChange={setPlan}
         />
 
         <AffirmCard loans={plan.affirmLoans} totals={affirm} />
@@ -77,22 +109,44 @@ export function DebtPage() {
 
 function PlannerCard({
   debts,
+  plan,
+  freeOn,
   history,
   upcoming,
+  onPlanChange,
 }: {
   debts: { id: string; lender: string }[]
+  plan: DebtPlanState
+  freeOn: string
   history: PlannerMonth[]
   upcoming: PlannerMonth[]
+  onPlanChange: (plan: DebtPlanState) => void
 }) {
   const [view, setView] = useState<PlannerView>('planner')
+  const [customOpen, setCustomOpen] = useState(false)
   const rows = view === 'planner' ? upcoming : [...history].reverse()
+
+  function chooseStrategy(strategy: PayoffStrategy) {
+    if (strategy === 'custom') {
+      setCustomOpen(true)
+      return
+    }
+    onPlanChange({ ...plan, strategy })
+  }
 
   return (
     <Card className="pb-1">
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
-          <CardTitle>Payoff planner</CardTitle>
-          <div className="flex gap-1">
+          <div className="flex items-baseline gap-3">
+            <CardTitle>Payoff planner</CardTitle>
+            <p className="text-muted-foreground text-sm">{freeOn}</p>
+          </div>
+          <div className="flex items-center gap-1">
+            <StrategyMenu
+              strategy={plan.strategy}
+              onChoose={chooseStrategy}
+            />
             <ViewTab
               label="Planner"
               active={view === 'planner'}
@@ -109,11 +163,148 @@ function PlannerCard({
       <CardContent>
         <MonthTable
           debts={debts}
+          plan={plan}
           months={rows}
           showStart={view === 'planner'}
+          editPaid={view === 'planner'}
+          onPaidChange={(year, month, debtId, amount) => {
+            onPlanChange(setMonthPayment(plan, year, month, debtId, amount))
+          }}
         />
       </CardContent>
+      <CustomOrderDialog
+        open={customOpen}
+        debts={debts}
+        order={plan.customOrder}
+        onOpenChange={setCustomOpen}
+        onSave={(customOrder) => {
+          onPlanChange({ ...plan, strategy: 'custom', customOrder })
+          setCustomOpen(false)
+        }}
+      />
     </Card>
+  )
+}
+
+function StrategyMenu({
+  strategy,
+  onChoose,
+}: {
+  strategy: PayoffStrategy
+  onChoose: (strategy: PayoffStrategy) => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="hover-fill flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm"
+        >
+          {strategyLabel(strategy)}
+          <ChevronDown className="text-muted-foreground size-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {PAYOFF_STRATEGIES.map((item) => (
+          <DropdownMenuItem
+            key={item.id}
+            className="pr-8"
+            onSelect={() => onChoose(item.id)}
+          >
+            {item.label}
+            {item.id === strategy ? (
+              <Check className="pointer-events-none absolute right-2 size-4" />
+            ) : null}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function CustomOrderDialog({
+  open,
+  debts,
+  order,
+  onOpenChange,
+  onSave,
+}: {
+  open: boolean
+  debts: { id: string; lender: string }[]
+  order: string[]
+  onOpenChange: (open: boolean) => void
+  onSave: (order: string[]) => void
+}) {
+  const [draft, setDraft] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!open) return
+    setDraft(resolveCustomOrder(debts.map((debt) => debt.id), order))
+  }, [open, debts, order])
+
+  function move(index: number, delta: number) {
+    const next = index + delta
+    if (next < 0 || next >= draft.length) return
+    const copy = [...draft]
+    const [item] = copy.splice(index, 1)
+    copy.splice(next, 0, item)
+    setDraft(copy)
+  }
+
+  const named = draft
+    .map((id) => debts.find((debt) => debt.id === id))
+    .filter((debt): debt is { id: string; lender: string } => debt != null)
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>Payoff order</DialogTitle>
+          <DialogDescription>
+            Extra payments go to 1st until it is paid off, then 2nd, and so on.
+          </DialogDescription>
+        </DialogHeader>
+        <ol className="mt-2 grid">
+          {named.map((debt, index) => (
+            <li
+              key={debt.id}
+              className="flex items-center gap-2 rounded-lg px-1 py-1"
+            >
+              <span className="text-muted-foreground w-5 text-sm tabular-nums">
+                {index + 1}
+              </span>
+              <span className="min-w-0 flex-1 text-sm">{debt.lender}</span>
+              <button
+                type="button"
+                className="gear-button rounded-md p-1 disabled:opacity-30"
+                aria-label={`Move ${debt.lender} up`}
+                disabled={index === 0}
+                onClick={() => move(index, -1)}
+              >
+                <ChevronUp className="size-4" />
+              </button>
+              <button
+                type="button"
+                className="gear-button rounded-md p-1 disabled:opacity-30"
+                aria-label={`Move ${debt.lender} down`}
+                disabled={index === named.length - 1}
+                onClick={() => move(index, 1)}
+              >
+                <ChevronDown className="size-4" />
+              </button>
+            </li>
+          ))}
+        </ol>
+        <DialogFooter className="sm:justify-end">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => onSave(draft)}>
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -144,12 +335,23 @@ function ViewTab({
 
 function MonthTable({
   debts,
+  plan,
   months,
   showStart,
+  editPaid,
+  onPaidChange,
 }: {
   debts: { id: string; lender: string }[]
+  plan: DebtPlanState
   months: PlannerMonth[]
   showStart: boolean
+  editPaid: boolean
+  onPaidChange: (
+    year: number,
+    month: number,
+    debtId: string,
+    amount: number | null,
+  ) => void
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const [scrolled, setScrolled] = useState(false)
@@ -164,6 +366,12 @@ function MonthTable({
 
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return
+    if (
+      event.target instanceof Element &&
+      event.target.closest('input, button, [data-no-drag]')
+    ) {
+      return
+    }
     const el = scrollerRef.current
     if (!el) return
     drag.current = {
@@ -246,9 +454,12 @@ function MonthTable({
               year={group.year}
               months={group.months}
               debts={debts}
+              plan={plan}
               showStart={showStart && groupIndex === 0}
               spaced={groupIndex > 0}
               lastGroup={groupIndex === years.length - 1}
+              editPaid={editPaid}
+              onPaidChange={onPaidChange}
             />
           ))}
         </tbody>
@@ -285,16 +496,27 @@ function YearGroupRows({
   year,
   months,
   debts,
+  plan,
   showStart,
   spaced,
   lastGroup,
+  editPaid,
+  onPaidChange,
 }: {
   year: number
   months: PlannerMonth[]
   debts: { id: string; lender: string }[]
+  plan: DebtPlanState
   showStart: boolean
   spaced: boolean
   lastGroup: boolean
+  editPaid: boolean
+  onPaidChange: (
+    year: number,
+    month: number,
+    debtId: string,
+    amount: number | null,
+  ) => void
 }) {
   return (
     <>
@@ -321,9 +543,12 @@ function YearGroupRows({
           key={`${row.source}-${row.year}-${row.month}`}
           year={year}
           debts={debts}
+          plan={plan}
           row={row}
           showStart={showStart && index === 0}
           last={lastGroup && index === months.length - 1}
+          editPaid={editPaid}
+          onPaidChange={onPaidChange}
         />
       ))}
     </>
@@ -333,15 +558,26 @@ function YearGroupRows({
 function MonthBlock({
   year,
   debts,
+  plan,
   row,
   showStart,
   last,
+  editPaid,
+  onPaidChange,
 }: {
   year: number
   debts: { id: string; lender: string }[]
+  plan: DebtPlanState
   row: PlannerMonth
   showStart: boolean
   last: boolean
+  editPaid: boolean
+  onPaidChange: (
+    year: number,
+    month: number,
+    debtId: string,
+    amount: number | null,
+  ) => void
 }) {
   const paidById = new Map(row.lines.map((line) => [line.debtId, line]))
   const label = formatMonthName(row.month)
@@ -385,6 +621,23 @@ function MonthBlock({
         {debts.map((debt) => {
           const line = paidById.get(debt.id)
           const amount = line?.paid ?? 0
+          if (editPaid) {
+            return (
+              <PaidCell
+                key={`${debt.id}-paid`}
+                value={amount}
+                overridden={
+                  paymentOverride(plan, debt.id, row.year, row.month) != null
+                }
+                muted={extraOn(debt.id)}
+                faint={!extraOn(debt.id)}
+                highlighted={extraOn(debt.id)}
+                onCommit={(next) => {
+                  onPaidChange(row.year, row.month, debt.id, next)
+                }}
+              />
+            )
+          }
           return (
             <AmountCell
               key={`${debt.id}-paid`}
@@ -504,6 +757,79 @@ function AmountCell({
       {plannerUsd(value)}
     </td>
   )
+}
+
+function PaidCell({
+  value,
+  overridden,
+  muted = false,
+  faint = false,
+  highlighted = false,
+  onCommit,
+}: {
+  value: number
+  overridden: boolean
+  muted?: boolean
+  faint?: boolean
+  highlighted?: boolean
+  onCommit: (amount: number | null) => void
+}) {
+  const display = plannerUsd(value)
+
+  function commit(raw: string) {
+    const trimmed = raw.trim()
+    if (trimmed === '') {
+      if (overridden) onCommit(null)
+      return
+    }
+    const parsed = parseUsdInput(trimmed)
+    if (parsed == null) return
+    if (!overridden && Math.round(parsed) === Math.round(value)) return
+    onCommit(parsed)
+  }
+
+  return (
+    <td
+      className={cn(
+        'min-w-24 px-5 py-1.5 text-right tabular-nums',
+        muted && 'text-muted-foreground',
+        faint && 'text-muted-foreground/40',
+        highlighted && EXTRA_FILL,
+      )}
+    >
+      <input
+        key={`${overridden ? 'o' : 'c'}-${Math.round(value)}`}
+        data-no-drag
+        className="paid-input select-text"
+        inputMode="decimal"
+        aria-label="Paid"
+        defaultValue={display}
+        onFocus={(event) => {
+          event.currentTarget.value =
+            Math.round(value) === 0 ? '' : String(Math.round(value))
+          event.currentTarget.select()
+        }}
+        onBlur={(event) => {
+          commit(event.currentTarget.value)
+          event.currentTarget.value = display
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur()
+          if (event.key === 'Escape') {
+            event.currentTarget.value = display
+            event.currentTarget.blur()
+          }
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      />
+    </td>
+  )
+}
+
+function parseUsdInput(raw: string) {
+  const parsed = Number(raw.replace(/[$,\s]/g, ''))
+  if (!Number.isFinite(parsed) || parsed < 0) return null
+  return Math.round(parsed * 100) / 100
 }
 
 function roundCents(value: number) {

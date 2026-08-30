@@ -188,6 +188,28 @@
   background-color: #f6f6f6 !important;
 }
 
+.paid-input {
+  display: block;
+  width: 100%;
+  min-width: 4.5rem;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: right;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  cursor: text;
+  outline: none;
+  appearance: none;
+  box-shadow: none;
+  user-select: text;
+}
+.paid-input:focus {
+  outline: none;
+}
+
 .gear-button {
   border: none;
   background-color: transparent;

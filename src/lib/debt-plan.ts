@@ -16,11 +16,23 @@ const PLAN_KEY = 'mybudget.debt-plan.v1'
 
 export type AffirmLoan = SeededAffirmLoan
 
+export const PAYOFF_STRATEGIES = [
+  { id: 'avalanche', label: 'Avalanche' },
+  { id: 'snowball', label: 'Snowball' },
+  { id: 'custom', label: 'Custom' },
+  { id: 'highest-interest', label: 'Highest interest' },
+] as const
+
+export type PayoffStrategy = (typeof PAYOFF_STRATEGIES)[number]['id']
+
 export type DebtPlanState = {
   monthlyBudget: number
   snowballDebtId: string
+  strategy: PayoffStrategy
+  customOrder: string[]
   recurringCharges: Record<string, number>
   chargesByMonth: Record<string, Record<string, number>>
+  paymentsByMonth: Record<string, Record<string, number>>
   affirmLoans: AffirmLoan[]
 }
 
@@ -77,8 +89,11 @@ export function defaultDebtPlan(): DebtPlanState {
   return {
     monthlyBudget: defaultMonthlyDebtBudget,
     snowballDebtId: defaultSnowballDebtId,
+    strategy: 'avalanche',
+    customOrder: [],
     recurringCharges: { ...seededRecurringCharges },
     chargesByMonth: {},
+    paymentsByMonth: {},
     affirmLoans: seededAffirmLoans.map((loan) => ({ ...loan })),
   }
 }
@@ -108,20 +123,30 @@ export function loadDebtPlan(): DebtPlanState {
     const parsed: unknown = JSON.parse(raw)
     if (parsed == null || typeof parsed !== 'object') return fallback
     const item = parsed as Partial<DebtPlanState>
+    const snowballDebtId =
+      typeof item.snowballDebtId === 'string' && item.snowballDebtId
+        ? item.snowballDebtId
+        : fallback.snowballDebtId
+    const customOrder = normalizeIdList(item.customOrder)
     return {
       monthlyBudget:
         typeof item.monthlyBudget === 'number' && Number.isFinite(item.monthlyBudget)
           ? item.monthlyBudget
           : fallback.monthlyBudget,
-      snowballDebtId:
-        typeof item.snowballDebtId === 'string' && item.snowballDebtId
-          ? item.snowballDebtId
-          : fallback.snowballDebtId,
+      snowballDebtId,
+      strategy: isPayoffStrategy(item.strategy) ? item.strategy : fallback.strategy,
+      customOrder:
+        customOrder.length > 0
+          ? customOrder
+          : snowballDebtId
+            ? [snowballDebtId]
+            : fallback.customOrder,
       recurringCharges:
         item.recurringCharges && typeof item.recurringCharges === 'object'
           ? { ...fallback.recurringCharges, ...item.recurringCharges }
           : fallback.recurringCharges,
       chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
+      paymentsByMonth: normalizeChargesByMonth(item.paymentsByMonth),
       affirmLoans: Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
         ? item.affirmLoans.filter(isAffirmLoan)
         : fallback.affirmLoans,
@@ -164,6 +189,37 @@ function normalizeChargesByMonth(value: unknown) {
   return next
 }
 
+function isPayoffStrategy(value: unknown): value is PayoffStrategy {
+  return PAYOFF_STRATEGIES.some((item) => item.id === value)
+}
+
+function normalizeIdList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.filter((id): id is string => typeof id === 'string' && id.length > 0)
+}
+
+export function strategyLabel(strategy: PayoffStrategy) {
+  return PAYOFF_STRATEGIES.find((item) => item.id === strategy)?.label ?? 'Avalanche'
+}
+
+export function resolveCustomOrder(debtIds: string[], order: string[]) {
+  const known = new Set(debtIds)
+  const kept = order.filter((id) => known.has(id))
+  const missing = debtIds.filter((id) => !kept.includes(id))
+  return [...kept, ...missing]
+}
+
+export function paymentOverride(
+  plan: DebtPlanState,
+  debtId: string,
+  year: number,
+  month: number,
+) {
+  const value = plan.paymentsByMonth[monthKey(year, month)]?.[debtId]
+  if (typeof value === 'number' && Number.isFinite(value)) return roundCents(value)
+  return undefined
+}
+
 export function setMonthCharge(
   plan: DebtPlanState,
   year: number,
@@ -182,6 +238,63 @@ export function setMonthCharge(
       },
     },
   }
+}
+
+export function setMonthPayment(
+  plan: DebtPlanState,
+  year: number,
+  month: number,
+  debtId: string,
+  amount: number | null,
+): DebtPlanState {
+  const key = monthKey(year, month)
+  const monthPayments = { ...plan.paymentsByMonth[key] }
+  if (amount == null) {
+    delete monthPayments[debtId]
+  } else {
+    monthPayments[debtId] = roundCents(Math.max(0, amount))
+  }
+  const paymentsByMonth = { ...plan.paymentsByMonth }
+  if (Object.keys(monthPayments).length === 0) {
+    delete paymentsByMonth[key]
+  } else {
+    paymentsByMonth[key] = monthPayments
+  }
+  return { ...plan, paymentsByMonth }
+}
+
+function extraPaymentOrder(
+  owing: Debt[],
+  plan: DebtPlanState,
+  startBalances: Map<string, number>,
+  interestById: Map<string, number>,
+) {
+  const copy = [...owing]
+  if (plan.strategy === 'snowball') {
+    return copy.sort((a, b) => {
+      const byBalance =
+        (startBalances.get(a.id) ?? 0) - (startBalances.get(b.id) ?? 0)
+      return byBalance !== 0 ? byBalance : b.apr - a.apr
+    })
+  }
+  if (plan.strategy === 'custom') {
+    const order = resolveCustomOrder(
+      owing.map((debt) => debt.id),
+      plan.customOrder,
+    )
+    return copy.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+  }
+  if (plan.strategy === 'highest-interest') {
+    return copy.sort((a, b) => {
+      const byInterest =
+        (interestById.get(b.id) ?? 0) - (interestById.get(a.id) ?? 0)
+      return byInterest !== 0 ? byInterest : b.apr - a.apr
+    })
+  }
+  return copy.sort((a, b) => {
+    const byApr = b.apr - a.apr
+    return byApr !== 0 ? byApr : (startBalances.get(b.id) ?? 0) - (startBalances.get(a.id) ?? 0)
+  })
 }
 
 function extraPaidOnLine(paid: number, minimum: number, balanceBeforePay: number) {
@@ -293,20 +406,39 @@ export function projectDebtPlan(
       })
     }
 
+    const locked = new Map<string, number>()
+    let lockedTotal = 0
+    for (const debt of owing) {
+      const override = paymentOverride(plan, debt.id, year, month)
+      if (override == null) continue
+      const due = afterInterest.get(debt.id) ?? 0
+      const paid = roundCents(Math.min(Math.max(0, override), due))
+      locked.set(debt.id, paid)
+      lockedTotal += paid
+    }
+
     const payments = new Map<string, number>()
     let allocated = 0
     for (const debt of owing) {
+      if (locked.has(debt.id)) continue
       const due = afterInterest.get(debt.id) ?? 0
       const minPay = roundCents(Math.min(debt.minimum, due))
       payments.set(debt.id, minPay)
       allocated += minPay
     }
 
-    let leftover = roundCents(Math.max(0, plan.monthlyBudget - allocated))
-    const waterfall = [
-      ...owing.filter((debt) => debt.id === plan.snowballDebtId),
-      ...owing.filter((debt) => debt.id !== plan.snowballDebtId && debt.apr > 0),
-    ]
+    let leftover = roundCents(
+      Math.max(0, plan.monthlyBudget - allocated - lockedTotal),
+    )
+    const interestById = new Map(
+      lines.map((line) => [line.debtId, line.interest]),
+    )
+    const waterfall = extraPaymentOrder(
+      owing.filter((debt) => !locked.has(debt.id)),
+      plan,
+      balances,
+      interestById,
+    )
     for (const debt of waterfall) {
       if (leftover <= 0) break
       const due = afterInterest.get(debt.id) ?? 0
@@ -318,7 +450,10 @@ export function projectDebtPlan(
 
     for (const line of lines) {
       const due = afterInterest.get(line.debtId) ?? 0
-      const paid = Math.min(payments.get(line.debtId) ?? 0, due)
+      const paid = Math.min(
+        locked.get(line.debtId) ?? payments.get(line.debtId) ?? 0,
+        due,
+      )
       const debt = debts.find((item) => item.id === line.debtId)
       line.paid = paid
       line.extra = extraPaidOnLine(paid, debt?.minimum ?? 0, due)
@@ -384,6 +519,16 @@ export function formatYearMonth(year: number, month: number) {
     month: 'short',
     year: 'numeric',
   })
+}
+
+export function debtFreeLabel(months: PlannerMonth[], horizonYears = 10) {
+  const planned = months.filter((row) => row.source === 'plan')
+  if (planned.length === 0) return '—'
+  const starting = planned[0].lines.reduce((sum, line) => sum + line.start, 0)
+  if (starting <= 0.005) return 'Paid off'
+  const clear = planned.find((row) => row.remainingTotal <= 0.005)
+  if (!clear) return `After ${horizonYears} yr`
+  return formatYearMonth(clear.year, clear.month)
 }
 
 export function formatYm(ym: string) {
