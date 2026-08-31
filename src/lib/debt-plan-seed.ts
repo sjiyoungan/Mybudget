@@ -16,6 +16,7 @@ export const seededAmazonDebt = {
   extraPayment: 0,
   paidFromAccountId: '',
   chargeAccountId: '',
+  type: 'credit-card' as const,
   apr: 24.49,
   balance: 10856.51,
 }

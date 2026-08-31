@@ -50,12 +50,15 @@ import {
   DEBT_CATEGORY_ID,
   MORTGAGE_CATEGORY_ID,
   VARIABLE_CATEGORY_ID,
+  isCreditCardDebt,
+  normalizeDebtType,
   totalDebtPayments,
   totalForCategory,
   totalMonthlyExpenses,
   totalMonthlyExpensesExcluding,
   type AccountKind,
   type Debt,
+  type DebtType,
   type ExpenseFrequency,
   type RecurringExpense,
 } from '@/lib/budget'
@@ -81,24 +84,21 @@ function parseDay(value: string) {
   return parsed
 }
 
-function AccountKindSelect({
+function DebtTypeSelect({
   value,
   onChange,
 }: {
-  value: AccountKind
-  onChange: (value: AccountKind) => void
+  value: DebtType
+  onChange: (value: DebtType) => void
 }) {
   return (
-    <Select
-      value={value}
-      onValueChange={(next) => onChange(normalizeAccountKind(next))}
-    >
-      <SelectTrigger className="w-full" aria-label="Account type">
+    <Select value={value} onValueChange={(next) => onChange(next as DebtType)}>
+      <SelectTrigger className="h-8 w-full" aria-label="Debt type">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="checking">Checking</SelectItem>
-        <SelectItem value="credit">Credit card</SelectItem>
+        <SelectItem value="credit-card">Credit card</SelectItem>
+        <SelectItem value="loan">Loan</SelectItem>
       </SelectContent>
     </Select>
   )
@@ -109,6 +109,7 @@ function BankSelect({
   value,
   onChange,
   onAdded,
+  includeCards = true,
   ariaLabel = 'Bank account',
   placeholder = 'Bank',
 }: {
@@ -121,20 +122,20 @@ function BankSelect({
   value: string
   onChange: (id: string) => void
   onAdded?: (account: { id: string; name: string }) => void
+  includeCards?: boolean
   ariaLabel?: string
   placeholder?: string
 }) {
-  const { addAccount } = useBudget()
+  const { addAccount, debts } = useBudget()
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [bankName, setBankName] = useState('')
-  const [addKind, setAddKind] = useState<AccountKind>('checking')
   const checking = accounts.filter(
     (account) => normalizeAccountKind(account.kind) === 'checking',
   )
-  const credit = accounts.filter(
-    (account) => normalizeAccountKind(account.kind) === 'credit',
-  )
+  const cards = includeCards
+    ? debts.filter((debt) => isCreditCardDebt(debt))
+    : []
 
   function handleAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -143,13 +144,12 @@ function BankSelect({
     const name = bankName.trim()
     const id = addAccount({
       name,
-      kind: addKind,
+      kind: 'checking',
       role: 'other',
     })
     onChange(id)
     onAdded?.({ id, name })
     setBankName('')
-    setAddKind('checking')
     setAdding(false)
     setOpen(false)
   }
@@ -176,7 +176,6 @@ function BankSelect({
         if (!nextOpen) {
           setAdding(false)
           setBankName('')
-          setAddKind('checking')
         }
       }}
       value={value || undefined}
@@ -190,10 +189,16 @@ function BankSelect({
           <SelectLabel>Checking</SelectLabel>
           {checking.map(accountOption)}
         </SelectGroup>
-        <SelectGroup>
-          <SelectLabel>Credit card</SelectLabel>
-          {credit.map(accountOption)}
-        </SelectGroup>
+        {includeCards ? (
+          <SelectGroup>
+            <SelectLabel>Credit card</SelectLabel>
+            {cards.map((debt) => (
+              <SelectItem key={debt.id} value={debt.id}>
+                {debt.lender}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        ) : null}
         <SelectSeparator />
         {adding ? (
           <form
@@ -209,17 +214,6 @@ function BankSelect({
               onChange={(event) => setBankName(event.target.value)}
               aria-label="Bank name"
             />
-            <select
-              className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
-              value={addKind}
-              onChange={(event) =>
-                setAddKind(normalizeAccountKind(event.target.value))
-              }
-              aria-label="Account type"
-            >
-              <option value="checking">Checking</option>
-              <option value="credit">Credit card</option>
-            </select>
             <Button type="submit" size="sm">
               Add account
             </Button>
@@ -2133,16 +2127,15 @@ function EditAccountsDialog({
           </div>
 
           <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-y-auto">
-            <div className="grid grid-cols-[minmax(10rem,16rem)_7.5rem_5.5rem_28px] items-center gap-2 text-xs font-medium text-muted-foreground">
+            <div className="grid grid-cols-[minmax(10rem,16rem)_5.5rem_28px] items-center gap-2 text-xs font-medium text-muted-foreground">
               <span>Name</span>
-              <span>Type</span>
               <span>Last four</span>
               <span />
             </div>
             {drafts.map((draft) => (
               <div
                 key={draft.id}
-                className="grid grid-cols-[minmax(10rem,16rem)_7.5rem_5.5rem_28px] items-center gap-2"
+                className="grid grid-cols-[minmax(10rem,16rem)_5.5rem_28px] items-center gap-2"
               >
                 <Input
                   className="h-8"
@@ -2153,10 +2146,6 @@ function EditAccountsDialog({
                   placeholder="Name"
                   aria-label="Account name"
                   autoFocus={focusId === draft.id}
-                />
-                <AccountKindSelect
-                  value={draft.kind}
-                  onChange={(kind) => updateDraft(draft.id, { kind })}
                 />
                 <Input
                   className="h-8 tabular-nums"
@@ -2640,6 +2629,7 @@ function DebtMetric({
 type DebtDraft = {
   id: string
   lender: string
+  type: DebtType
   minimum: string
   extraPayment: string
   paidFromAccountId: string
@@ -2649,17 +2639,17 @@ type DebtDraft = {
 }
 
 const DEBT_ROW =
-  'grid-cols-[minmax(8rem,12rem)_5.25rem_5.25rem_5.25rem_5.25rem_minmax(8rem,11rem)_minmax(8rem,11rem)_5.5rem_4.5rem_28px]'
+  'grid-cols-[minmax(8rem,12rem)_8.5rem_5.25rem_5.25rem_5.25rem_5.25rem_minmax(8rem,11rem)_8.5rem_4.5rem_28px]'
 
 function debtSnapshot(drafts: DebtDraft[]) {
   return JSON.stringify(
     drafts.map((draft) => ({
       id: draft.id,
       lender: draft.lender.trim(),
+      type: draft.type,
       minimum: draft.minimum.trim(),
       extraPayment: draft.extraPayment.trim(),
       paidFromAccountId: draft.paidFromAccountId,
-      chargeAccountId: draft.chargeAccountId,
       balance: draft.balance.trim(),
       apr: draft.apr.trim(),
     })),
@@ -2670,6 +2660,7 @@ function emptyDebtDraft(id: string): DebtDraft {
   return {
     id,
     lender: '',
+    type: 'credit-card',
     minimum: '',
     extraPayment: '',
     paidFromAccountId: '',
@@ -2712,6 +2703,7 @@ export function EditDebtsDialog({
     const next = debts.map((debt) => ({
       id: debt.id,
       lender: debt.lender,
+      type: normalizeDebtType(debt.type, debt.lender),
       minimum: String(debt.minimum),
       extraPayment:
         debt.extraPayment === 0 ? '' : String(debt.extraPayment),
@@ -2745,8 +2737,7 @@ export function EditDebtsDialog({
       draft.extraPayment.trim() !== '' ||
       draft.balance.trim() !== '' ||
       draft.apr.trim() !== '' ||
-      draft.paidFromAccountId !== '' ||
-      draft.chargeAccountId !== '',
+      draft.paidFromAccountId !== '',
   )
   const canSubmit =
     dirty &&
@@ -2820,8 +2811,7 @@ export function EditDebtsDialog({
       draft.extraPayment.trim() !== '' ||
       draft.balance.trim() !== '' ||
       draft.apr.trim() !== '' ||
-      draft.paidFromAccountId !== '' ||
-      draft.chargeAccountId !== ''
+      draft.paidFromAccountId !== ''
     ) {
       setRemoveId(id)
       return
@@ -2848,7 +2838,8 @@ export function EditDebtsDialog({
           minimum,
           extraPayment,
           paidFromAccountId: draft.paidFromAccountId,
-          chargeAccountId: draft.chargeAccountId,
+          chargeAccountId: current?.chargeAccountId ?? draft.chargeAccountId,
+          type: draft.type,
           apr,
           balance,
         } satisfies Debt
@@ -2922,13 +2913,13 @@ export function EditDebtsDialog({
               )}
             >
               <span>Lender</span>
+              <span>Type</span>
               <span className="text-right">Minimum</span>
               <span className="text-right">Extra</span>
               <span className="text-right">Charges</span>
               <span className="text-right">Total</span>
               <span>Paid from</span>
-              <span>Account</span>
-              <span className="text-right">Balance</span>
+              <span className="text-right">Starting balance</span>
               <span className="text-right">APR</span>
               <span />
             </div>
@@ -2946,6 +2937,10 @@ export function EditDebtsDialog({
                   placeholder="Lender"
                   aria-label="Lender"
                   autoFocus={focusId === draft.id}
+                />
+                <DebtTypeSelect
+                  value={draft.type}
+                  onChange={(type) => updateDraft(draft.id, { type })}
                 />
                 <Input
                   className="h-8 text-right tabular-nums"
@@ -3001,17 +2996,9 @@ export function EditDebtsDialog({
                   onChange={(id) =>
                     updateDraft(draft.id, { paidFromAccountId: id })
                   }
+                  includeCards={false}
                   ariaLabel="Paid from"
                   placeholder="Paid from"
-                />
-                <BankSelect
-                  accounts={accounts}
-                  value={draft.chargeAccountId}
-                  onChange={(id) =>
-                    updateDraft(draft.id, { chargeAccountId: id })
-                  }
-                  ariaLabel="Account"
-                  placeholder="Account"
                 />
                 <Input
                   className="h-8 text-right tabular-nums"
@@ -3021,7 +3008,7 @@ export function EditDebtsDialog({
                   }
                   placeholder="0"
                   inputMode="decimal"
-                  aria-label="Balance"
+                  aria-label="Starting balance"
                 />
                 <Input
                   className="h-8 text-right tabular-nums"

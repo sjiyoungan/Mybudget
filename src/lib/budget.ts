@@ -46,6 +46,8 @@ export type RecurringExpense = {
   category: string
 }
 
+export type DebtType = 'credit-card' | 'loan'
+
 export type Debt = {
   id: string
   lender: string
@@ -54,6 +56,7 @@ export type Debt = {
   extraPayment: number
   paidFromAccountId: string
   chargeAccountId: string
+  type: DebtType
   apr: number
   balance: number
 }
@@ -272,6 +275,7 @@ function sheetDebts(): Debt[] {
     extraPayment: 0,
     paidFromAccountId: '',
     chargeAccountId: '',
+    type: guessDebtType(lender),
     apr,
     balance: 0,
   })
@@ -341,6 +345,36 @@ export function normalizeAccountKind(value: unknown): AccountKind {
   const n = value.trim().toLowerCase()
   if (n.includes('credit')) return 'credit'
   return 'checking'
+}
+
+export function isDebtType(value: unknown): value is DebtType {
+  return value === 'credit-card' || value === 'loan'
+}
+
+export function guessDebtType(lender: string): DebtType {
+  const n = lender.trim().toLowerCase()
+  if (/\b(loan|affirm|klarna|afterpay)\b/.test(n) || n.includes('ikea')) {
+    return 'loan'
+  }
+  return 'credit-card'
+}
+
+export function normalizeDebtType(value: unknown, lender = ''): DebtType {
+  if (isDebtType(value)) return value
+  if (typeof value === 'string') {
+    const n = value.trim().toLowerCase()
+    if (n.includes('loan')) return 'loan'
+    if (n === 'cc' || n.includes('credit')) return 'credit-card'
+  }
+  return guessDebtType(lender)
+}
+
+export function debtTypeLabel(type: DebtType) {
+  return type === 'loan' ? 'Loan' : 'Credit card'
+}
+
+export function isCreditCardDebt(debt: Pick<Debt, 'type' | 'lender'>) {
+  return normalizeDebtType(debt.type, debt.lender) === 'credit-card'
 }
 
 export function accountKindLabel(kind: AccountKind) {
@@ -457,6 +491,7 @@ function normalizeDebt(value: unknown): Debt | null {
     typeof item.paidFromAccountId === 'string' ? item.paidFromAccountId : ''
   const chargeAccountId =
     typeof item.chargeAccountId === 'string' ? item.chargeAccountId : ''
+  const type = normalizeDebtType(item.type, lender)
   return {
     id: item.id,
     lender,
@@ -465,6 +500,7 @@ function normalizeDebt(value: unknown): Debt | null {
     extraPayment,
     paidFromAccountId,
     chargeAccountId,
+    type,
     apr,
     balance: item.balance,
   }
@@ -578,32 +614,29 @@ export function paymentWithoutCharges(debt: Pick<Debt, 'minimum' | 'extraPayment
   return roundCents(debt.minimum + debt.extraPayment)
 }
 
+function isChargeOnDebt(
+  expense: RecurringExpense,
+  debt: Pick<Debt, 'id' | 'chargeAccountId'>,
+) {
+  if (expense.id === debt.id || isDebtExpense(expense)) return false
+  if (expense.accountId === debt.id) return true
+  return debt.chargeAccountId !== '' && expense.accountId === debt.chargeAccountId
+}
+
 export function chargesForDebt(
   expenses: RecurringExpense[],
   debt: Pick<Debt, 'id' | 'chargeAccountId'>,
 ) {
-  if (!debt.chargeAccountId) return 0
   return expenses
-    .filter(
-      (expense) =>
-        expense.accountId === debt.chargeAccountId &&
-        expense.id !== debt.id &&
-        !isDebtExpense(expense),
-    )
+    .filter((expense) => isChargeOnDebt(expense, debt))
     .reduce((sum, expense) => sum + monthlyAmount(expense), 0)
 }
 
 export function chargeExpensesForDebt(
   expenses: RecurringExpense[],
-  debt: Debt,
+  debt: Pick<Debt, 'id' | 'chargeAccountId'>,
 ) {
-  if (!debt.chargeAccountId) return []
-  return expenses.filter(
-    (expense) =>
-      expense.accountId === debt.chargeAccountId &&
-      expense.id !== debt.id &&
-      !isDebtExpense(expense),
-  )
+  return expenses.filter((expense) => isChargeOnDebt(expense, debt))
 }
 
 export function totalPaymentForDebt(
@@ -786,6 +819,7 @@ export function debtFromExpense(
       extraPayment: 0,
       paidFromAccountId: expense.accountId,
       chargeAccountId: '',
+      type: guessDebtType(expense.name),
       apr: 0,
       balance: 0,
     }
