@@ -35,12 +35,15 @@ import {
 import { useBudget } from '@/lib/budget-context'
 import {
   billsAccount,
+  billedAmountFromMonthly,
+  monthlyAmount,
   monthlyNeedForAccount,
   overflowAccount,
   totalForCategory,
   totalDebtMinimums,
   totalMonthlyExpenses,
   type Debt,
+  type ExpenseFrequency,
   type RecurringExpense,
 } from '@/lib/budget'
 import {
@@ -165,19 +168,21 @@ type ExpenseDraft = {
   id: string
   name: string
   amount: string
+  frequency: ExpenseFrequency
   dueDay: string
   category: string
   accountId: string
 }
 
 const EXPENSE_ROW =
-  'grid-cols-[minmax(8rem,14rem)_5.75rem_4.75rem_minmax(8rem,1fr)_28px]' as const
+  'grid-cols-[minmax(7rem,12rem)_5.75rem_6.75rem_4.75rem_minmax(7rem,1fr)_28px]' as const
 
 function newExpenseDraft(accountId: string, category = ''): ExpenseDraft {
   return {
     id: crypto.randomUUID(),
     name: '',
     amount: '',
+    frequency: 'monthly',
     dueDay: '',
     category,
     accountId,
@@ -189,6 +194,7 @@ function expenseToDraft(item: RecurringExpense): ExpenseDraft {
     id: item.id,
     name: item.name,
     amount: String(item.amount),
+    frequency: item.frequency,
     dueDay: item.dueDay ? String(item.dueDay) : '',
     category: item.category,
     accountId: item.accountId,
@@ -208,6 +214,7 @@ function editorSnapshot(
       id: draft.id,
       name: draft.name.trim(),
       amount: draft.amount.trim(),
+      frequency: draft.frequency,
       dueDay: draft.dueDay.trim(),
       category: draft.category,
       accountId: draft.accountId,
@@ -367,6 +374,29 @@ function CategoryDropGroup({
   )
 }
 
+function FrequencySelect({
+  value,
+  onChange,
+}: {
+  value: ExpenseFrequency
+  onChange: (value: ExpenseFrequency) => void
+}) {
+  return (
+    <Select
+      value={value}
+      onValueChange={(next) => onChange(next as ExpenseFrequency)}
+    >
+      <SelectTrigger className="w-full" aria-label="Frequency">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="monthly">Monthly</SelectItem>
+        <SelectItem value="annual">Annual</SelectItem>
+      </SelectContent>
+    </Select>
+  )
+}
+
 function ExpenseDraftRow({
   draft,
   accounts,
@@ -434,6 +464,10 @@ function ExpenseDraftRow({
       <MoneyInput
         value={draft.amount}
         onChange={(value) => onUpdate(draft.id, { amount: value })}
+      />
+      <FrequencySelect
+        value={draft.frequency}
+        onChange={(frequency) => onUpdate(draft.id, { frequency })}
       />
       <ModalDueDayInput
         value={draft.dueDay}
@@ -628,6 +662,7 @@ function EditExpensesDialog({
           name: draft.name.trim(),
           dueDay: draft.dueDay === '' ? null : parseDay(draft.dueDay),
           amount: parseAmount(draft.amount) ?? 0,
+          frequency: draft.frequency,
           accountId: draft.accountId || defaultAccountId,
           category: draft.category,
         })),
@@ -748,6 +783,7 @@ function EditExpensesDialog({
             >
               <span>Name</span>
               <span>Amount</span>
+              <span>Frequency</span>
               <span>Due day</span>
               <span>Bank</span>
               <span />
@@ -974,6 +1010,7 @@ function oneExpenseSnapshot(draft: ExpenseDraft) {
   return JSON.stringify({
     name: draft.name.trim(),
     amount: draft.amount.trim(),
+    frequency: draft.frequency,
     dueDay: draft.dueDay.trim(),
     category: draft.category,
     accountId: draft.accountId,
@@ -1052,6 +1089,7 @@ function EditOneExpenseDialog({
       name: draft.name.trim(),
       dueDay: draft.dueDay === '' ? null : parseDay(draft.dueDay),
       amount: parseAmount(draft.amount) ?? 0,
+      frequency: draft.frequency,
       accountId: draft.accountId || defaultAccountId,
       category: draft.category,
     })
@@ -1145,6 +1183,7 @@ function EditOneExpenseDialog({
               >
                 <span>Name</span>
                 <span>Amount</span>
+                <span>Frequency</span>
                 <span>Due day</span>
                 <span>Bank</span>
                 <span />
@@ -1269,22 +1308,25 @@ function ExpenseAmountEdit({
   onEdit: (id: string | null) => void
 }) {
   const { updateExpense } = useBudget()
-  const [draft, setDraft] = useState(String(expense.amount))
+  const monthly = monthlyAmount(expense)
+  const [draft, setDraft] = useState(String(monthly))
   const draftRef = useRef(draft)
   const skipCommit = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
-  const amountRef = useRef(expense.amount)
+  const monthlyRef = useRef(monthly)
+  const frequencyRef = useRef(expense.frequency)
   const updateRef = useRef(updateExpense)
   draftRef.current = draft
-  amountRef.current = expense.amount
+  monthlyRef.current = monthly
+  frequencyRef.current = expense.frequency
   updateRef.current = updateExpense
 
   useEffect(() => {
     if (!editing) return
     skipCommit.current = false
-    setDraft(String(expense.amount))
-  }, [editing, expense.amount])
+    setDraft(String(monthlyAmount(expense)))
+  }, [editing, expense.amount, expense.frequency])
 
   useEffect(() => {
     if (!editing) return
@@ -1302,9 +1344,11 @@ function ExpenseAmountEdit({
       if (
         parsed != null &&
         parsed >= 0 &&
-        parsed !== amountRef.current
+        parsed !== monthlyRef.current
       ) {
-        updateRef.current(expense.id, { amount: parsed })
+        updateRef.current(expense.id, {
+          amount: billedAmountFromMonthly(parsed, frequencyRef.current),
+        })
       }
     }
   }, [editing, expense.id])
@@ -1331,7 +1375,7 @@ function ExpenseAmountEdit({
           onEdit(expense.id)
         }}
       >
-        {formatUsd(expense.amount)}
+        {formatUsd(monthlyAmount(expense))}
       </button>
     )
   }
@@ -2150,8 +2194,8 @@ function AccountDrawer({
                       </div>
                     ) : (
                       <AmountCols
-                        left={formatUsd(item.amount / 2)}
-                        right={formatUsd(item.amount)}
+                        left={formatUsd(monthlyAmount(item) / 2)}
+                        right={formatUsd(monthlyAmount(item))}
                       />
                     )}
                   </div>

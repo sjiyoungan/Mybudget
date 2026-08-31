@@ -27,11 +27,14 @@ export const defaultExpenseCategories: ExpenseCategoryGroup[] = [
 
 export type ExpenseCategory = string
 
+export type ExpenseFrequency = 'monthly' | 'annual'
+
 export type RecurringExpense = {
   id: string
   name: string
   dueDay: number | null
   amount: number
+  frequency: ExpenseFrequency
   accountId: string
   category: string
 }
@@ -215,6 +218,7 @@ function sheetExpenses(accountId: string): RecurringExpense[] {
     id,
     name,
     amount,
+    frequency: 'monthly',
     category,
     dueDay,
     accountId,
@@ -304,6 +308,29 @@ function isExpenseCategory(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
 }
 
+function isExpenseFrequency(value: unknown): value is ExpenseFrequency {
+  return value === 'monthly' || value === 'annual'
+}
+
+export function roundCents(value: number) {
+  return Math.round(value * 100) / 100
+}
+
+export function monthlyAmount(
+  expense: Pick<RecurringExpense, 'amount' | 'frequency'>,
+) {
+  if (expense.frequency === 'annual') return roundCents(expense.amount / 12)
+  return expense.amount
+}
+
+export function billedAmountFromMonthly(
+  monthly: number,
+  frequency: ExpenseFrequency,
+) {
+  if (frequency === 'annual') return roundCents(monthly * 12)
+  return monthly
+}
+
 function lastFourDigits(value: string) {
   return value.replace(/\D/g, '').slice(0, 4)
 }
@@ -359,6 +386,7 @@ function normalizeExpense(value: unknown): RecurringExpense | null {
     name: item.name,
     dueDay,
     amount: item.amount,
+    frequency: isExpenseFrequency(item.frequency) ? item.frequency : 'monthly',
     accountId: item.accountId,
     category: isExpenseCategory(item.category) ? item.category : 'recurring',
   }
@@ -487,7 +515,7 @@ export function monthlyNeedForAccount(
 ) {
   return expenses
     .filter((item) => item.accountId === accountId)
-    .reduce((sum, item) => sum + item.amount, 0)
+    .reduce((sum, item) => sum + monthlyAmount(item), 0)
 }
 
 export function compareExpensesByDueDay(
@@ -533,7 +561,7 @@ export function totalForCategory(
 ) {
   return expenses
     .filter((item) => item.category === category)
-    .reduce((sum, item) => sum + item.amount, 0)
+    .reduce((sum, item) => sum + monthlyAmount(item), 0)
 }
 
 export function totalDebtMinimums(debts: Debt[]) {
@@ -545,7 +573,7 @@ export function totalMonthlyExpenses(
   debts: Debt[],
 ) {
   return (
-    expenses.reduce((sum, item) => sum + item.amount, 0) +
+    expenses.reduce((sum, item) => sum + monthlyAmount(item), 0) +
     totalDebtMinimums(debts)
   )
 }
