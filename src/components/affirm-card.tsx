@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import {
+  affirmCurrentLoans,
   affirmLoanPayments,
   affirmVisibleMonths,
   completeAffirmLoan,
@@ -173,12 +174,16 @@ export function AffirmCard({
   now: Date
   onLoansChange: (loans: AffirmLoan[]) => void
 }) {
-  const months = useMemo(() => affirmVisibleMonths(loans, now), [loans, now])
+  const currentLoans = useMemo(() => affirmCurrentLoans(loans, now), [loans, now])
+  const months = useMemo(
+    () => affirmVisibleMonths(currentLoans, now),
+    [currentLoans, now],
+  )
   const [sortKey, setSortKey] = useState<AffirmSortKey>('monthly')
   const [sortDir, setSortDir] = useState<AffirmSortDir>('asc')
   const sortedLoans = useMemo(
-    () => sortLoans(loans, sortKey, sortDir),
-    [loans, sortKey, sortDir],
+    () => sortLoans(currentLoans, sortKey, sortDir),
+    [currentLoans, sortKey, sortDir],
   )
   const schedules = useMemo(
     () =>
@@ -198,10 +203,10 @@ export function AffirmCard({
     return totals
   }, [months, schedules])
   const allMonthly = roundCents(
-    loans.reduce((sum, loan) => sum + loan.monthly, 0),
+    currentLoans.reduce((sum, loan) => sum + loan.monthly, 0),
   )
   const remaining = roundCents(
-    loans.reduce((sum, loan) => sum + loan.remaining, 0),
+    currentLoans.reduce((sum, loan) => sum + loan.remaining, 0),
   )
 
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -527,13 +532,13 @@ export function AffirmCard({
           data-more={stuck ? '' : undefined}
         >
           <FooterFreeze index={0} scrolled={scrolled}>
-            {loans.length || ''}
+            {currentLoans.length || ''}
           </FooterFreeze>
           <FooterFreeze index={1} scrolled={scrolled}>
-            {loans.length > 0 ? formatUsd(allMonthly) : ''}
+            {currentLoans.length > 0 ? formatUsd(allMonthly) : ''}
           </FooterFreeze>
           <FooterFreeze index={2} scrolled={scrolled}>
-            {loans.length > 0 ? formatUsd(remaining) : ''}
+            {currentLoans.length > 0 ? formatUsd(remaining) : ''}
           </FooterFreeze>
           <div className="relative min-w-0 flex-1 overflow-hidden">
             {scrolled ? (

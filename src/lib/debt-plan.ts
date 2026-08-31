@@ -1027,6 +1027,12 @@ export function affirmLoanPayments(loan: AffirmLoan) {
   return payments
 }
 
+/** Loans that still have a payment this month or later. Past payoffs drop off. */
+export function affirmCurrentLoans(loans: AffirmLoan[], now: Date) {
+  const current = monthKey(now.getFullYear(), now.getMonth())
+  return loans.filter((loan) => loan.lastPayment >= current)
+}
+
 export function affirmVisibleMonths(loans: AffirmLoan[], now: Date) {
   const start = monthKey(now.getFullYear(), now.getMonth())
   let end = start
