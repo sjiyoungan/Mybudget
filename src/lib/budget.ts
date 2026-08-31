@@ -21,12 +21,14 @@ export type ExpenseCategoryGroup = {
 }
 
 export const DEBT_CATEGORY_ID = 'debt'
+export const MORTGAGE_CATEGORY_ID = 'mortgage'
+export const VARIABLE_CATEGORY_ID = 'variable'
 
 export const defaultExpenseCategories: ExpenseCategoryGroup[] = [
-  { id: 'mortgage', name: 'Mortgage' },
+  { id: MORTGAGE_CATEGORY_ID, name: 'Mortgage' },
   { id: 'pets', name: 'Pets' },
   { id: 'recurring', name: 'Recurring' },
-  { id: 'variable', name: 'Variable' },
+  { id: VARIABLE_CATEGORY_ID, name: 'Variable' },
   { id: DEBT_CATEGORY_ID, name: 'Debt' },
 ]
 
@@ -734,6 +736,16 @@ export function totalDebtPayments(debts: Debt[]) {
 
 export function totalMonthlyExpenses(expenses: RecurringExpense[]) {
   return expenses.reduce((sum, item) => sum + monthlyAmount(item), 0)
+}
+
+export function totalMonthlyExpensesExcluding(
+  expenses: RecurringExpense[],
+  categoryIds: string[],
+) {
+  const skip = new Set(categoryIds)
+  return expenses
+    .filter((item) => !skip.has(item.category))
+    .reduce((sum, item) => sum + monthlyAmount(item), 0)
 }
 
 export function isDebtExpense(expense: Pick<RecurringExpense, 'category'>) {

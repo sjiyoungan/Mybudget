@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
@@ -47,9 +48,12 @@ import {
   paymentWithoutCharges,
   roundCents,
   DEBT_CATEGORY_ID,
+  MORTGAGE_CATEGORY_ID,
+  VARIABLE_CATEGORY_ID,
   totalDebtPayments,
   totalForCategory,
   totalMonthlyExpenses,
+  totalMonthlyExpensesExcluding,
   type AccountKind,
   type Debt,
   type ExpenseFrequency,
@@ -158,7 +162,7 @@ function BankSelect({
     return (
       <SelectItem key={account.id} value={account.id}>
         {account.lastFour
-          ? `${account.name} · ${account.lastFour}`
+          ? `${account.name} Â· ${account.lastFour}`
           : account.name}
       </SelectItem>
     )
@@ -1063,7 +1067,7 @@ function EditExpensesDialog({
             <DialogTitle>Remove expense?</DialogTitle>
             <DialogDescription>
               {removeTarget?.name
-                ? `Removing “${removeTarget.name}” will delete it from this list.`
+                ? `Removing â€œ${removeTarget.name}â€ will delete it from this list.`
                 : 'Removing this expense will delete it from this list.'}
               {removeId && linkedDebtIds.has(removeId)
                 ? ' It will also be removed from Debt.'
@@ -1361,7 +1365,7 @@ function EditOneExpenseDialog({
             <DialogTitle>Remove expense?</DialogTitle>
             <DialogDescription>
               {draft?.name
-                ? `Removing “${draft.name}” will delete it from this list.`
+                ? `Removing â€œ${draft.name}â€ will delete it from this list.`
                 : 'Removing this expense will delete it from this list.'}
               {linkedDebt
                 ? ' It will also be removed from Debt.'
@@ -1512,29 +1516,100 @@ function EmptyNote({ children }: { children: string }) {
 }
 
 export function ExpenseDetailCards() {
+  const { expenses } = useBudget()
+  const total = totalMonthlyExpenses(expenses)
+  const withoutMortgage = totalMonthlyExpensesExcluding(expenses, [
+    MORTGAGE_CATEGORY_ID,
+  ])
+  const withoutMortgageOrVariable = totalMonthlyExpensesExcluding(expenses, [
+    MORTGAGE_CATEGORY_ID,
+    VARIABLE_CATEGORY_ID,
+  ])
+
   return (
-    <section className="grid items-start gap-6 lg:grid-cols-2">
-      <ExpensesCard />
+    <div className="grid gap-6">
+      <section className="grid gap-4 md:grid-cols-3">
+        <ExpenseMetricCard label="Total expenses" amount={total} />
+        <ExpenseMetricCard
+          label="Expenses without mortgage"
+          amount={withoutMortgage}
+        />
+        <ExpenseMetricCard
+          label="Expenses without mortgage or variables"
+          amount={withoutMortgageOrVariable}
+        />
+      </section>
+
+      <section className="grid items-start gap-6 lg:grid-cols-2">
+        <ExpensesCard />
+        <DebtExpensesCard />
+      </section>
+
       <AccountsCard />
-    </section>
+    </div>
+  )
+}
+
+function ExpenseMetricCard({
+  label,
+  amount,
+}: {
+  label: string
+  amount: number
+}) {
+  return (
+    <Card>
+      <CardHeader className="gap-5">
+        <CardDescription>{label}</CardDescription>
+        <CardTitle className="text-2xl">{formatUsd(amount)}</CardTitle>
+      </CardHeader>
+    </Card>
   )
 }
 
 function ExpensesCard() {
+  return (
+    <CategoryExpensesCard
+      title="Total monthly expenses"
+      mode="expenses"
+    />
+  )
+}
+
+function DebtExpensesCard() {
+  return <CategoryExpensesCard title="Debt" mode="debt" />
+}
+
+function CategoryExpensesCard({
+  title,
+  mode,
+}: {
+  title: string
+  mode: 'expenses' | 'debt'
+}) {
   const { categories, expenses } = useBudget()
   const [open, setOpen] = useState(false)
-  const [viewAll, setViewAll] = useState(false)
+  const [viewAll, setViewAll] = useState(mode === 'debt')
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null)
   const [amountEditId, setAmountEditId] = useState<string | null>(null)
 
-  const total = totalMonthlyExpenses(expenses)
+  const shownCategories = categories.filter((item) =>
+    mode === 'debt'
+      ? item.id === DEBT_CATEGORY_ID
+      : item.id !== DEBT_CATEGORY_ID,
+  )
+  const debtItems = expenses.filter((expense) => expense.category === DEBT_CATEGORY_ID)
+  const total =
+    mode === 'debt'
+      ? totalForCategory(expenses, DEBT_CATEGORY_ID)
+      : totalMonthlyExpensesExcluding(expenses, [DEBT_CATEGORY_ID])
 
   return (
     <>
       <Card className="self-start">
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
-            <CardTitle>Total monthly expenses</CardTitle>
+            <CardTitle>{title}</CardTitle>
             <CardGearButton
               label="Edit expenses"
               onClick={() => setOpen(true)}
@@ -1547,76 +1622,136 @@ function ExpensesCard() {
           </p>
           <div className="border-border border-t" />
           <div className="pt-2">
-            <div
-              className={cn(
-                'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4',
-                viewAll ? 'gap-y-3' : 'gap-y-1',
-                !viewAll && 'cursor-pointer',
-              )}
-              onClick={() => setViewAll(true)}
-            >
-              {categories.map((item) => {
-                const details = expenses.filter(
-                  (expense) => expense.category === item.id,
-                )
-                return (
-                  <div
-                    key={item.id}
-                    className="col-span-2 grid grid-cols-subgrid gap-y-1"
-                  >
-                    <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
-                      <span>{item.name}</span>
-                      <span className="text-right tabular-nums">
-                        {formatUsd(totalForCategory(expenses, item.id))}
-                      </span>
-                    </div>
-                    {viewAll && details.length > 0 ? (
-                      <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
-                        <div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
-                          {details.map((expense) => (
-                            <Fragment key={expense.id}>
-                              <button
-                                type="button"
-                                className="cursor-pointer pl-2 text-left text-neutral-600 hover:text-foreground"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  setAmountEditId(null)
-                                  setEditExpenseId(expense.id)
-                                }}
-                              >
-                                {expense.name}
-                              </button>
-                              <ExpenseAmountEdit
-                                expense={expense}
-                                editing={amountEditId === expense.id}
-                                onEdit={setAmountEditId}
-                              />
-                            </Fragment>
-                          ))}
-                        </div>
+            {mode === 'debt' ? (
+              <>
+                <div
+                  className={cn(
+                    'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1',
+                    !viewAll && 'cursor-pointer',
+                  )}
+                  onClick={() => setViewAll(true)}
+                >
+                  {viewAll && debtItems.length > 0 ? (
+                    <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
+                      <div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
+                        {debtItems.map((expense) => (
+                          <Fragment key={expense.id}>
+                            <button
+                              type="button"
+                              className="cursor-pointer pl-2 text-left text-neutral-600 hover:text-foreground"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setAmountEditId(null)
+                                setEditExpenseId(expense.id)
+                              }}
+                            >
+                              {expense.name}
+                            </button>
+                            <ExpenseAmountEdit
+                              expense={expense}
+                              editing={amountEditId === expense.id}
+                              onEdit={setAmountEditId}
+                            />
+                          </Fragment>
+                        ))}
                       </div>
-                    ) : null}
-                  </div>
-                )
-              })}
-            </div>
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                className="cursor-pointer bg-transparent p-0 text-sm"
-                aria-expanded={viewAll}
-                onClick={() => {
-                  if (viewAll) {
-                    setAmountEditId(null)
-                    setViewAll(false)
-                    return
-                  }
-                  setViewAll(true)
-                }}
-              >
-                {viewAll ? 'Hide' : 'View all'}
-              </button>
-            </div>
+                    </div>
+                  ) : viewAll ? (
+                    <EmptyNote>No debt payments yet.</EmptyNote>
+                  ) : null}
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    className="cursor-pointer bg-transparent p-0 text-sm"
+                    aria-expanded={viewAll}
+                    onClick={() => {
+                      if (viewAll) {
+                        setAmountEditId(null)
+                        setViewAll(false)
+                        return
+                      }
+                      setViewAll(true)
+                    }}
+                  >
+                    {viewAll ? 'Hide' : 'View all'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className={cn(
+                    'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4',
+                    viewAll ? 'gap-y-3' : 'gap-y-1',
+                    !viewAll && 'cursor-pointer',
+                  )}
+                  onClick={() => setViewAll(true)}
+                >
+                  {shownCategories.map((item) => {
+                    const details = expenses.filter(
+                      (expense) => expense.category === item.id,
+                    )
+                    return (
+                      <div
+                        key={item.id}
+                        className="col-span-2 grid grid-cols-subgrid gap-y-1"
+                      >
+                        <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
+                          <span>{item.name}</span>
+                          <span className="text-right tabular-nums">
+                            {formatUsd(totalForCategory(expenses, item.id))}
+                          </span>
+                        </div>
+                        {viewAll && details.length > 0 ? (
+                          <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
+                            <div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
+                              {details.map((expense) => (
+                                <Fragment key={expense.id}>
+                                  <button
+                                    type="button"
+                                    className="cursor-pointer pl-2 text-left text-neutral-600 hover:text-foreground"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setAmountEditId(null)
+                                      setEditExpenseId(expense.id)
+                                    }}
+                                  >
+                                    {expense.name}
+                                  </button>
+                                  <ExpenseAmountEdit
+                                    expense={expense}
+                                    editing={amountEditId === expense.id}
+                                    onEdit={setAmountEditId}
+                                  />
+                                </Fragment>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    className="cursor-pointer bg-transparent p-0 text-sm"
+                    aria-expanded={viewAll}
+                    onClick={() => {
+                      if (viewAll) {
+                        setAmountEditId(null)
+                        setViewAll(false)
+                        return
+                      }
+                      setViewAll(true)
+                    }}
+                  >
+                    {viewAll ? 'Hide' : 'View all'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -2125,7 +2260,7 @@ function EditAccountsDialog({
             <DialogTitle>Remove account?</DialogTitle>
             <DialogDescription>
               {removeTarget?.name
-                ? `Removing “${removeTarget.name}” will delete it from this list.`
+                ? `Removing â€œ${removeTarget.name}â€ will delete it from this list.`
                 : 'Removing this account will delete it from this list.'}{' '}
               This can&apos;t be undone from here.
             </DialogDescription>
@@ -2472,7 +2607,7 @@ export function DebtsCard() {
                     creditor={item.lender}
                     minimum={formatUsd(paymentWithoutCharges(item))}
                     balance={formatUsd(item.balance)}
-                    paidOff={last ? formatMonthsLeft(last, now) : '—'}
+                    paidOff={last ? formatMonthsLeft(last, now) : 'â€”'}
                   />
                 )
               })}
@@ -2987,7 +3122,7 @@ export function EditDebtsDialog({
             <DialogTitle>Remove debt?</DialogTitle>
             <DialogDescription>
               {removeTarget?.lender
-                ? `Removing “${removeTarget.lender}” will delete it from this list.`
+                ? `Removing â€œ${removeTarget.lender}â€ will delete it from this list.`
                 : 'Removing this debt will delete it from this list.'}{' '}
               This can&apos;t be undone from here.
             </DialogDescription>
