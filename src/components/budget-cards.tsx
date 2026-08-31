@@ -2345,32 +2345,15 @@ function CategoryExpensesCard({
                     <EmptyNote>No debt payments yet.</EmptyNote>
                   </div>
                 ) : (
-                  debtItems.map((expense) => {
-                    const extra =
-                      debts.find((item) => item.id === expense.id)
-                        ?.extraPayment ?? 0
-                    return (
-                      <div
-                        key={expense.id}
-                        className="col-span-2 grid grid-cols-subgrid"
-                      >
-                        <ExpenseLine
-                          expense={expense}
-                          editingAmount={amountEditId === expense.id}
-                          onEditAmount={setAmountEditId}
-                          onEditName={setEditExpenseId}
-                        />
-                        {extra > 0.005 ? (
-                          <div className="col-span-2 grid grid-cols-subgrid items-baseline rounded-[6px] bg-[#f6f6f6] py-1">
-                            <span className="pl-1 text-neutral-600">Extra</span>
-                            <span className="w-full text-right text-neutral-600 tabular-nums">
-                              {formatUsdWholeUp(extra)}
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                    )
-                  })
+                  debtItems.map((expense) => (
+                    <ExpenseLine
+                      key={expense.id}
+                      expense={expense}
+                      editingAmount={amountEditId === expense.id}
+                      onEditAmount={setAmountEditId}
+                      onEditName={setEditExpenseId}
+                    />
+                  ))
                 )}
               </div>
             ) : (
@@ -3176,6 +3159,9 @@ function AccountDrawer({
                             />
                           </span>
                         </div>
+                        <p className="text-muted-foreground px-1 pt-2 pb-0.5 text-xs font-medium">
+                          On this card
+                        </p>
                         {line.charges.map((charge) => {
                           const chargeEditing = editingId === charge.id
                           return (
@@ -3234,6 +3220,19 @@ function AccountDrawer({
                             </div>
                           )
                         })}
+                        {line.charges.length > 0 ? (
+                          <div className="border-border mt-1 flex items-baseline border-t py-1 pr-1 pl-1">
+                            <span className="text-neutral-600 min-w-0 flex-1 pl-2">
+                              Total expenses
+                            </span>
+                            <span className="text-neutral-600">
+                              <AmountCols
+                                left={formatUsdWholeUp(chargeTotal / 2)}
+                                right={formatUsdWholeUp(chargeTotal)}
+                              />
+                            </span>
+                          </div>
+                        ) : null}
                         {line.hiddenCharges.map((charge) => {
                           const chargeEditing = editingId === charge.id
                           return (
