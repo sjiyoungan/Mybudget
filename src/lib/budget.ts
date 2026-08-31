@@ -4,10 +4,12 @@ const STORAGE_KEY = 'mybudget.budget.v1'
 
 export type AccountRole = 'bills' | 'overflow' | 'other'
 
+export type AccountKind = 'checking' | 'credit'
+
 export type BankAccount = {
   id: string
   name: string
-  kind: string
+  kind: AccountKind
   lastFour: string
   role: AccountRole
   balance: number
@@ -23,6 +25,7 @@ export const defaultExpenseCategories: ExpenseCategoryGroup[] = [
   { id: 'pets', name: 'Pets' },
   { id: 'recurring', name: 'Recurring' },
   { id: 'variable', name: 'Variable' },
+  { id: 'debt', name: 'Debt' },
 ]
 
 export type ExpenseCategory = string
@@ -159,7 +162,7 @@ function mergeSheetAccounts(accounts: BankAccount[]): BankAccount[] {
     return {
       ...account,
       name: sheet.name,
-      kind: 'Checking',
+      kind: isAccountKind(account.kind) ? account.kind : 'checking',
       lastFour: sheet.lastFour,
     }
   })
@@ -174,7 +177,7 @@ function mergeSheetAccounts(accounts: BankAccount[]): BankAccount[] {
     next.push({
       id: sheet.id,
       name: sheet.name,
-      kind: 'Checking',
+      kind: 'checking',
       lastFour: sheet.lastFour,
       role: sheet.role,
       balance: 0,
@@ -189,7 +192,7 @@ export const defaultAccounts: BankAccount[] = sheetBankAccounts.map(
   ({ id, name, lastFour, role }) => ({
     id,
     name,
-    kind: 'Checking',
+    kind: 'checking',
     lastFour,
     role,
     balance: 0,
@@ -295,6 +298,12 @@ function normalizeCategories(
   const list =
     fromState.length > 0 ? [...fromState] : [...defaultExpenseCategories]
   const known = new Set(list.map((item) => item.id))
+  for (const def of defaultExpenseCategories) {
+    if (!known.has(def.id)) {
+      list.push({ ...def })
+      known.add(def.id)
+    }
+  }
   for (const expense of expenses) {
     if (expense.category && !known.has(expense.category)) {
       list.push({ id: expense.category, name: expense.category })
@@ -310,6 +319,22 @@ function isExpenseCategory(value: unknown): value is string {
 
 function isExpenseFrequency(value: unknown): value is ExpenseFrequency {
   return value === 'monthly' || value === 'annual'
+}
+
+export function isAccountKind(value: unknown): value is AccountKind {
+  return value === 'checking' || value === 'credit'
+}
+
+export function normalizeAccountKind(value: unknown): AccountKind {
+  if (isAccountKind(value)) return value
+  if (typeof value !== 'string') return 'checking'
+  const n = value.trim().toLowerCase()
+  if (n.includes('credit')) return 'credit'
+  return 'checking'
+}
+
+export function accountKindLabel(kind: AccountKind) {
+  return kind === 'credit' ? 'Credit card' : 'Checking'
 }
 
 export function roundCents(value: number) {
@@ -345,12 +370,13 @@ function normalizeAccount(value: unknown): BankAccount | null {
   const item = value as Partial<BankAccount>
   if (typeof item.id !== 'string' || typeof item.name !== 'string') return null
   const rawKind = typeof item.kind === 'string' ? item.kind : ''
-  const kind =
-    rawKind.replace(/\s*·\s*\d{4}\s*$/, '').trim() || 'Checking'
   const lastFour =
     typeof item.lastFour === 'string' && lastFourDigits(item.lastFour)
       ? lastFourDigits(item.lastFour)
       : lastFourFromKind(rawKind)
+  const kind = normalizeAccountKind(
+    rawKind.replace(/\s*·\s*\d{4}\s*$/, '').trim(),
+  )
   const role =
     item.role === 'bills' || item.role === 'overflow' ? item.role : 'other'
   return {
@@ -568,12 +594,6 @@ export function totalDebtMinimums(debts: Debt[]) {
   return debts.reduce((sum, item) => sum + item.minimum, 0)
 }
 
-export function totalMonthlyExpenses(
-  expenses: RecurringExpense[],
-  debts: Debt[],
-) {
-  return (
-    expenses.reduce((sum, item) => sum + monthlyAmount(item), 0) +
-    totalDebtMinimums(debts)
-  )
+export function totalMonthlyExpenses(expenses: RecurringExpense[]) {
+  return expenses.reduce((sum, item) => sum + monthlyAmount(item), 0)
 }

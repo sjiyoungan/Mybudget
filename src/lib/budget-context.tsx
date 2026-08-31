@@ -11,6 +11,7 @@ import {
   compareExpensesByDueDay,
   loadBudget,
   saveBudget,
+  type AccountKind,
   type AccountRole,
   type BankAccount,
   type BudgetState,
@@ -26,7 +27,7 @@ type BudgetContextValue = {
   debts: Debt[]
   addAccount: (input: {
     name: string
-    kind: string
+    kind: AccountKind
     role: AccountRole
   }) => string
   updateAccountBalance: (id: string, balance: number) => void

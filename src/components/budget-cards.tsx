@@ -27,21 +27,25 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
 import { useBudget } from '@/lib/budget-context'
 import {
+  accountKindLabel,
   billsAccount,
   billedAmountFromMonthly,
   monthlyAmount,
   monthlyNeedForAccount,
+  normalizeAccountKind,
   overflowAccount,
   totalForCategory,
-  totalDebtMinimums,
   totalMonthlyExpenses,
+  type AccountKind,
   type Debt,
   type ExpenseFrequency,
   type RecurringExpense,
@@ -68,13 +72,41 @@ function parseDay(value: string) {
   return parsed
 }
 
+function AccountKindSelect({
+  value,
+  onChange,
+}: {
+  value: AccountKind
+  onChange: (value: AccountKind) => void
+}) {
+  return (
+    <Select
+      value={value}
+      onValueChange={(next) => onChange(normalizeAccountKind(next))}
+    >
+      <SelectTrigger className="w-full" aria-label="Account type">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="checking">Checking</SelectItem>
+        <SelectItem value="credit">Credit card</SelectItem>
+      </SelectContent>
+    </Select>
+  )
+}
+
 function BankSelect({
   accounts,
   value,
   onChange,
   onAdded,
 }: {
-  accounts: { id: string; name: string; lastFour?: string }[]
+  accounts: {
+    id: string
+    name: string
+    lastFour?: string
+    kind?: string
+  }[]
   value: string
   onChange: (id: string) => void
   onAdded?: (account: { id: string; name: string }) => void
@@ -83,6 +115,13 @@ function BankSelect({
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [bankName, setBankName] = useState('')
+  const [addKind, setAddKind] = useState<AccountKind>('checking')
+  const checking = accounts.filter(
+    (account) => normalizeAccountKind(account.kind) === 'checking',
+  )
+  const credit = accounts.filter(
+    (account) => normalizeAccountKind(account.kind) === 'credit',
+  )
 
   function handleAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -91,14 +130,29 @@ function BankSelect({
     const name = bankName.trim()
     const id = addAccount({
       name,
-      kind: 'Checking',
+      kind: addKind,
       role: 'other',
     })
     onChange(id)
     onAdded?.({ id, name })
     setBankName('')
+    setAddKind('checking')
     setAdding(false)
     setOpen(false)
+  }
+
+  function accountOption(account: {
+    id: string
+    name: string
+    lastFour?: string
+  }) {
+    return (
+      <SelectItem key={account.id} value={account.id}>
+        {account.lastFour
+          ? `${account.name} · ${account.lastFour}`
+          : account.name}
+      </SelectItem>
+    )
   }
 
   return (
@@ -109,6 +163,7 @@ function BankSelect({
         if (!nextOpen) {
           setAdding(false)
           setBankName('')
+          setAddKind('checking')
         }
       }}
       value={value || undefined}
@@ -118,13 +173,14 @@ function BankSelect({
         <SelectValue placeholder="Bank" />
       </SelectTrigger>
       <SelectContent>
-        {accounts.map((account) => (
-          <SelectItem key={account.id} value={account.id}>
-            {account.lastFour
-              ? `${account.name} · ${account.lastFour}`
-              : account.name}
-          </SelectItem>
-        ))}
+        <SelectGroup>
+          <SelectLabel>Checking</SelectLabel>
+          {checking.map(accountOption)}
+        </SelectGroup>
+        <SelectGroup>
+          <SelectLabel>Credit card</SelectLabel>
+          {credit.map(accountOption)}
+        </SelectGroup>
         <SelectSeparator />
         {adding ? (
           <form
@@ -140,6 +196,17 @@ function BankSelect({
               onChange={(event) => setBankName(event.target.value)}
               aria-label="Bank name"
             />
+            <select
+              className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
+              value={addKind}
+              onChange={(event) =>
+                setAddKind(normalizeAccountKind(event.target.value))
+              }
+              aria-label="Account type"
+            >
+              <option value="checking">Checking</option>
+              <option value="credit">Credit card</option>
+            </select>
             <Button type="submit" size="sm">
               Add account
             </Button>
@@ -1424,14 +1491,13 @@ export function ExpenseDetailCards() {
 }
 
 function ExpensesCard() {
-  const { categories, expenses, debts } = useBudget()
+  const { categories, expenses } = useBudget()
   const [open, setOpen] = useState(false)
   const [viewAll, setViewAll] = useState(false)
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null)
   const [amountEditId, setAmountEditId] = useState<string | null>(null)
 
-  const debtMinimumTotal = totalDebtMinimums(debts)
-  const total = totalMonthlyExpenses(expenses, debts)
+  const total = totalMonthlyExpenses(expenses)
 
   return (
     <>
@@ -1503,30 +1569,6 @@ function ExpensesCard() {
                   </div>
                 )
               })}
-              <div className="col-span-2 grid grid-cols-subgrid gap-y-1">
-                <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
-                  <span>Debt</span>
-                  <span className="text-right tabular-nums">
-                    {formatUsd(debtMinimumTotal)}
-                  </span>
-                </div>
-                {viewAll && debts.length > 0 ? (
-                  <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
-                    <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1">
-                      {debts.map((debt) => (
-                        <Fragment key={debt.id}>
-                          <span className="text-neutral-600 pl-2">
-                            {debt.lender}
-                          </span>
-                          <span className="text-right text-neutral-600 tabular-nums">
-                            {formatUsd(debt.minimum)}
-                          </span>
-                        </Fragment>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
             </div>
             <div className="mt-3 flex justify-end">
               <button
@@ -1584,6 +1626,7 @@ function AccountLabel({
 }
 
 const amountColClass = 'w-20 shrink-0 text-right tabular-nums'
+const typeColClass = 'w-[6.75rem] shrink-0'
 
 export function CardGearButton({
   label,
@@ -1672,6 +1715,11 @@ function AccountsCard() {
   const { accounts, expenses } = useBudget()
   const [open, setOpen] = useState(false)
   const [drawerAccount, setDrawerAccount] = useState<string | null>(null)
+  const listed = useMemo(() => {
+    const checking = accounts.filter((account) => account.kind === 'checking')
+    const credit = accounts.filter((account) => account.kind === 'credit')
+    return [...checking, ...credit]
+  }, [accounts])
 
   return (
     <>
@@ -1694,9 +1742,17 @@ function AccountsCard() {
             <div className="grid gap-y-1">
               <div className="flex items-baseline">
                 <span className="min-w-0 flex-1" />
+                <span
+                  className={cn(
+                    typeColClass,
+                    'text-muted-foreground mr-6 text-xs font-medium',
+                  )}
+                >
+                  Type
+                </span>
                 <AmountCols header left="Bi-weekly" right="Monthly" />
               </div>
-              {accounts.map((account) => {
+              {listed.map((account) => {
                 const selected = drawerAccount === account.id
                 const need = monthlyNeedForAccount(expenses, account.id)
                 return (
@@ -1718,6 +1774,9 @@ function AccountsCard() {
                         name={account.name}
                         lastFour={account.lastFour}
                       />
+                    </span>
+                    <span className={cn(typeColClass, 'text-muted-foreground mr-6')}>
+                      {accountKindLabel(account.kind)}
                     </span>
                     <AmountCols
                       left={formatUsd(need / 2)}
@@ -1745,6 +1804,7 @@ type AccountDraft = {
   id: string
   name: string
   lastFour: string
+  kind: AccountKind
 }
 
 function accountSnapshot(drafts: AccountDraft[]) {
@@ -1753,6 +1813,7 @@ function accountSnapshot(drafts: AccountDraft[]) {
       id: draft.id,
       name: draft.name.trim(),
       lastFour: draft.lastFour,
+      kind: draft.kind,
     })),
   )
 }
@@ -1777,6 +1838,7 @@ function EditAccountsDialog({
       id: account.id,
       name: account.name,
       lastFour: account.lastFour,
+      kind: account.kind,
     }))
     setDrafts(next)
     setBaseline(accountSnapshot(next))
@@ -1848,7 +1910,7 @@ function EditAccountsDialog({
         return {
           id: draft.id,
           name: draft.name.trim(),
-          kind: current?.kind ?? 'Checking',
+          kind: draft.kind,
           lastFour: draft.lastFour,
           role: current?.role ?? 'other',
           balance: current?.balance ?? 0,
@@ -1861,7 +1923,10 @@ function EditAccountsDialog({
   function addAccountRow() {
     const id = crypto.randomUUID()
     setFocusId(id)
-    setDrafts((current) => [...current, { id, name: '', lastFour: '' }])
+    setDrafts((current) => [
+      ...current,
+      { id, name: '', lastFour: '', kind: 'checking' },
+    ])
   }
 
   return (
@@ -1915,15 +1980,16 @@ function EditAccountsDialog({
           </div>
 
           <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-y-auto">
-            <div className="grid grid-cols-[minmax(12rem,20rem)_5.5rem_28px] items-center gap-2 text-xs font-medium text-muted-foreground">
+            <div className="grid grid-cols-[minmax(10rem,16rem)_7.5rem_5.5rem_28px] items-center gap-2 text-xs font-medium text-muted-foreground">
               <span>Name</span>
+              <span>Type</span>
               <span>Last four</span>
               <span />
             </div>
             {drafts.map((draft) => (
               <div
                 key={draft.id}
-                className="grid grid-cols-[minmax(12rem,20rem)_5.5rem_28px] items-center gap-2"
+                className="grid grid-cols-[minmax(10rem,16rem)_7.5rem_5.5rem_28px] items-center gap-2"
               >
                 <Input
                   className="h-8"
@@ -1934,6 +2000,10 @@ function EditAccountsDialog({
                   placeholder="Name"
                   aria-label="Account name"
                   autoFocus={focusId === draft.id}
+                />
+                <AccountKindSelect
+                  value={draft.kind}
+                  onChange={(kind) => updateDraft(draft.id, { kind })}
                 />
                 <Input
                   className="h-8 tabular-nums"

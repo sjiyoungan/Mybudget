@@ -18,12 +18,12 @@ import { usePaystubs } from '@/lib/paystub-context'
 
 export function DashboardPage() {
   const { paystubs } = usePaystubs()
-  const { expenses, debts } = useBudget()
+  const { expenses } = useBudget()
 
   const income = useMemo(() => currentMonthNet(paystubs), [paystubs])
   const expenseTotal = useMemo(
-    () => totalMonthlyExpenses(expenses, debts),
-    [expenses, debts],
+    () => totalMonthlyExpenses(expenses),
+    [expenses],
   )
   const remaining = income - expenseTotal
 
