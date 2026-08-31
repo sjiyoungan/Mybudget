@@ -247,6 +247,7 @@
   appearance: none;
   box-shadow: none;
   user-select: text;
+  -webkit-user-drag: none;
 }
 .paid-input:focus {
   outline: none;

@@ -11,7 +11,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Check, ChevronDown, Menu } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, Menu, Undo2 } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
@@ -72,6 +72,7 @@ const EXTRA_LINE = 'bg-[#E0D0D3]'
 const EXTRA_DARK = 'text-[#3A121C]'
 const EXTRA_LIGHT = 'text-[#C9A8AE]'
 const PLAN_HORIZON = 120
+const PLAN_UNDO_LIMIT = 10
 const TIP_DELAY_MS = 1000
 
 type MonthTip = {
@@ -170,6 +171,30 @@ export function DebtPage() {
   )
 }
 
+function isTypingInField(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    (target.tagName === 'TEXTAREA' ||
+      target.isContentEditable ||
+      (target.tagName === 'INPUT' && !target.classList.contains('paid-input')))
+  )
+}
+
+function paidInputHasDraft(target: EventTarget | null) {
+  if (
+    !(target instanceof HTMLInputElement) ||
+    !target.classList.contains('paid-input')
+  ) {
+    return false
+  }
+  const committed = Number(target.dataset.committed ?? '0')
+  const raw = target.value.trim()
+  if (raw === '') return committed !== 0
+  const parsed = Number(raw.replace(/[$,\s]/g, ''))
+  if (!Number.isFinite(parsed)) return true
+  return Math.round(parsed) !== committed
+}
+
 function PlannerCard({
   debts,
   plan,
@@ -190,8 +215,40 @@ function PlannerCard({
   const [view, setView] = useState<PlannerView>('planner')
   const [customOpen, setCustomOpen] = useState(false)
   const [debtsOpen, setDebtsOpen] = useState(false)
+  const [undoStack, setUndoStack] = useState<DebtPlanState[]>([])
   const columns = useMemo(() => strategyDebtOrder(debts, plan), [debts, plan])
   const rows = view === 'planner' ? upcoming : [...history].reverse()
+
+  function changePlan(next: DebtPlanState) {
+    if (JSON.stringify(next) === JSON.stringify(plan)) return
+    setUndoStack((stack) => [...stack, plan].slice(-PLAN_UNDO_LIMIT))
+    onPlanChange(next)
+  }
+
+  function undoPlan() {
+    if (undoStack.length === 0) return
+    const previous = undoStack[undoStack.length - 1]
+    setUndoStack(undoStack.slice(0, -1))
+    onPlanChange(previous)
+  }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'z' && event.key !== 'Z') return
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
+        return
+      }
+      if (customOpen || debtsOpen) return
+      if (isTypingInField(event.target) || paidInputHasDraft(event.target)) {
+        return
+      }
+      if (undoStack.length === 0) return
+      event.preventDefault()
+      undoPlan()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [customOpen, debtsOpen, onPlanChange, undoStack])
 
   function chooseStrategy(strategy: PayoffStrategy) {
     if (strategy === 'custom') {
@@ -202,10 +259,10 @@ function PlannerCard({
               plan.customOrder,
             )
           : strategyDebtOrder(debts, plan).map((debt) => debt.id)
-      onPlanChange({ ...plan, strategy, customOrder })
+      changePlan({ ...plan, strategy, customOrder })
       return
     }
-    onPlanChange({ ...plan, strategy })
+    changePlan({ ...plan, strategy })
   }
 
   return (
@@ -221,6 +278,16 @@ function PlannerCard({
             />
           </div>
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="hover-fill flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm disabled:pointer-events-none disabled:opacity-40"
+              disabled={undoStack.length === 0}
+              aria-keyshortcuts="Control+Z Meta+Z"
+              onClick={undoPlan}
+            >
+              <Undo2 className="size-3.5" />
+              Undo
+            </button>
             {plan.strategy === 'custom' ? (
               <button
                 type="button"
@@ -259,7 +326,7 @@ function PlannerCard({
           showStart={view === 'planner'}
           editPaid={view === 'planner'}
           onPaidChange={(year, month, debtId, amount) => {
-            onPlanChange(setMonthPayment(plan, year, month, debtId, amount))
+            changePlan(setMonthPayment(plan, year, month, debtId, amount))
           }}
         />
       </CardContent>
@@ -272,7 +339,7 @@ function PlannerCard({
         )}
         onOpenChange={setCustomOpen}
         onSave={(customOrder) => {
-          onPlanChange({ ...plan, strategy: 'custom', customOrder })
+          changePlan({ ...plan, strategy: 'custom', customOrder })
           setCustomOpen(false)
         }}
       />
@@ -1140,6 +1207,8 @@ function PaidCell({
       <input
         key={`${overridden ? 'o' : 'c'}-${Math.round(value)}`}
         data-no-drag
+        data-committed={Math.round(value)}
+        draggable={false}
         size={1}
         className="paid-input select-text"
         inputMode="decimal"
@@ -1163,6 +1232,18 @@ function PaidCell({
           }
         }}
         onPointerDown={(event) => event.stopPropagation()}
+        onDragStart={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
+        onDragOver={(event) => {
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'none'
+        }}
+        onDrop={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
       />
     </td>
   )
