@@ -124,12 +124,13 @@ function AprInput({
   return (
     <div className={cn('flex h-8 items-center justify-end px-2.5', DEBT_GHOST_BOX)}>
       <input
-        className="placeholder:text-muted-foreground h-full min-w-0 w-full bg-transparent text-right text-sm tabular-nums outline-none"
+        className="placeholder:text-muted-foreground h-full min-w-0 w-auto max-w-full bg-transparent text-right text-sm tabular-nums outline-none [field-sizing:content]"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="0"
         inputMode="decimal"
         aria-label="APR"
+        size={Math.max(value.length, 1)}
       />
       <span className="text-neutral-400 shrink-0 pl-0.5 text-sm">%</span>
     </div>
@@ -175,13 +176,15 @@ function DebtMoneyInput({
     onChange(formatUsdNumber(roundUp ? ceilCents(parsed) : parsed))
   }
 
+  const display = focused ? text : formatMoneyField(value)
   return (
     <div className={cn('flex h-8 items-center justify-end px-2.5', DEBT_GHOST_BOX)}>
       <span className="text-neutral-400 shrink-0 pr-0.5 text-sm">$</span>
       <input
-        className="placeholder:text-muted-foreground h-full min-w-0 w-full bg-transparent text-right text-sm tabular-nums outline-none"
-        value={focused ? text : formatMoneyField(value)}
+        className="placeholder:text-muted-foreground h-full min-w-0 w-auto max-w-full bg-transparent text-right text-sm tabular-nums outline-none [field-sizing:content]"
+        value={display}
         title={title}
+        size={Math.max(display.length, 4)}
         onFocus={() => {
           setFocused(true)
           setText(value)
@@ -217,6 +220,15 @@ function DebtMoneyDisplay({
       <span className="text-neutral-400 shrink-0 pr-0.5">$</span>
       <span>{formatUsdNumber(amount)}</span>
     </div>
+  )
+}
+
+function DebtColRule() {
+  return (
+    <span
+      className="bg-border block min-h-8 w-px justify-self-center self-stretch"
+      aria-hidden
+    />
   )
 }
 
@@ -2781,7 +2793,7 @@ type DebtDraft = {
 }
 
 const DEBT_ROW =
-  'grid-cols-[minmax(4.5rem,8.5rem)_8.5rem_5.75rem_5.75rem_5.75rem_7rem_minmax(8rem,11rem)_7rem_7rem_4.5rem_28px]'
+  'grid-cols-[minmax(4rem,6.5rem)_7rem_minmax(6rem,9rem)_4.5rem_1px_5.75rem_5.75rem_5.75rem_7rem_1px_7rem_7rem_28px]'
 
 type DebtSortKey = 'balance' | 'apr' | 'minimum' | 'total'
 type DebtSortDir = 'asc' | 'desc'
@@ -3116,7 +3128,7 @@ export function EditDebtsDialog({
         }}
       >
         <DialogContent
-          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
+          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-3.5 sm:max-w-none"
           showCloseButton={false}
           onOpenAutoFocus={(event) => event.preventDefault()}
           onPointerDownOutside={(event) => {
@@ -3144,10 +3156,10 @@ export function EditDebtsDialog({
             requestClose()
           }}
         >
-          <div className="-ml-6 -mr-4 border-b px-6 pr-4 pb-4">
+          <div className="-ml-3.5 -mr-4 border-b pr-4 pb-4 pl-3.5">
             <div className="flex items-center justify-between gap-3">
               <DialogHeader>
-                <DialogTitle className="text-2xl tracking-tight">
+                <DialogTitle className="pl-2.5 text-2xl tracking-tight">
                   Edit debts
                 </DialogTitle>
               </DialogHeader>
@@ -3207,20 +3219,22 @@ export function EditDebtsDialog({
             >
               <span className={DEBT_LABEL_LEFT}>Lender</span>
               <span className={DEBT_LABEL_LEFT}>Type</span>
+              <span className={DEBT_LABEL_LEFT}>Paid from</span>
+              <span className={DEBT_LABEL_APR}>APR</span>
+              <DebtColRule />
               <span className={DEBT_LABEL_RIGHT}>Minimum</span>
               <span className={DEBT_LABEL_RIGHT}>Extra</span>
               <span className={DEBT_LABEL_RIGHT}>Charges</span>
               <span className={cn(DEBT_LABEL_RIGHT, 'whitespace-nowrap')}>
                 Total payments
               </span>
-              <span className={DEBT_LABEL_LEFT}>Paid from</span>
+              <DebtColRule />
               <span className={cn(DEBT_LABEL_RIGHT, 'whitespace-nowrap')}>
                 Starting balance
               </span>
               <span className={cn(DEBT_LABEL_RIGHT, 'whitespace-nowrap')}>
                 Current balance
               </span>
-              <span className={DEBT_LABEL_APR}>APR</span>
               <span />
             </div>
             {listedDrafts.map((draft) => (
@@ -3243,6 +3257,22 @@ export function EditDebtsDialog({
                   onChange={(type) => updateDraft(draft.id, { type })}
                   quiet
                 />
+                <BankSelect
+                  accounts={accounts}
+                  value={draft.paidFromAccountId}
+                  onChange={(id) =>
+                    updateDraft(draft.id, { paidFromAccountId: id })
+                  }
+                  includeCards={false}
+                  quiet
+                  ariaLabel="Paid from"
+                  placeholder="Paid from"
+                />
+                <AprInput
+                  value={draft.apr}
+                  onChange={(apr) => updateDraft(draft.id, { apr })}
+                />
+                <DebtColRule />
                 <DebtMoneyInput
                   value={draft.minimum}
                   onChange={(minimum) => updateDraft(draft.id, { minimum })}
@@ -3275,17 +3305,7 @@ export function EditDebtsDialog({
                   ariaLabel="Total payments"
                   roundUp
                 />
-                <BankSelect
-                  accounts={accounts}
-                  value={draft.paidFromAccountId}
-                  onChange={(id) =>
-                    updateDraft(draft.id, { paidFromAccountId: id })
-                  }
-                  includeCards={false}
-                  quiet
-                  ariaLabel="Paid from"
-                  placeholder="Paid from"
-                />
+                <DebtColRule />
                 <DebtMoneyInput
                   value={draft.balance}
                   onChange={(balance) => updateDraft(draft.id, { balance })}
@@ -3296,10 +3316,6 @@ export function EditDebtsDialog({
                     currentById.get(draft.id) ?? moneyField(draft.balance) ?? 0
                   }
                   ariaLabel="Current balance"
-                />
-                <AprInput
-                  value={draft.apr}
-                  onChange={(apr) => updateDraft(draft.id, { apr })}
                 />
                 <Button
                   type="button"
@@ -3315,7 +3331,7 @@ export function EditDebtsDialog({
             ))}
           </div>
 
-          <DialogFooter className="-ml-6 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
+          <DialogFooter className="-ml-3.5 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
             <Button
               type="button"
               variant="ghost"
