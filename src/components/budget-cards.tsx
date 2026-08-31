@@ -1281,9 +1281,12 @@ function EditExpensesDialog({
                 categoryId=""
                 active={dropCategoryId === ''}
               >
-                <p className="text-muted-foreground pl-6 text-sm font-medium">
-                  <span className="pl-2.5">Uncategorized</span>
-                </p>
+                <div>
+                  <p className="text-muted-foreground pl-6 text-sm font-medium">
+                    <span className="pl-2.5">Uncategorized</span>
+                  </p>
+                  <div className="bg-neutral-300 mt-1.5 h-px w-full" aria-hidden />
+                </div>
                 {uncategorized.map((draft) => (
                   <ExpenseDraftRow
                     key={draft.id}
@@ -1313,7 +1316,8 @@ function EditExpensesDialog({
                   categoryId={category.id}
                   active={dropCategoryId === category.id}
                 >
-                  <div className="flex items-center gap-2 pl-6">
+                  <div>
+                    <div className="flex items-center gap-2 pl-6">
                     <p className="pl-2.5 text-sm font-medium">{category.name}</p>
                     <Button
                       type="button"
@@ -1325,6 +1329,8 @@ function EditExpensesDialog({
                     >
                       <Plus className="size-3.5" />
                     </Button>
+                    </div>
+                    <div className="bg-neutral-300 mt-1.5 h-px w-full" aria-hidden />
                   </div>
                   {items.map((draft) => (
                     <ExpenseDraftRow
