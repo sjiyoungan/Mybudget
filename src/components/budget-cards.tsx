@@ -84,16 +84,46 @@ function parseDay(value: string) {
   return parsed
 }
 
-function DebtTypeSelect({
+const DEBT_GHOST_FIELD =
+  'border-transparent bg-transparent shadow-none hover:border-input hover:bg-transparent focus-visible:border-input focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent data-[state=open]:border-input'
+
+function AprInput({
   value,
   onChange,
 }: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="flex h-8 items-center justify-end rounded-lg border border-transparent px-2 hover:border-input focus-within:border-input">
+      <input
+        className="placeholder:text-muted-foreground h-full min-w-0 w-full bg-transparent text-right text-sm tabular-nums outline-none"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="0"
+        inputMode="decimal"
+        aria-label="APR"
+      />
+      <span className="text-neutral-400 shrink-0 pl-0.5 text-sm">%</span>
+    </div>
+  )
+}
+
+function DebtTypeSelect({
+  value,
+  onChange,
+  quiet = false,
+}: {
   value: DebtType
   onChange: (value: DebtType) => void
+  quiet?: boolean
 }) {
   return (
     <Select value={value} onValueChange={(next) => onChange(next as DebtType)}>
-      <SelectTrigger className="h-8 w-full" aria-label="Debt type">
+      <SelectTrigger
+        className={cn('h-8 w-full', quiet && DEBT_GHOST_FIELD)}
+        aria-label="Debt type"
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -110,6 +140,7 @@ function BankSelect({
   onChange,
   onAdded,
   includeCards = true,
+  quiet = false,
   ariaLabel = 'Bank account',
   placeholder = 'Bank',
 }: {
@@ -123,6 +154,7 @@ function BankSelect({
   onChange: (id: string) => void
   onAdded?: (account: { id: string; name: string }) => void
   includeCards?: boolean
+  quiet?: boolean
   ariaLabel?: string
   placeholder?: string
 }) {
@@ -181,7 +213,10 @@ function BankSelect({
       value={value || undefined}
       onValueChange={onChange}
     >
-      <SelectTrigger className="w-full" aria-label={ariaLabel}>
+      <SelectTrigger
+        className={cn('w-full', quiet && DEBT_GHOST_FIELD)}
+        aria-label={ariaLabel}
+      >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
@@ -2633,7 +2668,7 @@ type DebtDraft = {
 }
 
 const DEBT_ROW =
-  'grid-cols-[minmax(8rem,12rem)_8.5rem_5.25rem_5.25rem_5.25rem_5.25rem_minmax(8rem,11rem)_8.5rem_4.5rem_28px]'
+  'grid-cols-[minmax(6.5rem,10.5rem)_8.5rem_5.25rem_5.25rem_5.25rem_5.25rem_minmax(8rem,11rem)_7rem_4.5rem_28px]'
 
 function debtSnapshot(drafts: DebtDraft[]) {
   return JSON.stringify(
@@ -2866,6 +2901,7 @@ export function EditDebtsDialog({
         <DialogContent
           className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
           showCloseButton={false}
+          onOpenAutoFocus={(event) => event.preventDefault()}
           onPointerDownOutside={(event) => {
             event.preventDefault()
             if (confirmOpen || removeId) return
@@ -2902,7 +2938,7 @@ export function EditDebtsDialog({
           <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-x-auto overflow-y-auto">
             <div
               className={cn(
-                'grid items-center gap-2 text-xs font-medium text-muted-foreground',
+                'grid items-center gap-4 text-xs font-medium text-muted-foreground',
                 DEBT_ROW,
               )}
             >
@@ -2920,10 +2956,10 @@ export function EditDebtsDialog({
             {drafts.map((draft) => (
               <div
                 key={draft.id}
-                className={cn('grid items-center gap-2', DEBT_ROW)}
+                className={cn('grid items-center gap-4', DEBT_ROW)}
               >
                 <Input
-                  className="h-8"
+                  className={cn('h-8', DEBT_GHOST_FIELD)}
                   value={draft.lender}
                   onChange={(event) =>
                     updateDraft(draft.id, { lender: event.target.value })
@@ -2935,9 +2971,10 @@ export function EditDebtsDialog({
                 <DebtTypeSelect
                   value={draft.type}
                   onChange={(type) => updateDraft(draft.id, { type })}
+                  quiet
                 />
                 <Input
-                  className="h-8 text-right tabular-nums"
+                  className={cn('h-8 text-right tabular-nums', DEBT_GHOST_FIELD)}
                   value={draft.minimum}
                   onChange={(event) =>
                     updateDraft(draft.id, { minimum: event.target.value })
@@ -2947,7 +2984,7 @@ export function EditDebtsDialog({
                   aria-label="Minimum payment"
                 />
                 <Input
-                  className="h-8 text-right tabular-nums"
+                  className={cn('h-8 text-right tabular-nums', DEBT_GHOST_FIELD)}
                   value={draft.extraPayment}
                   onChange={(event) =>
                     updateDraft(draft.id, { extraPayment: event.target.value })
@@ -2963,7 +3000,7 @@ export function EditDebtsDialog({
                   {formatUsd(chargesAmount(draft))}
                 </div>
                 <Input
-                  className="h-8 text-right tabular-nums"
+                  className={cn('h-8 text-right tabular-nums', DEBT_GHOST_FIELD)}
                   value={
                     totalFocusId === draft.id
                       ? totalText
@@ -2991,11 +3028,12 @@ export function EditDebtsDialog({
                     updateDraft(draft.id, { paidFromAccountId: id })
                   }
                   includeCards={false}
+                  quiet
                   ariaLabel="Paid from"
                   placeholder="Paid from"
                 />
                 <Input
-                  className="h-8 text-right tabular-nums"
+                  className={cn('h-8 text-right tabular-nums', DEBT_GHOST_FIELD)}
                   value={draft.balance}
                   onChange={(event) =>
                     updateDraft(draft.id, { balance: event.target.value })
@@ -3004,15 +3042,9 @@ export function EditDebtsDialog({
                   inputMode="decimal"
                   aria-label="Starting balance"
                 />
-                <Input
-                  className="h-8 text-right tabular-nums"
+                <AprInput
                   value={draft.apr}
-                  onChange={(event) =>
-                    updateDraft(draft.id, { apr: event.target.value })
-                  }
-                  placeholder="0"
-                  inputMode="decimal"
-                  aria-label="APR"
+                  onChange={(apr) => updateDraft(draft.id, { apr })}
                 />
                 <Button
                   type="button"
