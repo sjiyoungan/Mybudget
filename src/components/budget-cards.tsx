@@ -1478,7 +1478,7 @@ function EditExpensesDialog({
                   <p className="text-muted-foreground pl-4 text-sm font-semibold">
                     <span className="pl-2.5">Uncategorized</span>
                   </p>
-                  <div className="bg-neutral-300 mx-4 mt-1.5 h-px" aria-hidden />
+                  <div className="bg-border mx-4 mt-1.5 h-px" aria-hidden />
                 </div>
                 {uncategorized.map((draft) => (
                   <ExpenseDraftRow
@@ -1526,7 +1526,7 @@ function EditExpensesDialog({
                       <Plus className="size-3.5" />
                     </Button>
                     </div>
-                    <div className="bg-neutral-300 mx-4 mt-1.5 h-px" aria-hidden />
+                    <div className="bg-border mx-4 mt-1.5 h-px" aria-hidden />
                   </div>
                   {items.map((draft) => (
                     <ExpenseDraftRow
