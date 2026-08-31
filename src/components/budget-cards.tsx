@@ -104,6 +104,44 @@ function parseDay(value: string) {
   return parsed
 }
 
+function outsideEventTarget(event: {
+  target: EventTarget | null
+  detail?: { originalEvent?: Event }
+}) {
+  const original = event.detail?.originalEvent?.target
+  if (original instanceof EventTarget) return original
+  return event.target
+}
+
+function isPortaledMenuTarget(target: EventTarget | null) {
+  const node =
+    target instanceof Element
+      ? target
+      : target instanceof Node
+        ? target.parentElement
+        : null
+  if (!node) return false
+  return (
+    node.closest('[data-slot="select-content"]') != null ||
+    node.closest('[data-slot="dropdown-menu-content"]') != null ||
+    node.closest('[data-radix-popper-content-wrapper]') != null
+  )
+}
+
+function ignoreDialogOutside(
+  event: {
+    preventDefault: () => void
+    target: EventTarget | null
+    detail?: { originalEvent?: Event }
+  },
+  blocked: boolean,
+) {
+  event.preventDefault()
+  if (blocked) return true
+  if (document.visibilityState === 'hidden') return true
+  return isPortaledMenuTarget(outsideEventTarget(event))
+}
+
 const DEBT_GHOST_FIELD =
   'border-transparent bg-transparent shadow-none hover:border-input hover:bg-transparent focus-visible:border-input focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent data-[state=open]:border-input'
 
@@ -165,7 +203,7 @@ function DebtMoneyInput({
 
   function commit(raw: string) {
     if (raw.trim() === '') {
-      onChange('')
+      if (value !== '') onChange('')
       return
     }
     const parsed = parseAmount(raw)
@@ -173,7 +211,10 @@ function DebtMoneyInput({
       onChange(raw)
       return
     }
-    onChange(formatUsdNumber(roundUp ? ceilCents(parsed) : parsed))
+    const next = roundUp ? ceilCents(parsed) : parsed
+    const current = parseAmount(value)
+    if (current != null && roundCents(current) === roundCents(next)) return
+    onChange(formatUsdNumber(next))
   }
 
   const display = focused ? text : formatMoneyField(value)
@@ -242,10 +283,16 @@ function DebtTypeSelect({
   quiet?: boolean
 }) {
   return (
-    <Select value={value} onValueChange={(next) => onChange(next as DebtType)}>
+    <Select
+      value={value}
+      onValueChange={(next) => {
+        if (next === value) return
+        onChange(next as DebtType)
+      }}
+    >
       <SelectTrigger
         className={cn('h-8 w-full', quiet && DEBT_GHOST_FIELD)}
-        chevron={quiet ? 'hover' : 'always'}
+        chevron="hover"
         aria-label="Debt type"
       >
         <SelectValue />
@@ -335,11 +382,14 @@ function BankSelect({
         }
       }}
       value={value || undefined}
-      onValueChange={onChange}
+      onValueChange={(id) => {
+        if (id === value) return
+        onChange(id)
+      }}
     >
       <SelectTrigger
         className={cn('w-full', quiet && DEBT_GHOST_FIELD)}
-        chevron={quiet ? 'hover' : 'always'}
+        chevron="hover"
         aria-label={ariaLabel}
       >
         <SelectValue placeholder={placeholder} />
@@ -628,9 +678,12 @@ function FrequencySelect({
   return (
     <Select
       value={value}
-      onValueChange={(next) => onChange(next as ExpenseFrequency)}
+      onValueChange={(next) => {
+        if (next === value) return
+        onChange(next as ExpenseFrequency)
+      }}
     >
-      <SelectTrigger className="w-full" aria-label="Frequency">
+      <SelectTrigger className="w-full" chevron="hover" aria-label="Frequency">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -1003,15 +1056,11 @@ function EditExpensesDialog({
           className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
           showCloseButton={false}
           onPointerDownOutside={(event) => {
-            event.preventDefault()
-            if (confirmOpen || removeId || addCategoryOpen) return
-            if (document.visibilityState === 'hidden') return
+            if (ignoreDialogOutside(event, confirmOpen || removeId != null || addCategoryOpen)) return
             requestClose()
           }}
           onInteractOutside={(event) => {
-            event.preventDefault()
-            if (confirmOpen || removeId || addCategoryOpen) return
-            if (document.visibilityState === 'hidden') return
+            if (ignoreDialogOutside(event, confirmOpen || removeId != null || addCategoryOpen)) return
             requestClose()
           }}
           onEscapeKeyDown={(event) => {
@@ -1397,15 +1446,11 @@ function EditOneExpenseDialog({
           className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
           showCloseButton={false}
           onPointerDownOutside={(event) => {
-            event.preventDefault()
-            if (confirmOpen || removeOpen) return
-            if (document.visibilityState === 'hidden') return
+            if (ignoreDialogOutside(event, confirmOpen || removeOpen)) return
             requestClose()
           }}
           onInteractOutside={(event) => {
-            event.preventDefault()
-            if (confirmOpen || removeOpen) return
-            if (document.visibilityState === 'hidden') return
+            if (ignoreDialogOutside(event, confirmOpen || removeOpen)) return
             requestClose()
           }}
           onEscapeKeyDown={(event) => {
@@ -1444,7 +1489,7 @@ function EditOneExpenseDialog({
                   }
                   disabled={linkedDebt}
                 >
-                  <SelectTrigger aria-label="Category">
+                  <SelectTrigger chevron="hover" aria-label="Category">
                     <SelectValue placeholder="Category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -2277,15 +2322,11 @@ function EditAccountsDialog({
           className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
           showCloseButton={false}
           onPointerDownOutside={(event) => {
-            event.preventDefault()
-            if (confirmOpen || removeId) return
-            if (document.visibilityState === 'hidden') return
+            if (ignoreDialogOutside(event, confirmOpen || removeId != null)) return
             requestClose()
           }}
           onInteractOutside={(event) => {
-            event.preventDefault()
-            if (confirmOpen || removeId) return
-            if (document.visibilityState === 'hidden') return
+            if (ignoreDialogOutside(event, confirmOpen || removeId != null)) return
             requestClose()
           }}
           onEscapeKeyDown={(event) => {
@@ -2945,7 +2986,7 @@ export function EditDebtsDialog({
       return minimum == null ? draft : { ...draft, minimum: String(minimum) }
     })
     setDrafts(next)
-    setBaseline(debtSnapshot(loaded))
+    setBaseline(debtSnapshot(next))
     setConfirmOpen(false)
     setRemoveId(null)
     setFocusId(null)
@@ -3161,15 +3202,11 @@ export function EditDebtsDialog({
           showCloseButton={false}
           onOpenAutoFocus={(event) => event.preventDefault()}
           onPointerDownOutside={(event) => {
-            event.preventDefault()
-            if (confirmOpen || removeId) return
-            if (document.visibilityState === 'hidden') return
+            if (ignoreDialogOutside(event, confirmOpen || removeId != null)) return
             requestClose()
           }}
           onInteractOutside={(event) => {
-            event.preventDefault()
-            if (confirmOpen || removeId) return
-            if (document.visibilityState === 'hidden') return
+            if (ignoreDialogOutside(event, confirmOpen || removeId != null)) return
             requestClose()
           }}
           onEscapeKeyDown={(event) => {
