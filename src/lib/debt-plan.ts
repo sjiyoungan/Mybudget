@@ -141,6 +141,49 @@ export function monthKey(year: number, month: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}`
 }
 
+export function dateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+export function parseYmd(ymd: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null
+  return { year, month: month - 1, day }
+}
+
+export function formatYmd(ymd: string) {
+  const parsed = parseYmd(ymd)
+  if (!parsed) return ymd
+  return new Date(parsed.year, parsed.month, parsed.day).toLocaleDateString(
+    'en-US',
+    { month: 'short', day: 'numeric', year: 'numeric' },
+  )
+}
+
+export function affirmPaymentDate(startDate: string, ym: string) {
+  const started = parseYmd(startDate)
+  const month = parseYm(ym)
+  if (!started || !month) return null
+  const lastDay = new Date(month.year, month.month + 1, 0).getDate()
+  const day = Math.min(started.day, lastDay)
+  return `${ym}-${String(day).padStart(2, '0')}`
+}
+
+export function affirmMonthPaid(
+  loan: Pick<AffirmLoan, 'startDate'>,
+  ym: string,
+  now: Date,
+) {
+  const current = monthKey(now.getFullYear(), now.getMonth())
+  if (ym !== current || !loan.startDate) return false
+  const due = affirmPaymentDate(loan.startDate, ym)
+  return due != null && due <= dateKey(now)
+}
+
 export function ymIndex(year: number, month: number) {
   return year * 12 + month
 }
@@ -225,10 +268,7 @@ export function loadDebtPlan(): DebtPlanState {
         ? normalizeLoggedHistory(item.loggedHistory)
         : {},
       affirmLoans: Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
-        ? item.affirmLoans.filter(isAffirmLoan).map((loan) => ({
-            ...loan,
-            name: loan.name.trim() || 'Amazon',
-          }))
+        ? item.affirmLoans.filter(isAffirmLoan).map(normalizeAffirmLoan)
         : fallback.affirmLoans,
     }
   } catch {
@@ -238,6 +278,19 @@ export function loadDebtPlan(): DebtPlanState {
 
 export function saveDebtPlan(state: DebtPlanState) {
   localStorage.setItem(PLAN_KEY, JSON.stringify(state))
+}
+
+function normalizeAffirmLoan(loan: AffirmLoan): AffirmLoan {
+  const startDate =
+    typeof loan.startDate === 'string' && parseYmd(loan.startDate)
+      ? loan.startDate
+      : undefined
+  return {
+    ...loan,
+    name: loan.name.trim() || 'Amazon',
+    startDate,
+    startMonth: loan.startMonth || (startDate ? startDate.slice(0, 7) : ''),
+  }
 }
 
 function isAffirmLoan(value: unknown): value is AffirmLoan {
@@ -973,28 +1026,42 @@ export function completeAffirmLoan(
     id?: string
     name: string
     loanId: string
-    startMonth: string
+    startDate?: string
+    startMonth?: string
     startingBalance: number
     monthly: number
   },
   now: Date,
 ): AffirmLoan {
+  const startDate = input.startDate && parseYmd(input.startDate) ? input.startDate : undefined
+  const startMonth = startDate?.slice(0, 7) || input.startMonth || ''
   const startingBalance = roundCents(Math.max(0, input.startingBalance))
   const monthly = roundCents(Math.max(0, input.monthly))
-  const months = affirmPaymentMonths(input.startMonth, startingBalance, monthly)
-  const lastPayment = months[months.length - 1] ?? input.startMonth
+  const months = affirmPaymentMonths(startMonth, startingBalance, monthly)
+  const lastPayment = months[months.length - 1] ?? startMonth
   const nowKey = monthKey(now.getFullYear(), now.getMonth())
   let remaining = startingBalance
-  if (nowKey >= input.startMonth && months.length > 0) {
-    const through = nowKey < lastPayment ? nowKey : lastPayment
-    const paidMonths = monthsBetweenYm(input.startMonth, through).length
-    remaining = roundCents(Math.max(0, startingBalance - monthly * paidMonths))
+  if (nowKey >= startMonth && months.length > 0) {
+    let through = nowKey < lastPayment ? nowKey : lastPayment
+    if (startDate) {
+      const due = affirmPaymentDate(startDate, nowKey)
+      if (due && due > dateKey(now) && nowKey <= lastPayment) {
+        const prevIndex = ymIndex(now.getFullYear(), now.getMonth()) - 1
+        const prev = monthKey(Math.floor(prevIndex / 12), prevIndex % 12)
+        through = prev >= startMonth ? prev : ''
+      }
+    }
+    if (through && through >= startMonth) {
+      const paidMonths = monthsBetweenYm(startMonth, through).length
+      remaining = roundCents(Math.max(0, startingBalance - monthly * paidMonths))
+    }
   }
   return {
     id: input.id ?? `affirm-${crypto.randomUUID()}`,
     name: input.name.trim() || 'Amazon',
     loanId: input.loanId.trim(),
-    startMonth: input.startMonth,
+    startMonth,
+    startDate,
     lastPayment,
     startingBalance,
     monthly,

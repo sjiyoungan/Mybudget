@@ -18,10 +18,12 @@ import { Input } from '@/components/ui/input'
 import {
   affirmCurrentLoans,
   affirmLoanPayments,
+  affirmMonthPaid,
   affirmVisibleMonths,
   completeAffirmLoan,
+  dateKey,
   formatYm,
-  monthKey,
+  formatYmd,
   sortAffirmLoans,
   type AffirmLoan,
 } from '@/lib/debt-plan'
@@ -60,7 +62,7 @@ function sortLoans(loans: AffirmLoan[], key: AffirmSortKey, dir: AffirmSortDir) 
 type AffirmDraft = {
   name: string
   loanId: string
-  startMonth: string
+  startDate: string
   startingBalance: string
   monthly: string
 }
@@ -83,7 +85,7 @@ function draftFromLoan(loan: AffirmLoan): AffirmDraft {
   return {
     name: loan.name,
     loanId: loan.loanId,
-    startMonth: loan.startMonth,
+    startDate: loan.startDate || '',
     startingBalance: loan.startingBalance.toFixed(2),
     monthly: loan.monthly.toFixed(2),
   }
@@ -93,7 +95,7 @@ function emptyDraft(now: Date): AffirmDraft {
   return {
     name: '',
     loanId: '',
-    startMonth: monthKey(now.getFullYear(), now.getMonth()),
+    startDate: dateKey(now),
     startingBalance: '',
     monthly: '',
   }
@@ -491,12 +493,17 @@ export function AffirmCard({
                       </FreezeCell>
                       {months.map((ym) => {
                         const amount = payments[ym]
+                        const paid =
+                          amount != null &&
+                          amount > 0.005 &&
+                          affirmMonthPaid(loan, ym, now)
                         return (
                           <td
                             key={ym}
                             className={cn(
                               'relative z-0 px-3 py-2 text-right tabular-nums',
                               !lastRow && 'border-border border-b',
+                              paid && 'bg-neutral-100 text-neutral-500',
                             )}
                           >
                             {amount != null && amount > 0.005
@@ -613,13 +620,14 @@ function AffirmLoanDrawer({
   const preview = useMemo(() => {
     const startingBalance = parseUsdInput(draft.startingBalance) ?? 0
     const monthly = parseUsdInput(draft.monthly) ?? 0
-    if (!draft.startMonth) return null
+    if (!draft.startDate && !loan?.startMonth) return null
     return completeAffirmLoan(
       {
         id: loan?.id,
         name: draft.name,
         loanId: draft.loanId,
-        startMonth: draft.startMonth,
+        startDate: draft.startDate || undefined,
+        startMonth: loan?.startMonth,
         startingBalance,
         monthly,
       },
@@ -639,14 +647,16 @@ function AffirmLoanDrawer({
   function save() {
     const startingBalance = parseUsdInput(draft.startingBalance)
     const monthly = parseUsdInput(draft.monthly)
-    if (startingBalance == null || monthly == null || !draft.startMonth) return
+    if (startingBalance == null || monthly == null) return
+    if (!draft.startDate && !loan?.startMonth) return
     onSave(
       completeAffirmLoan(
         {
           id: loan?.id,
           name: draft.name,
           loanId: draft.loanId,
-          startMonth: draft.startMonth,
+          startDate: draft.startDate || undefined,
+          startMonth: loan?.startMonth,
           startingBalance,
           monthly,
         },
@@ -727,13 +737,19 @@ function AffirmLoanDrawer({
             }
           />
           <AffirmDetailField
-            label="Starting month"
+            label="Starting date"
             editing={editing}
-            value={draft.startMonth}
-            display={loan?.startMonth ? formatYm(loan.startMonth) : '—'}
-            type="month"
-            onChange={(startMonth) =>
-              setDraft((current) => ({ ...current, startMonth }))
+            value={draft.startDate}
+            display={
+              loan?.startDate
+                ? formatYmd(loan.startDate)
+                : loan?.startMonth
+                  ? formatYm(loan.startMonth)
+                  : '—'
+            }
+            type="date"
+            onChange={(startDate) =>
+              setDraft((current) => ({ ...current, startDate }))
             }
           />
           <AffirmDetailField

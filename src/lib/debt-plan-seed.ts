@@ -351,6 +351,7 @@ export type SeededAffirmLoan = {
   name: string
   loanId: string
   startMonth: string
+  startDate?: string
   lastPayment: string
   startingBalance: number
   monthly: number
