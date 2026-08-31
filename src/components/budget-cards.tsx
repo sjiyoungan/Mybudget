@@ -142,11 +142,11 @@ function ignoreDialogOutside(
   return isPortaledMenuTarget(outsideEventTarget(event))
 }
 
-const DEBT_GHOST_FIELD =
+const EDIT_GHOST_FIELD =
   'border-transparent bg-transparent shadow-none hover:border-input hover:bg-transparent focus-visible:border-input focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent data-[state=open]:border-input'
 
-const DEBT_GHOST_BOX =
-  'rounded-lg border border-transparent hover:border-input focus-within:border-input'
+const EDIT_GHOST_BOX =
+  'rounded-lg border border-transparent hover:border-input'
 
 const DEBT_LABEL_LEFT = 'pl-2.5'
 const DEBT_LABEL_RIGHT = 'pr-2.5 text-right'
@@ -160,7 +160,7 @@ function AprInput({
   onChange: (value: string) => void
 }) {
   return (
-    <div className={cn('flex h-8 items-center justify-end px-2.5', DEBT_GHOST_BOX)}>
+    <div className={cn('flex h-8 items-center justify-end px-2.5', EDIT_GHOST_BOX)}>
       <input
         className="placeholder:text-muted-foreground h-full min-w-0 w-auto max-w-full bg-transparent text-right text-sm tabular-nums outline-none [field-sizing:content]"
         value={value}
@@ -219,7 +219,7 @@ function DebtMoneyInput({
 
   const display = focused ? text : formatMoneyField(value)
   return (
-    <div className={cn('flex h-8 items-center justify-end px-2.5', DEBT_GHOST_BOX)}>
+    <div className={cn('flex h-8 items-center justify-end px-2.5', EDIT_GHOST_BOX)}>
       <span className="text-neutral-400 shrink-0 pr-0.5 text-sm">$</span>
       <input
         className="placeholder:text-muted-foreground h-full min-w-0 w-auto max-w-full bg-transparent text-right text-sm tabular-nums outline-none [field-sizing:content]"
@@ -291,7 +291,7 @@ function DebtTypeSelect({
       }}
     >
       <SelectTrigger
-        className={cn('h-8 w-full', quiet && DEBT_GHOST_FIELD)}
+        className={cn('h-8 w-full', quiet && EDIT_GHOST_FIELD)}
         chevron="hover"
         aria-label="Debt type"
       >
@@ -388,7 +388,7 @@ function BankSelect({
       }}
     >
       <SelectTrigger
-        className={cn('w-full', quiet && DEBT_GHOST_FIELD)}
+        className={cn('w-full', quiet && EDIT_GHOST_FIELD)}
         chevron="hover"
         aria-label={ariaLabel}
       >
@@ -588,7 +588,7 @@ function MoneyInput({
   onChange: (value: string) => void
 }) {
   return (
-    <div className="focus-within:border-ring focus-within:ring-ring/30 flex h-8 items-center rounded-lg border border-input px-1.5 hover:border-neutral-400 focus-within:ring-3">
+    <div className={cn('flex h-8 items-center px-1.5', EDIT_GHOST_BOX)}>
       <span className="pr-1 text-sm text-neutral-500">$</span>
       <input
         className="placeholder:text-muted-foreground/50 h-full w-full bg-transparent text-right text-sm tabular-nums outline-none"
@@ -622,8 +622,8 @@ function ModalDueDayInput({
       className={cn(
         'flex h-8 items-center justify-end rounded-lg border px-1.5',
         invalid
-          ? 'border-destructive focus-within:border-destructive focus-within:ring-destructive/25 focus-within:ring-3'
-          : 'focus-within:border-ring focus-within:ring-ring/30 border-input hover:border-neutral-400 focus-within:ring-3',
+          ? 'border-destructive focus-within:border-destructive'
+          : EDIT_GHOST_BOX,
       )}
     >
       <input
@@ -683,7 +683,7 @@ function FrequencySelect({
         onChange(next as ExpenseFrequency)
       }}
     >
-      <SelectTrigger className="w-full" chevron="hover" aria-label="Frequency">
+      <SelectTrigger className={cn('w-full', EDIT_GHOST_FIELD)} chevron="hover" aria-label="Frequency">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -748,7 +748,7 @@ function ExpenseDraftRow({
         </button>
       ) : null}
       <Input
-        className="h-8"
+        className={cn('h-8', EDIT_GHOST_FIELD)}
         value={draft.name}
         onChange={(event) => onUpdate(draft.id, { name: event.target.value })}
         placeholder="Name"
@@ -788,6 +788,7 @@ function ExpenseDraftRow({
         accounts={accounts}
         value={draft.accountId}
         onChange={(id) => onUpdate(draft.id, { accountId: id })}
+        quiet
       />
       <Button
         type="button"
@@ -1489,7 +1490,11 @@ function EditOneExpenseDialog({
                   }
                   disabled={linkedDebt}
                 >
-                  <SelectTrigger chevron="hover" aria-label="Category">
+                  <SelectTrigger
+                    className={EDIT_GHOST_FIELD}
+                    chevron="hover"
+                    aria-label="Category"
+                  >
                     <SelectValue placeholder="Category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -2362,7 +2367,7 @@ function EditAccountsDialog({
                 className="grid grid-cols-[minmax(10rem,16rem)_5.5rem_28px] items-center gap-2"
               >
                 <Input
-                  className="h-8"
+                  className={cn('h-8', EDIT_GHOST_FIELD)}
                   value={draft.name}
                   onChange={(event) =>
                     updateDraft(draft.id, { name: event.target.value })
@@ -2372,7 +2377,7 @@ function EditAccountsDialog({
                   autoFocus={focusId === draft.id}
                 />
                 <Input
-                  className="h-8 tabular-nums"
+                  className={cn('h-8 tabular-nums', EDIT_GHOST_FIELD)}
                   value={draft.lastFour}
                   onChange={(event) =>
                     updateDraft(draft.id, {
@@ -3309,7 +3314,7 @@ export function EditDebtsDialog({
                 className={cn('grid items-center gap-4 py-1', DEBT_ROW)}
               >
                 <Input
-                  className={cn('h-8', DEBT_GHOST_FIELD)}
+                  className={cn('h-8', EDIT_GHOST_FIELD)}
                   value={draft.lender}
                   onChange={(event) =>
                     updateDraft(draft.id, { lender: event.target.value })
