@@ -52,7 +52,6 @@ import {
   VARIABLE_CATEGORY_ID,
   totalDebtPayments,
   totalForCategory,
-  totalMonthlyExpenses,
   totalMonthlyExpensesExcluding,
   type AccountKind,
   type Debt,
@@ -1403,10 +1402,12 @@ function ExpenseAmountEdit({
   expense,
   editing,
   onEdit,
+  muted,
 }: {
   expense: RecurringExpense
   editing: boolean
   onEdit: (id: string | null) => void
+  muted?: boolean
 }) {
   const { updateExpense } = useBudget()
   const monthly = monthlyAmount(expense)
@@ -1470,7 +1471,10 @@ function ExpenseAmountEdit({
     return (
       <button
         type="button"
-        className="cursor-text text-right tabular-nums"
+        className={cn(
+          'cursor-text text-right tabular-nums',
+          muted && 'text-neutral-600',
+        )}
         onClick={(event) => {
           event.stopPropagation()
           onEdit(expense.id)
@@ -1517,19 +1521,23 @@ function EmptyNote({ children }: { children: string }) {
 
 export function ExpenseDetailCards() {
   const { expenses } = useBudget()
-  const total = totalMonthlyExpenses(expenses)
   const withoutMortgage = totalMonthlyExpensesExcluding(expenses, [
     MORTGAGE_CATEGORY_ID,
+    DEBT_CATEGORY_ID,
   ])
   const withoutMortgageOrVariable = totalMonthlyExpensesExcluding(expenses, [
     MORTGAGE_CATEGORY_ID,
     VARIABLE_CATEGORY_ID,
+    DEBT_CATEGORY_ID,
+  ])
+  const withoutVariable = totalMonthlyExpensesExcluding(expenses, [
+    VARIABLE_CATEGORY_ID,
+    DEBT_CATEGORY_ID,
   ])
 
   return (
     <div className="grid gap-6">
       <MetricStrip columns={3}>
-        <ExpenseMetric label="Total expenses" amount={total} />
         <ExpenseMetric
           label="Expenses without mortgage"
           amount={withoutMortgage}
@@ -1537,6 +1545,10 @@ export function ExpenseDetailCards() {
         <ExpenseMetric
           label="Expenses without mortgage or variables"
           amount={withoutMortgageOrVariable}
+        />
+        <ExpenseMetric
+          label="Expenses without variables"
+          amount={withoutVariable}
         />
       </MetricStrip>
 
@@ -1586,17 +1598,24 @@ function ExpenseLine({
   editingAmount,
   onEditAmount,
   onEditName,
+  nested,
 }: {
   expense: RecurringExpense
   editingAmount: boolean
   onEditAmount: (id: string | null) => void
   onEditName: (id: string) => void
+  nested?: boolean
 }) {
   return (
     <>
       <button
         type="button"
-        className="cursor-pointer py-2 text-left"
+        className={cn(
+          'cursor-pointer text-left',
+          nested
+            ? 'pl-2 text-neutral-600 hover:text-foreground'
+            : 'py-2',
+        )}
         onClick={() => {
           onEditAmount(null)
           onEditName(expense.id)
@@ -1604,11 +1623,16 @@ function ExpenseLine({
       >
         {expense.name}
       </button>
-      <div className="flex items-baseline justify-end py-2">
+      <div
+        className={
+          nested ? undefined : 'flex items-baseline justify-end py-2'
+        }
+      >
         <ExpenseAmountEdit
           expense={expense}
           editing={editingAmount}
           onEdit={onEditAmount}
+          muted={nested}
         />
       </div>
     </>
@@ -1683,7 +1707,7 @@ function CategoryExpensesCard({
                   return (
                     <div
                       key={item.id}
-                      className="col-span-2 grid grid-cols-subgrid"
+                      className="col-span-2 grid grid-cols-subgrid gap-y-1"
                     >
                       <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
                         <span>{item.name}</span>
@@ -1691,15 +1715,22 @@ function CategoryExpensesCard({
                           {formatUsd(totalForCategory(expenses, item.id))}
                         </span>
                       </div>
-                      {details.map((expense) => (
-                        <ExpenseLine
-                          key={expense.id}
-                          expense={expense}
-                          editingAmount={amountEditId === expense.id}
-                          onEditAmount={setAmountEditId}
-                          onEditName={setEditExpenseId}
-                        />
-                      ))}
+                      {details.length > 0 ? (
+                        <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
+                          <div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
+                            {details.map((expense) => (
+                              <ExpenseLine
+                                key={expense.id}
+                                expense={expense}
+                                editingAmount={amountEditId === expense.id}
+                                onEditAmount={setAmountEditId}
+                                onEditName={setEditExpenseId}
+                                nested
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   )
                 })}
@@ -1851,12 +1882,7 @@ function AccountsCard() {
           </div>
         </CardHeader>
         <CardContent className="grid">
-          <p className="pb-4 text-2xl font-medium tabular-nums">
-            {listed.length}
-          </p>
-          <div className="border-border border-t" />
-          <div className="pt-2">
-            <div className="grid gap-y-1">
+          <div className="grid gap-y-1">
               <div className="flex items-baseline">
                 <span className="text-muted-foreground min-w-0 flex-1 text-xs font-medium">
                   Account name
@@ -1907,7 +1933,6 @@ function AccountsCard() {
                 )
               })}
             </div>
-          </div>
         </CardContent>
       </Card>
 
