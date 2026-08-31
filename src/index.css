@@ -186,7 +186,7 @@
 }
 
 .affirm-totals {
-  position: relative;
+  background: var(--color-card);
 }
 .affirm-totals[data-more]::before {
   content: "";
