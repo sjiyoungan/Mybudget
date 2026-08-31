@@ -5,6 +5,8 @@ import {
   Check,
   ChevronRight,
   ChevronsUpDown,
+  Eye,
+  EyeOff,
   Menu,
   Pencil,
   Plus,
@@ -482,10 +484,25 @@ type ExpenseDraft = {
   dueDay: string
   category: string
   accountId: string
+  hidden: boolean
 }
 
 const EXPENSE_ROW =
-  'grid-cols-[minmax(7rem,12rem)_5.75rem_6.75rem_4.75rem_minmax(7rem,1fr)_28px]' as const
+  'grid-cols-[minmax(7rem,12rem)_5.75rem_6.75rem_4.75rem_minmax(7rem,1fr)_28px_28px]' as const
+
+function ExpenseColumnLabels() {
+  return (
+    <>
+      <span className={cn(DEBT_LABEL_LEFT, 'w-full')}>Name</span>
+      <span className={cn(DEBT_LABEL_RIGHT, 'w-full')}>Amount</span>
+      <span className={cn(DEBT_LABEL_LEFT, 'w-full')}>Frequency</span>
+      <span className={cn(DEBT_LABEL_RIGHT, 'w-full')}>Due day</span>
+      <span className={cn(DEBT_LABEL_LEFT, 'w-full')}>Bank</span>
+      <span />
+      <span />
+    </>
+  )
+}
 
 function newExpenseDraft(accountId: string, category = ''): ExpenseDraft {
   return {
@@ -496,6 +513,7 @@ function newExpenseDraft(accountId: string, category = ''): ExpenseDraft {
     dueDay: '',
     category,
     accountId,
+    hidden: false,
   }
 }
 
@@ -508,6 +526,7 @@ function expenseToDraft(item: RecurringExpense): ExpenseDraft {
     dueDay: item.dueDay ? String(item.dueDay) : '',
     category: item.category,
     accountId: item.accountId,
+    hidden: item.hidden === true,
   }
 }
 
@@ -528,6 +547,7 @@ function editorSnapshot(
       dueDay: draft.dueDay.trim(),
       category: draft.category,
       accountId: draft.accountId,
+      hidden: draft.hidden,
     })),
   })
 }
@@ -614,11 +634,12 @@ function MoneyInput({
   onChange: (value: string) => void
 }) {
   return (
-    <div className={cn('flex h-8 items-center px-1.5', EDIT_GHOST_BOX)}>
-      <span className="pr-1 text-sm text-neutral-500">$</span>
+    <div className={cn('flex h-8 w-full items-center justify-end px-2.5', EDIT_GHOST_BOX)}>
+      <span className="text-neutral-400 shrink-0 text-sm">$</span>
       <input
-        className="placeholder:text-muted-foreground/50 h-full w-full bg-transparent text-right text-sm tabular-nums outline-none"
+        className="placeholder:text-muted-foreground h-full min-w-0 w-auto max-w-full bg-transparent text-right text-sm tabular-nums outline-none [field-sizing:content]"
         value={value}
+        size={Math.max(value.length, 1)}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
@@ -646,7 +667,7 @@ function ModalDueDayInput({
   return (
     <div
       className={cn(
-        'flex h-8 items-center justify-end rounded-lg border px-1.5',
+        'flex h-8 w-full items-center justify-end rounded-lg border px-2.5',
         invalid
           ? 'border-destructive focus-within:border-destructive'
           : EDIT_GHOST_BOX,
@@ -685,7 +706,7 @@ function CategoryDropGroup({
     <section
       data-category-id={categoryId}
       className={cn(
-        'space-y-1 rounded-lg p-1',
+        'space-y-1 rounded-lg py-1',
         active && 'bg-neutral-50 ring-1 ring-neutral-200',
       )}
     >
@@ -754,13 +775,13 @@ function ExpenseDraftRow({
         'group/row relative grid items-center gap-2 py-0.5',
         EXPENSE_ROW,
         dragging && 'opacity-50',
+        draft.hidden && 'opacity-50',
       )}
     >
       {showHandle ? (
         <button
           type="button"
           data-drag-handle
-          title="Drag to reorder"
           aria-label={`Move ${draft.name || 'expense'}`}
           onPointerDown={(event) => onMovePointerDown(event, draft.id)}
           onMouseDown={(event) => {
@@ -768,7 +789,7 @@ function ExpenseDraftRow({
             event.preventDefault()
             onMovePointerDown(event, draft.id)
           }}
-          className="text-neutral-400 hover:text-foreground absolute top-1/2 right-full mr-1 flex h-8 w-5 -translate-y-1/2 cursor-grab items-center justify-center touch-none opacity-70 hover:opacity-100 active:cursor-grabbing"
+          className="text-neutral-400 hover:text-foreground absolute top-1/2 right-full mr-1 flex h-8 w-5 -translate-y-1/2 cursor-grab items-center justify-center touch-none opacity-0 hover:opacity-100 focus-visible:opacity-100 active:cursor-grabbing"
         >
           <Menu className="size-3.5" />
         </button>
@@ -821,6 +842,17 @@ function ExpenseDraftRow({
         variant="ghost"
         size="icon-sm"
         className="text-muted-foreground justify-self-end hover:bg-transparent"
+        onClick={() => onUpdate(draft.id, { hidden: !draft.hidden })}
+        aria-label={draft.hidden ? 'Show expense' : 'Hide expense'}
+        aria-pressed={draft.hidden}
+      >
+        {draft.hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="text-muted-foreground justify-self-end hover:bg-transparent"
         disabled={!canRemove}
         onClick={onRemove}
         title="Remove expense"
@@ -857,6 +889,7 @@ function EditExpensesDialog({
   const [newCategoryName, setNewCategoryName] = useState('')
   const [focusDraftId, setFocusDraftId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const listWrapRef = useRef<HTMLDivElement>(null)
   const pendingScrollCategoryId = useRef<string | null>(null)
   const draggingIdRef = useRef<string | null>(null)
   const moveDraftUnderPointerRef = useRef<(x: number, y: number) => void>(() => {})
@@ -900,6 +933,45 @@ function EditExpensesDialog({
     )
     node?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [focusDraftId])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    let cancelled = false
+    function updateMoreBelow() {
+      if (cancelled) return
+      const el = listRef.current
+      const wrap = listWrapRef.current
+      if (!el || !wrap) return
+      wrap.toggleAttribute(
+        'data-more',
+        el.scrollHeight - el.scrollTop - el.clientHeight > 2,
+      )
+    }
+    function waitForNodes() {
+      if (cancelled) return
+      if (!listRef.current || !listWrapRef.current) {
+        requestAnimationFrame(waitForNodes)
+        return
+      }
+      updateMoreBelow()
+    }
+    waitForNodes()
+    const el = listRef.current
+    if (!el) return () => {
+      cancelled = true
+    }
+    const resize = new ResizeObserver(updateMoreBelow)
+    resize.observe(el)
+    const mutation = new MutationObserver(updateMoreBelow)
+    mutation.observe(el, { childList: true, subtree: true })
+    el.addEventListener('scroll', updateMoreBelow, { passive: true })
+    return () => {
+      cancelled = true
+      resize.disconnect()
+      mutation.disconnect()
+      el.removeEventListener('scroll', updateMoreBelow)
+    }
+  }, [open, drafts, categoryDrafts])
 
   const namedCategoryIds = useMemo(
     () =>
@@ -996,6 +1068,7 @@ function EditExpensesDialog({
           frequency: draft.frequency,
           accountId: draft.accountId,
           category: draft.category,
+          hidden: draft.hidden,
         })),
     )
     closeClean()
@@ -1130,9 +1203,22 @@ function EditExpensesDialog({
           </div>
 
           <div
+            ref={listWrapRef}
+            className="scroll-more relative -ml-6 mt-5"
+          >
+          <div
             ref={listRef}
+            onScroll={() => {
+              const el = listRef.current
+              const wrap = listWrapRef.current
+              if (!el || !wrap) return
+              wrap.toggleAttribute(
+                'data-more',
+                el.scrollHeight - el.scrollTop - el.clientHeight > 2,
+              )
+            }}
             className={cn(
-              '-ml-6 mt-5 max-h-[min(70vh,40rem)] space-y-4 overflow-y-auto pl-6',
+              'no-scrollbar max-h-[min(70vh,40rem)] space-y-4 overflow-y-auto pl-6',
               draggingId && 'select-none',
             )}
           >
@@ -1142,12 +1228,7 @@ function EditExpensesDialog({
                 EXPENSE_ROW,
               )}
             >
-              <span>Name</span>
-              <span>Amount</span>
-              <span>Frequency</span>
-              <span>Due day</span>
-              <span>Bank</span>
-              <span />
+              <ExpenseColumnLabels />
             </div>
 
             {uncategorized.length > 0 ? (
@@ -1231,6 +1312,7 @@ function EditExpensesDialog({
                 Due day can&apos;t be more than the days in a month.
               </p>
             ) : null}
+          </div>
           </div>
 
           <DialogFooter className="-ml-6 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
@@ -1371,6 +1453,7 @@ function oneExpenseSnapshot(draft: ExpenseDraft) {
     dueDay: draft.dueDay.trim(),
     category: draft.category,
     accountId: draft.accountId,
+    hidden: draft.hidden,
   })
 }
 
@@ -1449,6 +1532,7 @@ function EditOneExpenseDialog({
       frequency: draft.frequency,
       accountId: draft.accountId,
       category: draft.category,
+      hidden: draft.hidden,
     })
     closeClean()
   }
@@ -1539,12 +1623,7 @@ function EditOneExpenseDialog({
                   EXPENSE_ROW,
                 )}
               >
-                <span>Name</span>
-                <span>Amount</span>
-                <span>Frequency</span>
-                <span>Due day</span>
-                <span>Bank</span>
-                <span />
+                <ExpenseColumnLabels />
               </div>
 
               <ExpenseDraftRow
@@ -1914,7 +1993,9 @@ function CategoryExpensesCard({
       ? item.id === DEBT_CATEGORY_ID
       : item.id !== DEBT_CATEGORY_ID,
   )
-  const debtItems = expenses.filter((expense) => expense.category === DEBT_CATEGORY_ID)
+  const debtItems = expenses.filter(
+    (expense) => expense.category === DEBT_CATEGORY_ID && !expense.hidden,
+  )
   const total =
     mode === 'debt'
       ? totalForCategory(expenses, DEBT_CATEGORY_ID)
@@ -1960,7 +2041,8 @@ function CategoryExpensesCard({
               <div className="grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-3">
                 {shownCategories.map((item) => {
                   const details = expenses.filter(
-                    (expense) => expense.category === item.id,
+                    (expense) =>
+                      expense.category === item.id && !expense.hidden,
                   )
                   return (
                     <div

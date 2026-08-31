@@ -179,6 +179,31 @@
   );
 }
 
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-more[data-more]::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+  height: 16px;
+  background: linear-gradient(
+    to top,
+    rgb(0 0 0 / 0.08),
+    rgb(0 0 0 / 0.03) 40%,
+    transparent
+  );
+}
+
 .total-rule {
   box-shadow: inset 1px 0 0 var(--border);
 }

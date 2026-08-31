@@ -44,6 +44,7 @@ export type RecurringExpense = {
   frequency: ExpenseFrequency
   accountId: string
   category: string
+  hidden?: boolean
 }
 
 export type DebtType = 'credit-card' | 'loan'
@@ -484,6 +485,7 @@ function normalizeExpense(value: unknown): RecurringExpense | null {
     frequency: isExpenseFrequency(item.frequency) ? item.frequency : 'monthly',
     accountId: item.accountId,
     category: isExpenseCategory(item.category) ? item.category : 'recurring',
+    hidden: item.hidden === true,
   }
 }
 
@@ -626,12 +628,16 @@ export function saveBudget(state: BudgetState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
 }
 
+export function isHiddenExpense(expense: Pick<RecurringExpense, 'hidden'>) {
+  return expense.hidden === true
+}
+
 export function monthlyNeedForAccount(
   expenses: RecurringExpense[],
   accountId: string,
 ) {
   return expenses
-    .filter((item) => item.accountId === accountId)
+    .filter((item) => item.accountId === accountId && !isHiddenExpense(item))
     .reduce((sum, item) => sum + monthlyAmount(item), 0)
 }
 
@@ -643,6 +649,7 @@ function isChargeOnDebt(
   expense: RecurringExpense,
   debt: Pick<Debt, 'id' | 'chargeAccountId'>,
 ) {
+  if (isHiddenExpense(expense)) return false
   if (expense.id === debt.id || isDebtExpense(expense)) return false
   if (expense.accountId === debt.id) return true
   return debt.chargeAccountId !== '' && expense.accountId === debt.chargeAccountId
@@ -690,7 +697,7 @@ export function depositLinesForAccount(
   const lines: DepositLine[] = []
 
   for (const expense of expenses) {
-    if (expense.accountId !== accountId) continue
+    if (isHiddenExpense(expense) || expense.accountId !== accountId) continue
     const debt = paidFromHere.find((item) => item.id === expense.id)
     listed.add(expense.id)
     if (debt) {
@@ -714,6 +721,8 @@ export function depositLinesForAccount(
 
   for (const debt of paidFromHere) {
     if (listed.has(debt.id)) continue
+    const linked = expenses.find((expense) => expense.id === debt.id)
+    if (linked && isHiddenExpense(linked)) continue
     lines.push({
       id: debt.id,
       name: debt.lender,
@@ -781,7 +790,7 @@ export function totalForCategory(
   category: string,
 ) {
   return expenses
-    .filter((item) => item.category === category)
+    .filter((item) => item.category === category && !isHiddenExpense(item))
     .reduce((sum, item) => sum + monthlyAmount(item), 0)
 }
 
@@ -794,7 +803,9 @@ export function totalDebtPayments(debts: Debt[]) {
 }
 
 export function totalMonthlyExpenses(expenses: RecurringExpense[]) {
-  return expenses.reduce((sum, item) => sum + monthlyAmount(item), 0)
+  return expenses
+    .filter((item) => !isHiddenExpense(item))
+    .reduce((sum, item) => sum + monthlyAmount(item), 0)
 }
 
 export function totalMonthlyExpensesExcluding(
@@ -803,7 +814,7 @@ export function totalMonthlyExpensesExcluding(
 ) {
   const skip = new Set(categoryIds)
   return expenses
-    .filter((item) => !skip.has(item.category))
+    .filter((item) => !skip.has(item.category) && !isHiddenExpense(item))
     .reduce((sum, item) => sum + monthlyAmount(item), 0)
 }
 
@@ -828,6 +839,7 @@ export function expenseFromDebt(
     frequency,
     accountId: debt.paidFromAccountId || existing?.accountId || '',
     category: DEBT_CATEGORY_ID,
+    hidden: existing?.hidden,
   }
 }
 
