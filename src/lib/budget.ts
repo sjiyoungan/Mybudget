@@ -685,14 +685,20 @@ export type DepositLine = {
   monthly: number
   expense?: RecurringExpense
   charges: RecurringExpense[]
+  kind: 'checking' | 'debt'
 }
 
 export function depositLinesForAccount(
   expenses: RecurringExpense[],
   debts: Debt[],
   accountId: string,
+  billsAccountId?: string,
 ): DepositLine[] {
-  const paidFromHere = debts.filter((debt) => debt.paidFromAccountId === accountId)
+  const paidFromHere = debts.filter(
+    (debt) =>
+      debt.paidFromAccountId === accountId ||
+      (debt.paidFromAccountId === '' && billsAccountId === accountId),
+  )
   const listed = new Set<string>()
   const lines: DepositLine[] = []
 
@@ -700,13 +706,14 @@ export function depositLinesForAccount(
     if (isHiddenExpense(expense) || expense.accountId !== accountId) continue
     const debt = paidFromHere.find((item) => item.id === expense.id)
     listed.add(expense.id)
-    if (debt) {
+    if (debt || isDebtExpense(expense)) {
       lines.push({
         id: expense.id,
         name: expense.name,
-        monthly: paymentWithoutCharges(debt),
+        monthly: debt ? paymentWithoutCharges(debt) : monthlyAmount(expense),
         expense,
-        charges: chargeExpensesForDebt(expenses, debt),
+        charges: debt ? chargeExpensesForDebt(expenses, debt) : [],
+        kind: 'debt',
       })
       continue
     }
@@ -716,6 +723,7 @@ export function depositLinesForAccount(
       monthly: monthlyAmount(expense),
       expense,
       charges: [],
+      kind: 'checking',
     })
   }
 
@@ -727,7 +735,9 @@ export function depositLinesForAccount(
       id: debt.id,
       name: debt.lender,
       monthly: paymentWithoutCharges(debt),
+      expense: linked,
       charges: chargeExpensesForDebt(expenses, debt),
+      kind: 'debt',
     })
   }
 
@@ -738,8 +748,9 @@ export function monthlyDepositNeed(
   expenses: RecurringExpense[],
   debts: Debt[],
   accountId: string,
+  billsAccountId?: string,
 ) {
-  return depositLinesForAccount(expenses, debts, accountId).reduce(
+  return depositLinesForAccount(expenses, debts, accountId, billsAccountId).reduce(
     (sum, line) =>
       sum +
       line.monthly +

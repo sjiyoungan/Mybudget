@@ -2592,9 +2592,16 @@ function AccountDrawer({
 }) {
   const { accounts, expenses, debts, updateExpense } = useBudget()
   const account = accounts.find((item) => item.id === accountId)
+  const billsId = billsAccount(accounts)?.id
   const lines = accountId
-    ? depositLinesForAccount(expenses, debts, accountId)
+    ? depositLinesForAccount(expenses, debts, accountId, billsId)
     : []
+  const checkingLines = lines.filter((line) => line.kind === 'checking')
+  const debtLines = lines.filter((line) => line.kind === 'debt')
+  const sections = [
+    { title: 'Checking', items: checkingLines },
+    { title: 'Debt', items: debtLines },
+  ].filter((section) => section.items.length > 0)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draftAccountId, setDraftAccountId] = useState('')
   const editRowRef = useRef<HTMLDivElement>(null)
@@ -2644,7 +2651,7 @@ function AccountDrawer({
   }
 
   const monthlyTotal = accountId
-    ? monthlyDepositNeed(expenses, debts, accountId)
+    ? monthlyDepositNeed(expenses, debts, accountId, billsId)
     : 0
   const biweeklyTotal = monthlyTotal / 2
 
@@ -2677,7 +2684,15 @@ function AccountDrawer({
                 <span className="min-w-0 flex-1" />
                 <AmountCols header left="Bi-weekly" right="Monthly" />
               </div>
-              {lines.map((line) => {
+              {sections.map((section, index) => (
+                <div
+                  key={section.title}
+                  className={cn('grid gap-y-1', index > 0 && 'pt-4')}
+                >
+                  <p className="text-muted-foreground px-1 text-xs font-medium">
+                    {section.title}
+                  </p>
+                  {section.items.map((line) => {
                 const isEditing = editingId === line.expense?.id
                 return (
                   <div key={line.id} className="grid gap-y-1">
@@ -2794,6 +2809,8 @@ function AccountDrawer({
                   </div>
                 )
               })}
+                </div>
+              ))}
               <div className="border-border mt-1 border-t" />
               <div className="flex items-baseline py-2 pr-1 pl-1">
                 <span className="min-w-0 flex-1">Total</span>
