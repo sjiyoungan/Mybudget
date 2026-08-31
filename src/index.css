@@ -224,8 +224,21 @@
 }
 
 .planner-scroll table tr:has(.month-label:hover) > td,
-.planner-scroll table tr:has(.month-label:hover) + tr > td {
+.planner-scroll table tr:has(.month-label:hover) + tr > td,
+.planner-scroll table tr:has(.month-editing) > td,
+.planner-scroll table tr:has(.month-editing) + tr > td {
   background-color: #f6f6f6 !important;
+}
+
+.month-log-btn {
+  opacity: 0;
+  pointer-events: none;
+}
+.month-label:hover .month-log-btn,
+.month-label:focus-within .month-log-btn,
+.month-editing .month-log-btn {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .paid-input {
@@ -248,6 +261,15 @@
   box-shadow: none;
   user-select: text;
   -webkit-user-drag: none;
+}
+.paid-input-boxed {
+  min-height: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 6px;
+}
+.paid-input-boxed:focus {
+  border-color: var(--ring);
 }
 .paid-input:focus {
   outline: none;

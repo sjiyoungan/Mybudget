@@ -11,7 +11,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Check, ChevronDown, Menu, Undo2 } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, ListTodo, Menu, Undo2 } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
@@ -45,27 +45,33 @@ import {
   debtFreeLabel,
   formatYm,
   loadDebtPlan,
+  historyRows,
+  logPlannerMonth,
+  monthKey,
   monthsUntilPayoff,
   paymentOverride,
   plannedInterest,
-  plannedThroughPayoff,
+  plannerRows,
   projectDebtPlan,
   resolveCustomOrder,
   saveDebtPlan,
   setMonthPayment,
   strategyDebtOrder,
   strategyLabel,
+  withLiveMonthlyBudget,
   type DebtPlanState,
   type PayoffStrategy,
   type PlannerLine,
   type PlannerMonth,
 } from '@/lib/debt-plan'
 import { formatUsd, formatUsdWhole } from '@/lib/format'
+import { currentMonthNet } from '@/lib/income'
+import { usePaystubs } from '@/lib/paystub-context'
 import { cn } from '@/lib/utils'
 
 type PlannerView = 'planner' | 'history'
 
-const MONTH_COL = 72
+const MONTH_COL = 88
 const LABEL_COL = 64
 const EXTRA_FILL = 'bg-[#F3E6E9]'
 const EXTRA_LINE = 'bg-[#E0D0D3]'
@@ -120,21 +126,30 @@ function tipPosition(el: HTMLElement) {
 }
 
 export function DebtPage() {
+  const { paystubs } = usePaystubs()
   const { debts, expenses } = useBudget()
   const [plan, setPlan] = useState<DebtPlanState>(() => loadDebtPlan())
   const now = useMemo(() => new Date(), [])
+  const monthlyNet = useMemo(
+    () => Math.round(currentMonthNet(paystubs)),
+    [paystubs],
+  )
+
+  const planForMath = useMemo(
+    () => withLiveMonthlyBudget(plan, debts, expenses, monthlyNet),
+    [plan, debts, expenses, monthlyNet],
+  )
 
   useEffect(() => {
-    saveDebtPlan(plan)
-  }, [plan])
-
+    saveDebtPlan(planForMath)
+  }, [planForMath])
   const months = useMemo(
-    () => projectDebtPlan(debts, plan, expenses, PLAN_HORIZON, now),
-    [debts, expenses, plan, now],
+    () => projectDebtPlan(debts, planForMath, expenses, PLAN_HORIZON, now),
+    [debts, expenses, planForMath, now],
   )
   const affirm = affirmTotals(plan.affirmLoans)
-  const upcoming = plannedThroughPayoff(months)
-  const history = months.filter((row) => row.source === 'history')
+  const upcoming = plannerRows(months, plan, now)
+  const history = historyRows(months, plan, now)
   const freeOn = debtFreeLabel(months)
   const interestPaid = plannedInterest(upcoming)
 
@@ -216,6 +231,7 @@ function PlannerCard({
   const [customOpen, setCustomOpen] = useState(false)
   const [debtsOpen, setDebtsOpen] = useState(false)
   const [undoStack, setUndoStack] = useState<DebtPlanState[]>([])
+  const [editingKey, setEditingKey] = useState<string | null>(null)
   const columns = useMemo(() => strategyDebtOrder(debts, plan), [debts, plan])
   const rows = view === 'planner' ? upcoming : [...history].reverse()
 
@@ -309,7 +325,10 @@ function PlannerCard({
             <ViewTab
               label="History"
               active={view === 'history'}
-              onClick={() => setView('history')}
+              onClick={() => {
+                setEditingKey(null)
+                setView('history')
+              }}
             />
             <CardGearButton
               label="Edit debts"
@@ -324,7 +343,31 @@ function PlannerCard({
           plan={plan}
           months={rows}
           showStart={view === 'planner'}
-          editPaid={view === 'planner'}
+          showLog={view === 'planner'}
+          editingKey={editingKey}
+          onEditMonth={(row) => setEditingKey(monthKey(row.year, row.month))}
+          onSaveMonth={(row) => {
+            const focused = document.activeElement
+            const overrides: Record<string, number | null> = {}
+            if (
+              focused instanceof HTMLInputElement &&
+              focused.classList.contains('paid-input') &&
+              focused.dataset.debtId
+            ) {
+              const raw = focused.value.trim()
+              overrides[focused.dataset.debtId] =
+                raw === '' ? null : parseUsdInput(raw)
+              focused.blur()
+            }
+            changePlan(
+              logPlannerMonth(
+                plan,
+                row,
+                Object.keys(overrides).length > 0 ? overrides : undefined,
+              ),
+            )
+            setEditingKey(null)
+          }}
           onPaidChange={(year, month, debtId, amount) => {
             changePlan(setMonthPayment(plan, year, month, debtId, amount))
           }}
@@ -555,14 +598,20 @@ function MonthTable({
   plan,
   months,
   showStart,
-  editPaid,
+  showLog,
+  editingKey,
+  onEditMonth,
+  onSaveMonth,
   onPaidChange,
 }: {
   debts: { id: string; lender: string; apr: number }[]
   plan: DebtPlanState
   months: PlannerMonth[]
   showStart: boolean
-  editPaid: boolean
+  showLog: boolean
+  editingKey: string | null
+  onEditMonth: (row: PlannerMonth) => void
+  onSaveMonth: (row: PlannerMonth) => void
   onPaidChange: (
     year: number,
     month: number,
@@ -760,7 +809,10 @@ function MonthTable({
               showStart={showStart && groupIndex === 0}
               spaced={groupIndex > 0}
               lastGroup={groupIndex === years.length - 1}
-              editPaid={editPaid}
+              showLog={showLog}
+              editingKey={editingKey}
+              onEditMonth={onEditMonth}
+              onSaveMonth={onSaveMonth}
               onPaidChange={onPaidChange}
             />
           ))}
@@ -833,7 +885,10 @@ function YearGroupRows({
   showStart,
   spaced,
   lastGroup,
-  editPaid,
+  showLog,
+  editingKey,
+  onEditMonth,
+  onSaveMonth,
   onPaidChange,
 }: {
   year: number
@@ -844,7 +899,10 @@ function YearGroupRows({
   showStart: boolean
   spaced: boolean
   lastGroup: boolean
-  editPaid: boolean
+  showLog: boolean
+  editingKey: string | null
+  onEditMonth: (row: PlannerMonth) => void
+  onSaveMonth: (row: PlannerMonth) => void
   onPaidChange: (
     year: number,
     month: number,
@@ -884,7 +942,10 @@ function YearGroupRows({
           }
           showStart={showStart && index === 0}
           last={lastGroup && index === months.length - 1}
-          editPaid={editPaid}
+          showLog={showLog}
+          editing={editingKey === monthKey(row.year, row.month)}
+          onEditMonth={onEditMonth}
+          onSaveMonth={onSaveMonth}
           onPaidChange={onPaidChange}
         />
       ))}
@@ -900,7 +961,10 @@ function MonthBlock({
   nextRow,
   showStart,
   last,
-  editPaid,
+  showLog,
+  editing,
+  onEditMonth,
+  onSaveMonth,
   onPaidChange,
 }: {
   year: number
@@ -910,7 +974,10 @@ function MonthBlock({
   nextRow?: PlannerMonth
   showStart: boolean
   last: boolean
-  editPaid: boolean
+  showLog: boolean
+  editing: boolean
+  onEditMonth: (row: PlannerMonth) => void
+  onSaveMonth: (row: PlannerMonth) => void
   onPaidChange: (
     year: number,
     month: number,
@@ -963,15 +1030,23 @@ function MonthBlock({
         </>
       ) : null}
       <tr>
-        <MonthCell label={label} rowSpan={2} />
+        <MonthCell
+          label={label}
+          rowSpan={2}
+          showLog={showLog}
+          editing={editing}
+          onEdit={() => onEditMonth(row)}
+          onSave={() => onSaveMonth(row)}
+        />
         <LabelCell>Paid</LabelCell>
         {debts.map((debt) => {
           const line = paidById.get(debt.id)
           const amount = line?.paid ?? 0
-          if (editPaid) {
+          if (editing) {
             return (
               <PaidCell
                 key={`${debt.id}-paid`}
+                debtId={debt.id}
                 value={amount}
                 detailKey={`${row.year}-${row.month}-${debt.id}`}
                 detail={line}
@@ -1078,16 +1153,51 @@ function formatMonthName(month: number) {
 function MonthCell({
   label,
   rowSpan,
+  showLog = false,
+  editing = false,
+  onEdit,
+  onSave,
 }: {
   label: string
   rowSpan: number
+  showLog?: boolean
+  editing?: boolean
+  onEdit?: () => void
+  onSave?: () => void
 }) {
   return (
     <td
       rowSpan={rowSpan}
-      className="month-label sticky left-0 z-10 bg-card py-1.5 pr-3 pl-4 align-top font-medium whitespace-nowrap"
+      className={cn(
+        'month-label sticky left-0 z-10 bg-card py-1.5 pr-3 align-top font-medium whitespace-nowrap',
+        showLog ? 'pl-2' : 'pl-4',
+        editing && 'month-editing',
+      )}
     >
-      {label}
+      {showLog ? (
+        <div className="flex items-start gap-1">
+          <button
+            type="button"
+            data-no-drag
+            className="month-log-btn text-muted-foreground hover:text-foreground flex size-6 shrink-0 items-center justify-center rounded-md"
+            aria-label={editing ? `Save ${label}` : `Log ${label}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (editing) onSave?.()
+              else onEdit?.()
+            }}
+          >
+            {editing ? (
+              <Check className="size-3.5" />
+            ) : (
+              <ListTodo className="size-3.5" />
+            )}
+          </button>
+          <span className="pt-0.5">{label}</span>
+        </div>
+      ) : (
+        label
+      )}
     </td>
   )
 }
@@ -1154,6 +1264,7 @@ function AmountCell({
 }
 
 function PaidCell({
+  debtId,
   value,
   overridden,
   muted = false,
@@ -1163,6 +1274,7 @@ function PaidCell({
   detail,
   onCommit,
 }: {
+  debtId: string
   value: number
   overridden: boolean
   muted?: boolean
@@ -1207,10 +1319,11 @@ function PaidCell({
       <input
         key={`${overridden ? 'o' : 'c'}-${Math.round(value)}`}
         data-no-drag
+        data-debt-id={debtId}
         data-committed={Math.round(value)}
         draggable={false}
         size={1}
-        className="paid-input select-text"
+        className="paid-input paid-input-boxed select-text"
         inputMode="decimal"
         aria-label="Paid"
         defaultValue={display}

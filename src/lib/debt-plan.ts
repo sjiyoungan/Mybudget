@@ -2,6 +2,7 @@ import {
   effectiveApr,
   monthsUntilPromoEnd,
   paymentWithoutCharges,
+  totalMonthlyExpenses,
   totalPaymentForDebt,
   type Debt,
   type RecurringExpense,
@@ -40,6 +41,10 @@ export type DebtPlanState = {
   recurringCharges: Record<string, number>
   chargesByMonth: Record<string, Record<string, number>>
   paymentsByMonth: Record<string, Record<string, number>>
+  /** Month keys (`YYYY-MM`) whose paid amounts were saved. */
+  loggedMonths: string[]
+  /** Snapshots of logged months, used as history once the month is past. */
+  loggedHistory: Record<string, PlannerMonth>
   affirmLoans: AffirmLoan[]
 }
 
@@ -101,12 +106,70 @@ export function defaultDebtPlan(): DebtPlanState {
     recurringCharges: { ...seededRecurringCharges },
     chargesByMonth: {},
     paymentsByMonth: {},
+    loggedMonths: [],
+    loggedHistory: {},
     affirmLoans: seededAffirmLoans.map((loan) => ({ ...loan })),
+  }
+}
+
+/** Debt total payments plus leftover after all expenses (including those payments). */
+export function monthlyDebtBudget(
+  debts: Debt[],
+  expenses: RecurringExpense[],
+  monthlyNet: number,
+) {
+  const remaining = monthlyNet - totalMonthlyExpenses(expenses)
+  const payments = debts.reduce(
+    (sum, debt) => sum + totalPaymentForDebt(expenses, debt),
+    0,
+  )
+  return roundCents(payments + remaining)
+}
+
+export function withLiveMonthlyBudget(
+  plan: DebtPlanState,
+  debts: Debt[],
+  expenses: RecurringExpense[],
+  monthlyNet: number,
+): DebtPlanState {
+  return {
+    ...plan,
+    monthlyBudget: monthlyDebtBudget(debts, expenses, monthlyNet),
   }
 }
 
 export function monthKey(year: number, month: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}`
+}
+
+export function ymIndex(year: number, month: number) {
+  return year * 12 + month
+}
+
+export function isMonthLogged(plan: DebtPlanState, year: number, month: number) {
+  return (plan.loggedMonths ?? []).includes(monthKey(year, month))
+}
+
+function lastSeededHistoryIndex() {
+  const last = seededDebtHistory[seededDebtHistory.length - 1]
+  if (!last) return Number.NEGATIVE_INFINITY
+  return ymIndex(last.year, last.month)
+}
+
+/** Earliest unlogged month at or before now, after seeded history. */
+export function firstUnloggedPlannerMonth(plan: DebtPlanState, now: Date) {
+  const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
+  const logged = new Set(plan.loggedMonths ?? [])
+  let idx = lastSeededHistoryIndex() + 1
+  if (!Number.isFinite(idx)) idx = nowIdx
+  while (idx < nowIdx) {
+    const year = Math.floor(idx / 12)
+    const month = idx % 12
+    if (!logged.has(monthKey(year, month))) break
+    idx += 1
+  }
+  if (idx > nowIdx) idx = nowIdx
+  return { year: Math.floor(idx / 12), month: idx % 12 }
 }
 
 export function chargedForDebt(
@@ -135,6 +198,7 @@ export function loadDebtPlan(): DebtPlanState {
         ? item.snowballDebtId
         : fallback.snowballDebtId
     const customOrder = normalizeIdList(item.customOrder)
+    const hasLogging = Array.isArray(item.loggedMonths)
     return {
       monthlyBudget:
         typeof item.monthlyBudget === 'number' && Number.isFinite(item.monthlyBudget)
@@ -153,7 +217,13 @@ export function loadDebtPlan(): DebtPlanState {
           ? { ...fallback.recurringCharges, ...item.recurringCharges }
           : fallback.recurringCharges,
       chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
-      paymentsByMonth: normalizeChargesByMonth(item.paymentsByMonth),
+      paymentsByMonth: hasLogging
+        ? normalizeChargesByMonth(item.paymentsByMonth)
+        : {},
+      loggedMonths: hasLogging ? normalizeLoggedMonths(item.loggedMonths) : [],
+      loggedHistory: hasLogging
+        ? normalizeLoggedHistory(item.loggedHistory)
+        : {},
       affirmLoans: Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
         ? item.affirmLoans.filter(isAffirmLoan)
         : fallback.affirmLoans,
@@ -203,6 +273,60 @@ function isPayoffStrategy(value: unknown): value is PayoffStrategy {
 function normalizeIdList(value: unknown) {
   if (!Array.isArray(value)) return []
   return value.filter((id): id is string => typeof id === 'string' && id.length > 0)
+}
+
+function normalizeLoggedMonths(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (key): key is string => typeof key === 'string' && /^\d{4}-\d{2}$/.test(key),
+  )
+}
+
+function normalizeLoggedHistory(value: unknown) {
+  if (value == null || typeof value !== 'object') return {}
+  const next: Record<string, PlannerMonth> = {}
+  for (const [key, row] of Object.entries(value as Record<string, unknown>)) {
+    const month = asLoggedMonth(row)
+    if (month) next[key] = month
+  }
+  return next
+}
+
+function asLoggedMonth(value: unknown): PlannerMonth | null {
+  if (value == null || typeof value !== 'object') return null
+  const row = value as Partial<PlannerMonth>
+  if (typeof row.year !== 'number' || typeof row.month !== 'number') return null
+  if (!Array.isArray(row.lines)) return null
+  const lines = row.lines.flatMap((line) => {
+    if (line == null || typeof line !== 'object') return []
+    const item = line as Partial<PlannerLine>
+    if (typeof item.debtId !== 'string') return []
+    return [
+      {
+        debtId: item.debtId,
+        start: numberOrZero(item.start),
+        interest: numberOrZero(item.interest),
+        charged: numberOrZero(item.charged),
+        paid: numberOrZero(item.paid),
+        extra: numberOrZero(item.extra),
+        balance: numberOrZero(item.balance),
+      },
+    ]
+  })
+  return {
+    year: row.year,
+    month: row.month,
+    source: 'history',
+    lines,
+    totalInterest: numberOrZero(row.totalInterest),
+    totalPaid: numberOrZero(row.totalPaid),
+    extraPaid: numberOrZero(row.extraPaid),
+    remainingTotal: numberOrZero(row.remainingTotal),
+  }
+}
+
+function numberOrZero(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
 export function strategyLabel(strategy: PayoffStrategy) {
@@ -287,6 +411,66 @@ export function setMonthPayment(
     paymentsByMonth[key] = monthPayments
   }
   return { ...plan, paymentsByMonth }
+}
+
+export function logPlannerMonth(
+  plan: DebtPlanState,
+  row: PlannerMonth,
+  paidOverrides?: Record<string, number | null>,
+): DebtPlanState {
+  const key = monthKey(row.year, row.month)
+  let next = plan
+  if (paidOverrides) {
+    for (const [debtId, amount] of Object.entries(paidOverrides)) {
+      next = setMonthPayment(next, row.year, row.month, debtId, amount)
+    }
+  }
+  const snapshot = snapshotLoggedMonth(row, paidOverrides)
+  const currentLogged = next.loggedMonths ?? []
+  const loggedMonths = currentLogged.includes(key)
+    ? currentLogged
+    : [...currentLogged, key]
+  return {
+    ...next,
+    loggedMonths,
+    loggedHistory: { ...(next.loggedHistory ?? {}), [key]: snapshot },
+  }
+}
+
+function snapshotLoggedMonth(
+  row: PlannerMonth,
+  paidOverrides?: Record<string, number | null>,
+): PlannerMonth {
+  const lines = row.lines.map((line) => {
+    if (!paidOverrides || !Object.prototype.hasOwnProperty.call(paidOverrides, line.debtId)) {
+      return { ...line }
+    }
+    const override = paidOverrides[line.debtId]
+    const due = roundCents(line.start + line.interest + line.charged)
+    const paid =
+      override == null
+        ? line.paid
+        : roundCents(Math.min(Math.max(0, override), Math.max(0, due)))
+    const scheduled = Math.max(0, roundCents(line.paid - line.extra))
+    return {
+      ...line,
+      paid,
+      extra: extraPaidOnLine(paid, scheduled, due),
+      balance: roundCents(Math.max(0, due - paid)),
+    }
+  })
+  return {
+    year: row.year,
+    month: row.month,
+    source: 'history',
+    lines,
+    totalInterest: row.totalInterest,
+    totalPaid: roundCents(lines.reduce((sum, line) => sum + line.paid, 0)),
+    extraPaid: roundCents(lines.reduce((sum, line) => sum + line.extra, 0)),
+    remainingTotal: roundCents(
+      lines.reduce((sum, line) => sum + line.balance, 0),
+    ),
+  }
 }
 
 function extraPaymentOrder(
@@ -443,8 +627,9 @@ export function projectDebtPlan(
   const balances = new Map(debts.map((debt) => [debt.id, debt.balance]))
   const ranked = strategyDebtOrder(debts, plan)
   const projected: PlannerMonth[] = []
-  let year = now.getFullYear()
-  let month = now.getMonth()
+  const startAt = firstUnloggedPlannerMonth(plan, now)
+  let year = startAt.year
+  let month = startAt.month
 
   for (let step = 0; step < monthsAhead; step++) {
     const lines: PlannerLine[] = []
@@ -691,6 +876,33 @@ export function plannedThroughPayoff(months: PlannerMonth[]) {
   const paidOffAt = planned.findIndex((row) => row.remainingTotal <= 0.005)
   if (paidOffAt === -1) return planned
   return planned.slice(0, paidOffAt + 1)
+}
+
+export function plannerRows(
+  months: PlannerMonth[],
+  plan: DebtPlanState,
+  now: Date,
+) {
+  const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
+  const logged = new Set(plan.loggedMonths ?? [])
+  return plannedThroughPayoff(months).filter((row) => {
+    const idx = ymIndex(row.year, row.month)
+    if (idx >= nowIdx) return true
+    return !logged.has(monthKey(row.year, row.month))
+  })
+}
+
+export function historyRows(
+  months: PlannerMonth[],
+  plan: DebtPlanState,
+  now: Date,
+) {
+  const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
+  const seeded = months.filter((row) => row.source === 'history')
+  const loggedPast = Object.values(plan.loggedHistory ?? {})
+    .filter((row) => ymIndex(row.year, row.month) < nowIdx)
+    .sort((a, b) => ymIndex(a.year, a.month) - ymIndex(b.year, b.month))
+  return [...seeded, ...loggedPast]
 }
 
 export function plannedInterest(months: PlannerMonth[]) {

@@ -61,7 +61,7 @@ import {
 } from '@/components/ui/select'
 import { MetricStrip } from '@/components/metric-strip'
 import { useBudget } from '@/lib/budget-context'
-import { averageMonthlyNet } from '@/lib/income'
+import { averageMonthlyNet, currentMonthNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
 import {
   accountDepositNeed,
@@ -105,6 +105,7 @@ import {
   plannedCurrentBalances,
   projectDebtPlan,
   sortDebtsByPayoff,
+  withLiveMonthlyBudget,
   yearToDateInterest,
   type PlannerMonth,
 } from '@/lib/debt-plan'
@@ -3164,12 +3165,22 @@ function AccountDrawer({
 
 export function DebtsCard() {
   const { debts, expenses } = useBudget()
+  const { paystubs } = usePaystubs()
   const [open, setOpen] = useState(false)
   const now = useMemo(() => new Date(), [])
+  const monthlyNet = useMemo(
+    () => Math.round(currentMonthNet(paystubs)),
+    [paystubs],
+  )
   const months = useMemo(() => {
-    const plan = loadDebtPlan()
+    const plan = withLiveMonthlyBudget(
+      loadDebtPlan(),
+      debts,
+      expenses,
+      monthlyNet,
+    )
     return projectDebtPlan(debts, plan, expenses, 120, now)
-  }, [debts, expenses, now])
+  }, [debts, expenses, monthlyNet, now])
   const upcoming = useMemo(
     () => months.filter((row) => row.source === 'plan'),
     [months],
@@ -3411,6 +3422,11 @@ export function EditDebtsDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { accounts, expenses, debts, replaceDebts } = useBudget()
+  const { paystubs } = usePaystubs()
+  const monthlyNet = useMemo(
+    () => Math.round(currentMonthNet(paystubs)),
+    [paystubs],
+  )
   const [drafts, setDrafts] = useState<DebtDraft[]>([])
   const [baseline, setBaseline] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -3492,11 +3508,11 @@ export function EditDebtsDialog({
     if (projected.length === 0) return new Map<string, number>()
     return plannedCurrentBalances(
       projected,
-      loadDebtPlan(),
+      withLiveMonthlyBudget(loadDebtPlan(), projected, expenses, monthlyNet),
       expenses,
       now,
     )
-  }, [open, drafts, previousById, expenses, now])
+  }, [open, drafts, previousById, expenses, monthlyNet, now])
 
   function updateDraft(id: string, patch: Partial<DebtDraft>) {
     setDrafts((current) =>
