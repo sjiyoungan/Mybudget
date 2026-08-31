@@ -3277,23 +3277,6 @@ function AccountDrawer({
                             </div>
                           )
                         })}
-                        {line.charges.length > 0 || line.hiddenCharges.length > 0 ? (
-                          <div className="flex items-baseline py-1 pr-1 pl-1">
-                            <span className="text-neutral-600 min-w-0 flex-1 pl-2">
-                              Charges
-                            </span>
-                            <span className="text-neutral-600">
-                              <AmountCols
-                                left={formatUsdWholeUp(
-                                  chargesForDebt(expenses, { id: line.id }) / 2,
-                                )}
-                                right={formatUsdWholeUp(
-                                  chargesForDebt(expenses, { id: line.id }),
-                                )}
-                              />
-                            </span>
-                          </div>
-                        ) : null}
                       </div>
                     ) : null}
                   </div>
