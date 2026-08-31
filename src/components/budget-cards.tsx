@@ -52,6 +52,7 @@ import {
   VARIABLE_CATEGORY_ID,
   totalDebtPayments,
   totalForCategory,
+  totalMonthlyExpenses,
   totalMonthlyExpensesExcluding,
   type AccountKind,
   type Debt,
@@ -1472,7 +1473,7 @@ function ExpenseAmountEdit({
       <button
         type="button"
         className={cn(
-          'cursor-text text-right tabular-nums',
+          'cursor-text w-full text-right tabular-nums',
           muted && 'text-neutral-600',
         )}
         onClick={(event) => {
@@ -1521,6 +1522,7 @@ function EmptyNote({ children }: { children: string }) {
 
 export function ExpenseDetailCards() {
   const { expenses } = useBudget()
+  const total = totalMonthlyExpenses(expenses)
   const withoutMortgage = totalMonthlyExpensesExcluding(expenses, [
     MORTGAGE_CATEGORY_ID,
     DEBT_CATEGORY_ID,
@@ -1537,7 +1539,8 @@ export function ExpenseDetailCards() {
 
   return (
     <div className="grid gap-6">
-      <MetricStrip columns={3}>
+      <MetricStrip>
+        <ExpenseMetric label="Total expenses" amount={total} />
         <ExpenseMetric
           label="Expenses without mortgage"
           amount={withoutMortgage}
@@ -1613,7 +1616,7 @@ function ExpenseLine({
         className={cn(
           'cursor-pointer text-left',
           nested
-            ? 'pl-2 text-neutral-600 hover:text-foreground'
+            ? 'pl-1 text-neutral-600 hover:text-foreground'
             : 'py-2',
         )}
         onClick={() => {
@@ -1625,7 +1628,9 @@ function ExpenseLine({
       </button>
       <div
         className={
-          nested ? undefined : 'flex items-baseline justify-end py-2'
+          nested
+            ? 'w-full text-right'
+            : 'flex w-full items-baseline justify-end py-2'
         }
       >
         <ExpenseAmountEdit
@@ -1707,7 +1712,7 @@ function CategoryExpensesCard({
                   return (
                     <div
                       key={item.id}
-                      className="col-span-2 grid grid-cols-subgrid gap-y-1"
+                      className="col-span-2 grid grid-cols-subgrid"
                     >
                       <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
                         <span>{item.name}</span>
@@ -1716,19 +1721,17 @@ function CategoryExpensesCard({
                         </span>
                       </div>
                       {details.length > 0 ? (
-                        <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
-                          <div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
-                            {details.map((expense) => (
-                              <ExpenseLine
-                                key={expense.id}
-                                expense={expense}
-                                editingAmount={amountEditId === expense.id}
-                                onEditAmount={setAmountEditId}
-                                onEditName={setEditExpenseId}
-                                nested
-                              />
-                            ))}
-                          </div>
+                        <div className="col-span-2 grid grid-cols-subgrid items-center gap-y-1 rounded-[6px] bg-[#f6f6f6] py-1">
+                          {details.map((expense) => (
+                            <ExpenseLine
+                              key={expense.id}
+                              expense={expense}
+                              editingAmount={amountEditId === expense.id}
+                              onEditAmount={setAmountEditId}
+                              onEditName={setEditExpenseId}
+                              nested
+                            />
+                          ))}
                         </div>
                       ) : null}
                     </div>
