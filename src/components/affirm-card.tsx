@@ -152,7 +152,7 @@ function FooterFreeze({
   return (
     <div
       className={cn(
-        'shrink-0 py-2 text-sm font-medium tabular-nums',
+        'shrink-0 py-3 text-sm font-medium tabular-nums',
         index === 0 ? 'pl-4 pr-3' : 'px-3',
         col.align === 'right' ? 'text-right' : 'text-left',
         index === AFFIRM_ID_COLS.length - 1 && !scrolled && 'border-border border-r',
@@ -447,10 +447,8 @@ export function AffirmCard({
               </thead>
               <tbody>
                 {schedules.map(({ loan, payments }, rowIndex) => {
-                  const showName =
-                    rowIndex === 0 ||
-                    loan.name !== sortedLoans[rowIndex - 1]?.name
                   const lastRow = rowIndex === schedules.length - 1
+                  const name = loan.name.trim() || 'Amazon'
                   function openLoan() {
                     setAdding(false)
                     setDrawerLoanId(loan.id)
@@ -463,10 +461,10 @@ export function AffirmCard({
                           'truncate py-2 whitespace-nowrap',
                           !lastRow && 'border-border border-b',
                         )}
-                        title={showName ? loan.name : undefined}
+                        title={name}
                         onClick={openLoan}
                       >
-                        {showName ? loan.name : ''}
+                        {name}
                       </FreezeCell>
                       <FreezeCell
                         index={1}
@@ -557,7 +555,7 @@ export function AffirmCard({
               {months.map((ym) => (
                 <div
                   key={ym}
-                  className="shrink-0 px-3 py-2 text-right text-sm font-medium tabular-nums"
+                  className="shrink-0 px-3 py-3 text-right text-sm font-medium tabular-nums"
                   style={{ width: AFFIRM_MONTH_COL }}
                 >
                   {monthTotals[ym] > 0.005 ? formatUsd(monthTotals[ym]) : ''}

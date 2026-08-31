@@ -225,7 +225,10 @@ export function loadDebtPlan(): DebtPlanState {
         ? normalizeLoggedHistory(item.loggedHistory)
         : {},
       affirmLoans: Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
-        ? item.affirmLoans.filter(isAffirmLoan)
+        ? item.affirmLoans.filter(isAffirmLoan).map((loan) => ({
+            ...loan,
+            name: loan.name.trim() || 'Amazon',
+          }))
         : fallback.affirmLoans,
     }
   } catch {
@@ -989,7 +992,7 @@ export function completeAffirmLoan(
   }
   return {
     id: input.id ?? `affirm-${crypto.randomUUID()}`,
-    name: input.name.trim() || 'Affirm',
+    name: input.name.trim() || 'Amazon',
     loanId: input.loanId.trim(),
     startMonth: input.startMonth,
     lastPayment,
