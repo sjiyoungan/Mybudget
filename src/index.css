@@ -292,7 +292,8 @@
 }
 .hover-fill:hover,
 .hover-fill:focus-visible,
-.hover-fill:active {
+.hover-fill:active,
+.hover-fill[aria-expanded='true'] {
   background-color: #f8f8f8 !important;
   background-image: linear-gradient(to bottom right, #f5f5f5, #ffffff) !important;
 }
@@ -306,9 +307,17 @@
   background-color: #f0f0f0 !important;
   background-image: none !important;
 }
+.hover-fill-icon:hover,
+.hover-fill-icon:focus-visible,
+.hover-fill-icon:active,
+.hover-fill-icon[aria-expanded='true'] {
+  background-color: #f0f0f0 !important;
+  background-image: none !important;
+}
 .dark .hover-fill:hover,
 .dark .hover-fill:focus-visible,
-.dark .hover-fill:active {
+.dark .hover-fill:active,
+.dark .hover-fill[aria-expanded='true'] {
   background-color: #262626 !important;
   background-image: linear-gradient(to bottom right, #333333, #1a1a1a) !important;
 }
@@ -319,6 +328,13 @@
 .dark .hover-fill-active:hover,
 .dark .hover-fill-active:focus-visible,
 .dark .hover-fill-active:active {
+  background-color: #2a2a2a !important;
+  background-image: none !important;
+}
+.dark .hover-fill-icon:hover,
+.dark .hover-fill-icon:focus-visible,
+.dark .hover-fill-icon:active,
+.dark .hover-fill-icon[aria-expanded='true'] {
   background-color: #2a2a2a !important;
   background-image: none !important;
 }

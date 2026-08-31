@@ -21,6 +21,7 @@ import {
 import { formatLongDate } from '@/lib/format'
 import { parseAdpPaystub, type Paystub } from '@/lib/paystub'
 import { usePaystubs } from '@/lib/paystub-context'
+import { cn } from '@/lib/utils'
 
 const MAX_PAYSTUB_FILES = 20
 
@@ -163,7 +164,7 @@ export function PaystubUploadButton({
             variant={iconOnly ? 'ghost' : 'outline'}
             size={iconOnly ? 'icon' : 'sm'}
             disabled={busy}
-            className={className}
+            className={cn(iconOnly && 'hover-fill hover-fill-icon', className)}
             aria-label={
               progress
                 ? `Reading ${progress.current}/${progress.total}`
