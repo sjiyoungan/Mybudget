@@ -282,7 +282,9 @@ export function loadDebtPlan(): DebtPlanState {
         ? normalizeLoggedHistory(item.loggedHistory)
         : {},
       affirmLoans: Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
-        ? item.affirmLoans.filter(isAffirmLoan).map(normalizeAffirmLoan)
+        ? withSeededStartDates(
+            item.affirmLoans.filter(isAffirmLoan).map(normalizeAffirmLoan),
+          )
         : fallback.affirmLoans,
     }
   } catch {
@@ -305,6 +307,17 @@ function normalizeAffirmLoan(loan: AffirmLoan): AffirmLoan {
     startDate,
     startMonth: loan.startMonth || (startDate ? startDate.slice(0, 7) : ''),
   }
+}
+
+/** Fill a missing starting day from seed so stored plans pick up screenshot matches. */
+function withSeededStartDates(loans: AffirmLoan[]): AffirmLoan[] {
+  const seededById = new Map(seededAffirmLoans.map((loan) => [loan.id, loan]))
+  return loans.map((loan) => {
+    if (loan.startDate) return loan
+    const seeded = seededById.get(loan.id)
+    if (!seeded?.startDate) return loan
+    return { ...loan, startDate: seeded.startDate }
+  })
 }
 
 function isAffirmLoan(value: unknown): value is AffirmLoan {
