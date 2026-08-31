@@ -218,6 +218,11 @@
   border-color: var(--ring);
 }
 
+[data-slot='select-trigger'][data-chevron='hover']:hover svg,
+[data-slot='select-trigger'][data-chevron='hover']:focus-visible svg {
+  opacity: 1;
+}
+
 .planner-scroll table tr:has(.month-label:hover) > td,
 .planner-scroll table tr:has(.month-label:hover) + tr > td {
   background-color: #f6f6f6 !important;
