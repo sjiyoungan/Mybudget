@@ -3323,7 +3323,7 @@ type DebtDraft = {
 }
 
 const DEBT_ROW =
-  'grid-cols-[minmax(4rem,6.5rem)_7rem_minmax(6rem,9rem)_5rem_4.5rem_1px_5.75rem_5.25rem_5.25rem_6rem_1px_6.5rem_7rem_28px]'
+  'grid-cols-[minmax(4rem,6.5rem)_7rem_minmax(5rem,8rem)_5.5rem_4.5rem_1px_5.75rem_5.25rem_4.75rem_6rem_1px_6.5rem_7rem_28px]'
 
 type DebtSortKey = 'balance' | 'apr' | 'minimum' | 'total'
 type DebtSortDir = 'asc' | 'desc'
