@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
@@ -35,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { MetricStrip } from '@/components/metric-strip'
 import { useBudget } from '@/lib/budget-context'
 import {
   billsAccount,
@@ -1528,17 +1528,17 @@ export function ExpenseDetailCards() {
 
   return (
     <div className="grid gap-6">
-      <section className="grid gap-4 md:grid-cols-3">
-        <ExpenseMetricCard label="Total expenses" amount={total} />
-        <ExpenseMetricCard
+      <MetricStrip columns={3}>
+        <ExpenseMetric label="Total expenses" amount={total} />
+        <ExpenseMetric
           label="Expenses without mortgage"
           amount={withoutMortgage}
         />
-        <ExpenseMetricCard
+        <ExpenseMetric
           label="Expenses without mortgage or variables"
           amount={withoutMortgageOrVariable}
         />
-      </section>
+      </MetricStrip>
 
       <section className="grid items-start gap-6 lg:grid-cols-2">
         <ExpensesCard />
@@ -1550,7 +1550,7 @@ export function ExpenseDetailCards() {
   )
 }
 
-function ExpenseMetricCard({
+function ExpenseMetric({
   label,
   amount,
 }: {
@@ -1558,12 +1558,12 @@ function ExpenseMetricCard({
   amount: number
 }) {
   return (
-    <Card>
-      <CardHeader className="gap-5">
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">{formatUsd(amount)}</CardTitle>
-      </CardHeader>
-    </Card>
+    <div>
+      <p className="text-muted-foreground text-sm">{label}</p>
+      <p className="mt-4 text-2xl font-normal tabular-nums">
+        {formatUsd(amount)}
+      </p>
+    </div>
   )
 }
 
@@ -2577,7 +2577,7 @@ export function DebtsCard() {
             </div>
           </CardHeader>
           <div className="relative z-10 pointer-events-none px-(--card-spacing) pt-4 pb-4">
-            <div className="metric-grid-row">
+            <MetricStrip className="metric-grid-row">
               <DebtMetric label="Total balance" amount={totalBalance} />
               <DebtMetric label="Total payments" amount={totalPayment} />
               <DebtMetric label="Extra this month" amount={extraThisMonth} />
@@ -2585,7 +2585,7 @@ export function DebtsCard() {
                 label="Interest paid this year"
                 amount={ytdInterest}
               />
-            </div>
+            </MetricStrip>
           </div>
         </div>
         <CardContent className="grid">

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
+import { MetricStrip } from '@/components/metric-strip'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -137,7 +138,7 @@ export function IncomePage() {
           </div>
         </div>
 
-        <section className="metric-grid mt-8">
+        <MetricStrip className="mt-8">
           <SummaryStat label="Year-to-date net pay" amount={ytdNet} />
           <SummaryStat
             label="Average monthly net pay"
@@ -153,7 +154,7 @@ export function IncomePage() {
             amount={ytdHealthcare}
             onClick={() => setDeductionDrawer('healthcare')}
           />
-        </section>
+        </MetricStrip>
 
         <section className="mt-8 grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
           <Card>
@@ -230,7 +231,7 @@ function SummaryStat({
   className?: string
 }) {
   const classes = cn(
-    'w-full rounded-none text-left',
+    'w-auto max-w-full rounded-none text-left',
     onClick && 'hover-fill cursor-pointer',
     className,
   )

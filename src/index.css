@@ -260,82 +260,58 @@
   background-image: none !important;
 }
 
-/* Text is padded inside each cell; hover fill goes all the way to the strokes. */
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.metric-grid > * {
-  position: relative;
-  box-sizing: border-box;
-  min-width: 0;
+/* Metrics sit on the page background. Hairlines are siblings, so space-between
+   puts equal space on both sides and the stroke lands between the text. */
+.metric-grid,
+.metric-grid-row {
+  display: flex;
   width: 100%;
-  padding: 0.5rem 1.5rem;
+  align-items: stretch;
+  justify-content: space-between;
 }
+.metric-grid > :not(.metric-rule),
+.metric-grid-row > :not(.metric-rule) {
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 16rem;
+  padding-block: 0.5rem;
+}
+.metric-grid.metric-cols-3 > :not(.metric-rule) {
+  max-width: 18rem;
+}
+.metric-rule {
+  flex: 0 0 1px;
+  width: 1px;
+  align-self: stretch;
+  background-color: var(--border);
+  pointer-events: none;
+}
+
 @media (width < 80rem) {
-  .metric-grid > *:nth-child(odd) {
-    padding-left: 0;
+  .metric-grid:not(.metric-cols-3):not(.metric-grid-row) {
+    display: grid;
+    grid-template-columns: auto 1px auto;
+    justify-content: space-between;
+    row-gap: 0.75rem;
   }
-  .metric-grid > *:nth-child(even) {
-    padding-right: 0;
-  }
-  .metric-grid > *:nth-child(even)::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 1px;
-    background-color: var(--border);
-  }
-  .metric-grid > *:nth-child(n + 3) {
-    border-top: 1px solid var(--border);
-  }
-}
-@media (width >= 80rem) {
-  .metric-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .metric-grid > *:nth-child(4n + 1) {
-    padding-left: 0;
-  }
-  .metric-grid > *:nth-child(4n) {
-    padding-right: 0;
-  }
-  .metric-grid > *:not(:nth-child(4n + 1))::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 1px;
-    background-color: var(--border);
+  .metric-grid:not(.metric-cols-3):not(.metric-grid-row) > :nth-child(4) {
+    grid-column: 1 / -1;
+    width: auto;
+    height: 1px;
+    flex: none;
+    align-self: stretch;
   }
 }
 
-.metric-grid-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-.metric-grid-row > * {
-  position: relative;
-  box-sizing: border-box;
-  min-width: 0;
-  width: 100%;
-  padding: 0.5rem 1.5rem;
-}
-.metric-grid-row > *:first-child {
-  padding-left: 0;
-}
-.metric-grid-row > *:last-child {
-  padding-right: 0;
-}
-.metric-grid-row > *:not(:first-child)::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 1px;
-  background-color: var(--border);
+@media (width < 40rem) {
+  .metric-grid.metric-cols-3 {
+    flex-direction: column;
+  }
+  .metric-grid.metric-cols-3 > .metric-rule {
+    flex: 0 0 1px;
+    width: 100%;
+    height: 1px;
+    align-self: stretch;
+  }
 }
