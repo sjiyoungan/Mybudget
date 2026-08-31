@@ -10,7 +10,7 @@ import {
   type PointerEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, ListTodo, Menu, Undo2 } from 'lucide-react'
+import { Check, ChevronDown, Circle, CircleCheck, Menu, Undo2 } from 'lucide-react'
 
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
 import { Button } from '@/components/ui/button'
@@ -57,6 +57,7 @@ import {
   strategyDebtOrder,
   strategyLabel,
   withLiveMonthlyBudget,
+  ymIndex,
   type DebtPlanState,
   type PayoffStrategy,
   type PlannerLine,
@@ -164,6 +165,7 @@ export function DebtPage() {
           interestPaid={interestPaid}
           history={history}
           upcoming={upcoming}
+          now={now}
           onPlanChange={setPlan}
         />
 
@@ -203,6 +205,7 @@ function PlannerCard({
   interestPaid,
   history,
   upcoming,
+  now,
   onPlanChange,
 }: {
   debts: Debt[]
@@ -211,6 +214,7 @@ function PlannerCard({
   interestPaid: number
   history: PlannerMonth[]
   upcoming: PlannerMonth[]
+  now: Date
   onPlanChange: (plan: DebtPlanState) => void
 }) {
   const [view, setView] = useState<PlannerView>('planner')
@@ -330,6 +334,7 @@ function PlannerCard({
           months={rows}
           showStart={view === 'planner'}
           showLog={view === 'planner'}
+          now={now}
           editingKey={editingKey}
           onEditMonth={(row) => setEditingKey(monthKey(row.year, row.month))}
           onSaveMonth={(row) => {
@@ -585,6 +590,7 @@ function MonthTable({
   months,
   showStart,
   showLog,
+  now,
   editingKey,
   onEditMonth,
   onSaveMonth,
@@ -595,6 +601,7 @@ function MonthTable({
   months: PlannerMonth[]
   showStart: boolean
   showLog: boolean
+  now: Date
   editingKey: string | null
   onEditMonth: (row: PlannerMonth) => void
   onSaveMonth: (row: PlannerMonth) => void
@@ -619,6 +626,7 @@ function MonthTable({
     pointerId: -1,
   })
   const years = groupMonthsByYear(months)
+  const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
 
   const clearPending = useCallback(() => {
     if (pendingRef.current) {
@@ -796,6 +804,7 @@ function MonthTable({
               spaced={groupIndex > 0}
               lastGroup={groupIndex === years.length - 1}
               showLog={showLog}
+              nowIdx={nowIdx}
               editingKey={editingKey}
               onEditMonth={onEditMonth}
               onSaveMonth={onSaveMonth}
@@ -872,6 +881,7 @@ function YearGroupRows({
   spaced,
   lastGroup,
   showLog,
+  nowIdx,
   editingKey,
   onEditMonth,
   onSaveMonth,
@@ -886,6 +896,7 @@ function YearGroupRows({
   spaced: boolean
   lastGroup: boolean
   showLog: boolean
+  nowIdx: number
   editingKey: string | null
   onEditMonth: (row: PlannerMonth) => void
   onSaveMonth: (row: PlannerMonth) => void
@@ -929,6 +940,7 @@ function YearGroupRows({
           showStart={showStart && index === 0}
           last={lastGroup && index === months.length - 1}
           showLog={showLog}
+          nowIdx={nowIdx}
           editing={editingKey === monthKey(row.year, row.month)}
           onEditMonth={onEditMonth}
           onSaveMonth={onSaveMonth}
@@ -948,6 +960,7 @@ function MonthBlock({
   showStart,
   last,
   showLog,
+  nowIdx,
   editing,
   onEditMonth,
   onSaveMonth,
@@ -961,6 +974,7 @@ function MonthBlock({
   showStart: boolean
   last: boolean
   showLog: boolean
+  nowIdx: number
   editing: boolean
   onEditMonth: (row: PlannerMonth) => void
   onSaveMonth: (row: PlannerMonth) => void
@@ -1019,7 +1033,9 @@ function MonthBlock({
         <MonthCell
           label={label}
           rowSpan={2}
-          showLog={showLog}
+          showLog={
+            showLog && ymIndex(row.year, row.month) <= nowIdx
+          }
           editing={editing}
           onEdit={() => onEditMonth(row)}
           onSave={() => onSaveMonth(row)}
@@ -1155,17 +1171,17 @@ function MonthCell({
     <td
       rowSpan={rowSpan}
       className={cn(
-        'month-label sticky left-0 z-10 bg-card py-1.5 pr-3 align-top font-medium whitespace-nowrap',
-        showLog ? 'pl-2' : 'pl-4',
+        'month-label sticky left-0 z-10 bg-card py-1.5 pr-3 pl-4 align-top font-medium whitespace-nowrap',
         editing && 'month-editing',
       )}
     >
       {showLog ? (
-        <div className="flex items-start gap-1">
+        <div className="flex flex-col items-start gap-1">
+          <span>{label}</span>
           <button
             type="button"
             data-no-drag
-            className="month-log-btn text-muted-foreground hover:text-foreground flex size-6 shrink-0 items-center justify-center rounded-md"
+            className="text-muted-foreground hover:text-foreground flex size-5 items-center justify-center"
             aria-label={editing ? `Save ${label}` : `Log ${label}`}
             onClick={(event) => {
               event.stopPropagation()
@@ -1174,12 +1190,11 @@ function MonthCell({
             }}
           >
             {editing ? (
-              <Check className="size-3.5" />
+              <CircleCheck className="size-4" />
             ) : (
-              <ListTodo className="size-3.5" />
+              <Circle className="size-4" />
             )}
           </button>
-          <span className="pt-0.5">{label}</span>
         </div>
       ) : (
         label

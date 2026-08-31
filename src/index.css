@@ -230,17 +230,6 @@
   background-color: #f6f6f6 !important;
 }
 
-.month-log-btn {
-  opacity: 0;
-  pointer-events: none;
-}
-.month-label:hover .month-log-btn,
-.month-label:focus-within .month-log-btn,
-.month-editing .month-log-btn {
-  opacity: 1;
-  pointer-events: auto;
-}
-
 .paid-input {
   display: block;
   box-sizing: border-box;
