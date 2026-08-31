@@ -1535,12 +1535,12 @@ export function ExpenseDetailCards() {
     <div className="grid gap-6">
       <MetricStrip>
         <ExpenseMetric label="Total expenses" amount={total} />
-        <ExpenseMetric label="W/O mortgage" amount={withoutMortgage} />
+        <ExpenseMetric label="w/o mortgage" amount={withoutMortgage} />
         <ExpenseMetric
-          label="W/O mortgage plus variables"
+          label="w/o mortgage plus variables"
           amount={withoutMortgageOrVariable}
         />
-        <ExpenseMetric label="W/O variables" amount={withoutVariable} />
+        <ExpenseMetric label="w/o variables" amount={withoutVariable} />
       </MetricStrip>
 
       <section className="grid items-start gap-6 lg:grid-cols-2">
