@@ -108,7 +108,6 @@ import {
   projectDebtPlan,
   sortDebtsByPayoff,
   withLiveMonthlyBudget,
-  yearToDateInterest,
   type PlannerMonth,
 } from '@/lib/debt-plan'
 import { formatUsd, formatUsdNumber, formatUsdWholeNumberUp, formatUsdWholeUp } from '@/lib/format'
@@ -2346,15 +2345,32 @@ function CategoryExpensesCard({
                     <EmptyNote>No debt payments yet.</EmptyNote>
                   </div>
                 ) : (
-                  debtItems.map((expense) => (
-                    <ExpenseLine
-                      key={expense.id}
-                      expense={expense}
-                      editingAmount={amountEditId === expense.id}
-                      onEditAmount={setAmountEditId}
-                      onEditName={setEditExpenseId}
-                    />
-                  ))
+                  debtItems.map((expense) => {
+                    const extra =
+                      debts.find((item) => item.id === expense.id)
+                        ?.extraPayment ?? 0
+                    return (
+                      <div
+                        key={expense.id}
+                        className="col-span-2 grid grid-cols-subgrid"
+                      >
+                        <ExpenseLine
+                          expense={expense}
+                          editingAmount={amountEditId === expense.id}
+                          onEditAmount={setAmountEditId}
+                          onEditName={setEditExpenseId}
+                        />
+                        {extra > 0.005 ? (
+                          <div className="col-span-2 grid grid-cols-subgrid items-baseline rounded-[6px] bg-[#f6f6f6] py-1">
+                            <span className="pl-1 text-neutral-600">Extra</span>
+                            <span className="w-full text-right text-neutral-600 tabular-nums">
+                              {formatUsdWholeUp(extra)}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })
                 )}
               </div>
             ) : (
@@ -3335,11 +3351,6 @@ export function DebtsCard() {
         row.year === now.getFullYear() &&
         row.month === now.getMonth(),
     )?.extraPaid ?? 0
-  const ytdInterest = yearToDateInterest(
-    months,
-    now.getFullYear(),
-    now.getMonth(),
-  )
 
   return (
     <>
@@ -3372,8 +3383,9 @@ export function DebtsCard() {
               <DebtMetric label="Total payments" amount={totalPayment} wholeUp />
               <DebtMetric label="Extra this month" amount={extraThisMonth} />
               <DebtMetric
-                label="Interest paid this year"
-                amount={ytdInterest}
+                label="Total towards debt"
+                amount={totalPayment + extraThisMonth}
+                wholeUp
               />
             </MetricStrip>
           </div>
@@ -3397,7 +3409,7 @@ export function DebtsCard() {
                     creditor={item.lender}
                     minimum={formatUsd(paymentWithoutCharges(item))}
                     balance={formatUsd(item.balance)}
-                    paidOff={last ? formatMonthsLeft(last, now) : 'â€”'}
+                    paidOff={last ? formatMonthsLeft(last, now) : '—'}
                   />
                 )
               })}
@@ -3663,9 +3675,7 @@ export function EditDebtsDialog({
 
   function computedTotal(draft: DebtDraft) {
     return ceilDollars(
-      (moneyField(draft.minimum) ?? 0) +
-        (moneyField(draft.extraPayment) ?? 0) +
-        chargesAmount(draft),
+      (moneyField(draft.minimum) ?? 0) + (moneyField(draft.extraPayment) ?? 0),
     )
   }
 
@@ -3674,9 +3684,7 @@ export function EditDebtsDialog({
     const parsed = parseAmount(value)
     if (parsed == null) return
     const extra = roundCents(
-      ceilDollars(parsed) -
-        (moneyField(draft.minimum) ?? 0) -
-        chargesAmount(draft),
+      ceilDollars(parsed) - (moneyField(draft.minimum) ?? 0),
     )
     updateDraft(draft.id, {
       extraPayment: extra === 0 ? '' : String(extra),

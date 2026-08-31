@@ -4,7 +4,6 @@ import {
   monthsUntilPromoEnd,
   paymentWithoutCharges,
   totalMonthlyExpenses,
-  totalPaymentForDebt,
   type Debt,
   type RecurringExpense,
 } from '@/lib/budget'
@@ -120,7 +119,7 @@ export function monthlyDebtBudget(
 ) {
   const remaining = monthlyNet - totalMonthlyExpenses(expenses)
   const payments = debts.reduce(
-    (sum, debt) => sum + totalPaymentForDebt(expenses, debt),
+    (sum, debt) => sum + paymentWithoutCharges(debt),
     0,
   )
   return roundCents(payments + remaining)
@@ -558,8 +557,8 @@ function paymentToClear(
   return roundCents(hi)
 }
 
-function scheduledPayment(debt: Debt, expenses: RecurringExpense[]) {
-  return totalPaymentForDebt(expenses, debt)
+function scheduledPayment(debt: Debt, _expenses: RecurringExpense[]) {
+  return paymentWithoutCharges(debt)
 }
 
 function historyMonth(

@@ -867,33 +867,23 @@ export function totalPaymentForDebt(
 
 export function shownMonthlyPayment(
   expense: RecurringExpense,
-  expenses: RecurringExpense[],
+  _expenses: RecurringExpense[],
   debts: Debt[],
 ) {
   if (!isDebtExpense(expense)) return monthlyAmount(expense)
   const debt = debts.find((item) => item.id === expense.id)
   if (!debt) return monthlyAmount(expense)
-  return totalPaymentForDebt(expenses, debt)
+  return paymentWithoutCharges(debt)
 }
 
 export function storedAmountFromShownPayment(
   shownMonthly: number,
   expense: RecurringExpense,
-  expenses: RecurringExpense[],
-  debts: Debt[],
+  _expenses: RecurringExpense[],
+  _debts: Debt[],
   frequency: ExpenseFrequency = expense.frequency,
 ) {
-  if (!isDebtExpense(expense)) {
-    return billedAmountFromMonthly(shownMonthly, frequency)
-  }
-  const debt = debts.find((item) => item.id === expense.id)
-  if (!debt) return billedAmountFromMonthly(shownMonthly, frequency)
-  const total = totalPaymentForDebt(expenses, debt)
-  const monthly =
-    shownMonthly === total
-      ? paymentWithoutCharges(debt)
-      : Math.max(0, roundCents(shownMonthly - chargesForDebt(expenses, debt)))
-  return billedAmountFromMonthly(monthly, frequency)
+  return billedAmountFromMonthly(shownMonthly, frequency)
 }
 
 export type DepositLine = {
