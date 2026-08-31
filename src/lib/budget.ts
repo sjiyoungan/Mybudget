@@ -826,8 +826,9 @@ export function paymentWithoutCharges(debt: Pick<Debt, 'minimum' | 'extraPayment
 function isChargeOnDebt(
   expense: RecurringExpense,
   debt: Pick<Debt, 'id'>,
+  includeHidden = false,
 ) {
-  if (isHiddenExpense(expense)) return false
+  if (!includeHidden && isHiddenExpense(expense)) return false
   if (expense.id === debt.id || isDebtExpense(expense)) return false
   return expense.accountId === debt.id
 }
@@ -845,8 +846,16 @@ export function chargesForDebt(
 export function chargeExpensesForDebt(
   expenses: RecurringExpense[],
   debt: Pick<Debt, 'id'>,
+  includeHidden = false,
 ) {
-  return expenses.filter((expense) => isChargeOnDebt(expense, debt))
+  return expenses.filter((expense) => isChargeOnDebt(expense, debt, includeHidden))
+}
+
+export function hiddenChargeExpensesForDebt(
+  expenses: RecurringExpense[],
+  debt: Pick<Debt, 'id'>,
+) {
+  return chargeExpensesForDebt(expenses, debt, true).filter(isHiddenExpense)
 }
 
 export function totalPaymentForDebt(
@@ -893,6 +902,7 @@ export type DepositLine = {
   monthly: number
   expense?: RecurringExpense
   charges: RecurringExpense[]
+  hiddenCharges: RecurringExpense[]
   kind: 'checking' | 'debt'
 }
 
@@ -921,6 +931,7 @@ export function depositLinesForAccount(
         monthly: debt ? paymentWithoutCharges(debt) : ceiledMonthlyAmount(expense),
         expense,
         charges: debt ? chargeExpensesForDebt(expenses, debt) : [],
+        hiddenCharges: debt ? hiddenChargeExpensesForDebt(expenses, debt) : [],
         kind: 'debt',
       })
       continue
@@ -931,6 +942,7 @@ export function depositLinesForAccount(
       monthly: ceiledMonthlyAmount(expense),
       expense,
       charges: [],
+      hiddenCharges: [],
       kind: 'checking',
     })
   }
@@ -945,6 +957,7 @@ export function depositLinesForAccount(
       monthly: paymentWithoutCharges(debt),
       expense: linked,
       charges: chargeExpensesForDebt(expenses, debt),
+      hiddenCharges: hiddenChargeExpensesForDebt(expenses, debt),
       kind: 'debt',
     })
   }

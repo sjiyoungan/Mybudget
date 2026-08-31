@@ -67,7 +67,9 @@ import {
   accountDepositNeed,
   billsAccount,
   billedAmountFromMonthly,
+  chargeExpensesForDebt,
   chargesForDebt,
+  hiddenChargeExpensesForDebt,
   depositLinesForAccount,
   monthlyAmount,
   monthlyDepositNeed,
@@ -497,6 +499,82 @@ function DebtMoneyDisplay({
       <span className="text-neutral-400 shrink-0 pr-0.5">$</span>
       <span>{whole ? formatUsdWholeNumberUp(amount) : formatUsdNumber(amount)}</span>
     </div>
+  )
+}
+
+function chargeLineAmount(expense: RecurringExpense) {
+  return ceilDollars(monthlyAmount(expense))
+}
+
+function ChargesBreakdown({
+  amount,
+  items,
+  hiddenItems,
+}: {
+  amount: number
+  items: RecurringExpense[]
+  hiddenItems: RecurringExpense[]
+}) {
+  const hasDetail = items.length > 0 || hiddenItems.length > 0
+  const body = (
+    <div
+      className={cn(
+        'flex h-8 w-full items-center justify-end px-2.5 text-sm tabular-nums text-neutral-400',
+        hasDetail && 'cursor-pointer',
+      )}
+      aria-label="Charges"
+    >
+      <span className="text-neutral-400 shrink-0 pr-0.5">$</span>
+      <span>{formatUsdWholeNumberUp(amount)}</span>
+    </div>
+  )
+  if (!hasDetail) return body
+  return (
+    <Popover modal={false}>
+      <PopoverTrigger asChild>
+        <button type="button" className="w-full min-w-0">
+          {body}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-3" align="end">
+        <p className="text-muted-foreground mb-2 text-xs font-medium">
+          Expenses on this card
+        </p>
+        <div className="grid gap-1">
+          {items.map((item) => (
+            <div key={item.id} className="flex items-baseline gap-2 text-sm">
+              <span className="min-w-0 flex-1 truncate">{item.name}</span>
+              <span className="tabular-nums text-neutral-600">
+                {formatUsdWholeUp(chargeLineAmount(item))}
+              </span>
+            </div>
+          ))}
+          {hiddenItems.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-baseline gap-2 text-sm opacity-60"
+            >
+              <EyeOff className="text-muted-foreground size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{item.name}</span>
+              <span className="tabular-nums text-neutral-600">
+                {formatUsdWholeUp(chargeLineAmount(item))}
+              </span>
+            </div>
+          ))}
+        </div>
+        {hiddenItems.length > 0 ? (
+          <p className="text-muted-foreground mt-2 text-xs">
+            Hidden expenses are not included in Charges.
+          </p>
+        ) : null}
+        {items.length > 0 ? (
+          <div className="mt-2 flex items-baseline gap-2 border-t pt-2 text-sm">
+            <span className="min-w-0 flex-1">Charges</span>
+            <span className="tabular-nums">{formatUsdWholeUp(amount)}</span>
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -3012,6 +3090,13 @@ function AccountDrawer({
                   </p>
                   {section.items.map((line) => {
                 const isEditing = editingId === line.expense?.id
+                const chargeTotal =
+                  line.kind === 'debt'
+                    ? chargesForDebt(expenses, { id: line.id })
+                    : 0
+                const completeMonthly = ceilDollars(line.monthly + chargeTotal)
+                const hasChargeList =
+                  line.charges.length > 0 || line.hiddenCharges.length > 0
                 return (
                   <div key={line.id} className="grid gap-y-1">
                     <div
@@ -3057,13 +3142,24 @@ function AccountDrawer({
                         </div>
                       ) : (
                         <AmountCols
-                          left={formatUsdWholeUp(line.monthly / 2)}
-                          right={formatUsdWholeUp(line.monthly)}
+                          left={formatUsdWholeUp(completeMonthly / 2)}
+                          right={formatUsdWholeUp(completeMonthly)}
                         />
                       )}
                     </div>
-                    {line.charges.length > 0 ? (
+                    {hasChargeList ? (
                       <div className="rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
+                        <div className="flex items-baseline py-1 pr-1 pl-1">
+                          <span className="text-neutral-600 min-w-0 flex-1 pl-2">
+                            Total payment
+                          </span>
+                          <span className="text-neutral-600">
+                            <AmountCols
+                              left={formatUsdWholeUp(line.monthly / 2)}
+                              right={formatUsdWholeUp(line.monthly)}
+                            />
+                          </span>
+                        </div>
                         {line.charges.map((charge) => {
                           const chargeEditing = editingId === charge.id
                           return (
@@ -3122,7 +3218,66 @@ function AccountDrawer({
                             </div>
                           )
                         })}
-                        {line.charges.length > 0 ? (
+                        {line.hiddenCharges.map((charge) => {
+                          const chargeEditing = editingId === charge.id
+                          return (
+                            <div
+                              key={charge.id}
+                              ref={chargeEditing ? editRowRef : undefined}
+                              className="flex items-center py-1 pr-1 pl-1 opacity-60 [&:hover_.edit-pencil]:opacity-100"
+                            >
+                              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                <EyeOff className="text-muted-foreground size-3.5 shrink-0" />
+                                <span className="truncate text-neutral-600">
+                                  {charge.name}
+                                </span>
+                                {chargeEditing ? null : (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon-xs"
+                                    className="edit-pencil border-neutral-200 bg-white text-neutral-600 opacity-0 hover:bg-neutral-50 hover:text-foreground"
+                                    onClick={() => startEdit(charge)}
+                                    title="Edit bank"
+                                    aria-label={`Edit bank for ${charge.name}`}
+                                  >
+                                    <Pencil className="size-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                              {chargeEditing ? (
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                  <div className="w-44">
+                                    <BankSelect
+                                      accounts={accounts}
+                                      value={draftAccountId}
+                                      onChange={setDraftAccountId}
+                                    />
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon-xs"
+                                    className="bg-white"
+                                    onClick={saveEdit}
+                                    title="Save bank"
+                                    aria-label="Save bank"
+                                  >
+                                    <Check className="size-3.5" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-neutral-600">
+                                  <AmountCols
+                                    left={formatUsdWholeUp(monthlyAmount(charge) / 2)}
+                                    right={formatUsdWholeUp(monthlyAmount(charge))}
+                                  />
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+                        {line.charges.length > 0 || line.hiddenCharges.length > 0 ? (
                           <div className="flex items-baseline py-1 pr-1 pl-1">
                             <span className="text-neutral-600 min-w-0 flex-1 pl-2">
                               Charges
@@ -3786,11 +3941,10 @@ export function EditDebtsDialog({
                   }
                   ariaLabel="Extra payment"
                 />
-                <DebtMoneyDisplay
+                <ChargesBreakdown
                   amount={chargesAmount(draft)}
-                  ariaLabel="Charges"
-                  whole
-                  muted
+                  items={chargeExpensesForDebt(expenses, { id: draft.id })}
+                  hiddenItems={hiddenChargeExpensesForDebt(expenses, { id: draft.id })}
                 />
                 <DebtMoneyInput
                   value={

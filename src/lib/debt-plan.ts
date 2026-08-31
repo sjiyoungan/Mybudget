@@ -1,4 +1,5 @@
 import {
+  chargesForDebt,
   effectiveApr,
   monthsUntilPromoEnd,
   paymentWithoutCharges,
@@ -14,7 +15,6 @@ import {
   seededAmazonDebt,
   seededDebtBalances,
   seededDebtHistory,
-  seededRecurringCharges,
   type SeededAffirmLoan,
   type SeededHistoryMonth,
 } from '@/lib/debt-plan-seed'
@@ -103,7 +103,7 @@ export function defaultDebtPlan(): DebtPlanState {
     snowballDebtId: defaultSnowballDebtId,
     strategy: 'avalanche',
     customOrder: [],
-    recurringCharges: { ...seededRecurringCharges },
+    recurringCharges: {},
     chargesByMonth: {},
     paymentsByMonth: {},
     loggedMonths: [],
@@ -177,12 +177,13 @@ export function chargedForDebt(
   debtId: string,
   year: number,
   month: number,
+  expenses: RecurringExpense[] = [],
 ) {
   const override = plan.chargesByMonth[monthKey(year, month)]?.[debtId]
   if (typeof override === 'number' && Number.isFinite(override)) {
     return roundCents(override)
   }
-  return roundCents(plan.recurringCharges[debtId] ?? 0)
+  return chargesForDebt(expenses, { id: debtId })
 }
 
 export function loadDebtPlan(): DebtPlanState {
@@ -214,8 +215,8 @@ export function loadDebtPlan(): DebtPlanState {
             : fallback.customOrder,
       recurringCharges:
         item.recurringCharges && typeof item.recurringCharges === 'object'
-          ? { ...fallback.recurringCharges, ...item.recurringCharges }
-          : fallback.recurringCharges,
+          ? { ...item.recurringCharges }
+          : {},
       chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
       paymentsByMonth: hasLogging
         ? normalizeChargesByMonth(item.paymentsByMonth)
@@ -653,7 +654,7 @@ export function projectDebtPlan(
         })
         continue
       }
-      const charged = chargedForDebt(plan, debt.id, year, month)
+      const charged = chargedForDebt(plan, debt.id, year, month, expenses)
       const interest = roundCents(
         (start * (effectiveApr(debt, year, month) / 100)) / 12,
       )
@@ -710,7 +711,7 @@ export function projectDebtPlan(
       const already = payments.get(debt.id) ?? 0
       const monthsLeft = monthsUntilPromoEnd(debt, year, month) ?? 1
       const rate = effectiveApr(debt, year, month) / 100 / 12
-      const charge = plan.recurringCharges[debt.id] ?? 0
+      const charge = chargesForDebt(expenses, { id: debt.id })
       const need = paymentToClear(due, rate, monthsLeft, charge)
       const add = roundCents(
         Math.min(leftover, Math.max(0, need - already), Math.max(0, due - already)),
