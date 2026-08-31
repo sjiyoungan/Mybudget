@@ -161,7 +161,7 @@ function BankSelect({
     return (
       <SelectItem key={account.id} value={account.id}>
         {account.lastFour
-          ? `${account.name} Â· ${account.lastFour}`
+          ? `${account.name} \u00b7 ${account.lastFour}`
           : account.name}
       </SelectItem>
     )
@@ -1669,7 +1669,7 @@ function CategoryExpensesCard({
           <div className="flex items-start justify-between gap-3">
             <CardTitle>{title}</CardTitle>
             <CardGearButton
-              label="Edit expenses"
+              label={mode === 'debt' ? 'Edit debts' : 'Edit expenses'}
               onClick={() => setOpen(true)}
             />
           </div>
@@ -1740,7 +1740,11 @@ function CategoryExpensesCard({
         </CardContent>
       </Card>
 
-      <EditExpensesDialog open={open} onOpenChange={setOpen} />
+      {mode === 'debt' ? (
+        <EditDebtsDialog open={open} onOpenChange={setOpen} />
+      ) : (
+        <EditExpensesDialog open={open} onOpenChange={setOpen} />
+      )}
       <EditOneExpenseDialog
         expenseId={editExpenseId}
         onOpenChange={(next) => {
