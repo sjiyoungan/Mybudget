@@ -231,7 +231,7 @@ function SummaryStat({
   className?: string
 }) {
   const classes = cn(
-    'w-auto max-w-full rounded-none text-left',
+    'w-full rounded-none text-left',
     onClick && 'hover-fill cursor-pointer',
     className,
   )
