@@ -923,6 +923,54 @@ export function monthsUntilPayoff(remaining: number, monthly: number) {
   return Math.ceil(remaining / monthly)
 }
 
+export function parseYm(ym: string) {
+  const [year, month] = ym.split('-').map(Number)
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return null
+  }
+  return { year, month: month - 1 }
+}
+
+export function monthsBetweenYm(start: string, end: string) {
+  const from = parseYm(start)
+  const to = parseYm(end)
+  if (!from || !to) return []
+  let index = ymIndex(from.year, from.month)
+  const last = ymIndex(to.year, to.month)
+  if (last < index) return []
+  const months: string[] = []
+  while (index <= last) {
+    months.push(monthKey(Math.floor(index / 12), index % 12))
+    index += 1
+  }
+  return months
+}
+
+/** Scheduled payment in each month from start through last payment. */
+export function affirmLoanPayments(loan: AffirmLoan) {
+  const months = monthsBetweenYm(loan.startMonth, loan.lastPayment)
+  const payments: Record<string, number> = {}
+  if (months.length === 0) return payments
+  months.forEach((ym, index) => {
+    if (index === months.length - 1) {
+      const prior = roundCents(loan.monthly * (months.length - 1))
+      payments[ym] = roundCents(Math.max(0, loan.startingBalance - prior))
+    } else {
+      payments[ym] = roundCents(loan.monthly)
+    }
+  })
+  return payments
+}
+
+export function affirmVisibleMonths(loans: AffirmLoan[], now: Date) {
+  const start = monthKey(now.getFullYear(), now.getMonth())
+  let end = start
+  for (const loan of loans) {
+    if (loan.lastPayment > end) end = loan.lastPayment
+  }
+  return monthsBetweenYm(start, end)
+}
+
 export function affirmTotals(loans: AffirmLoan[]) {
   const active = loans.filter((loan) => loan.remaining > 0.005)
   return {
