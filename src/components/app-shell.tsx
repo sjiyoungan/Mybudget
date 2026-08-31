@@ -12,18 +12,29 @@ import {
 import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
 
-const PAGES = [
-  { to: '/', label: 'Dashboard' },
+const TOP_PAGES = [
+  { to: '/', label: 'Dashboard', end: true },
+] as const
+
+const SUB_PAGES = [
   { to: '/income', label: 'Income' },
   { to: '/expenses', label: 'Expenses' },
   { to: '/debt', label: 'Debt' },
-  { to: '/calculate', label: 'Calculate' },
 ] as const
+
+const BOTTOM_PAGES = [{ to: '/calculate', label: 'Calculate' }] as const
 
 function navClass(isActive: boolean) {
   return cn(
     'hover-fill flex h-8 items-center rounded-lg px-2.5 text-sm',
     isActive && 'hover-fill-active font-medium',
+  )
+}
+
+function subNavClass(isActive: boolean) {
+  return cn(
+    'nav-tree-item hover-fill relative flex h-8 items-center rounded-lg px-2.5 text-sm',
+    isActive && 'nav-tree-item-active hover-fill-active font-medium',
   )
 }
 
@@ -60,11 +71,31 @@ export function AppShell() {
         </div>
 
         <div className="grid gap-0.5">
-          {PAGES.map((page) => (
+          {TOP_PAGES.map((page) => (
             <NavLink
               key={page.to}
               to={page.to}
-              end={page.to === '/'}
+              end={page.end}
+              className={({ isActive }) => navClass(isActive)}
+            >
+              {page.label}
+            </NavLink>
+          ))}
+          <div className="nav-tree">
+            {SUB_PAGES.map((page) => (
+              <NavLink
+                key={page.to}
+                to={page.to}
+                className={({ isActive }) => subNavClass(isActive)}
+              >
+                {page.label}
+              </NavLink>
+            ))}
+          </div>
+          {BOTTOM_PAGES.map((page) => (
+            <NavLink
+              key={page.to}
+              to={page.to}
               className={({ isActive }) => navClass(isActive)}
             >
               {page.label}
