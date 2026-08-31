@@ -279,7 +279,7 @@ function PlannerCard({
 
   return (
     <>
-      <Card className="pb-1">
+      <Card className="overflow-visible pb-1">
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-8">
@@ -642,14 +642,15 @@ function MonthTable({
   ) => void
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const plannerRef = useRef<HTMLDivElement>(null)
   const tableWrapRef = useRef<HTMLDivElement>(null)
   const [editFrame, setEditFrame] = useState<{
     top: number
     left: number
     width: number
     height: number
-    paidHeight: number
   } | null>(null)
+  const [editActionsTop, setEditActionsTop] = useState<number | null>(null)
   const [scrolled, setScrolled] = useState(false)
   const [tip, setTip] = useState<MonthTip | null>(null)
   const pendingRef = useRef<{ key: string; timer: number } | null>(null)
@@ -671,16 +672,20 @@ function MonthTable({
   useLayoutEffect(() => {
     if (!editingKey) {
       setEditFrame(null)
+      setEditActionsTop(null)
       return
     }
     const wrap = tableWrapRef.current
-    if (!wrap) return
+    const planner = plannerRef.current
+    const scroller = scrollerRef.current
+    if (!wrap || !planner) return
     const paid = wrap.querySelector('tr:has(.month-editing)')
     const end = paid?.nextElementSibling
     if (!(paid instanceof HTMLElement) || !(end instanceof HTMLElement)) return
     const root = wrap
     const paidRow = paid
     const endRow = end
+    const shell = planner
 
     function measure() {
       const wrapRect = root.getBoundingClientRect()
@@ -691,8 +696,8 @@ function MonthTable({
         left: paidRect.left - wrapRect.left,
         width: paidRect.width,
         height: endRect.bottom - paidRect.top,
-        paidHeight: paidRect.height,
       })
+      setEditActionsTop(endRect.bottom - shell.getBoundingClientRect().top + 4)
     }
 
     measure()
@@ -700,7 +705,14 @@ function MonthTable({
     observer.observe(root)
     observer.observe(paidRow)
     observer.observe(endRow)
-    return () => observer.disconnect()
+    observer.observe(shell)
+    scroller?.addEventListener('scroll', measure)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer.disconnect()
+      scroller?.removeEventListener('scroll', measure)
+      window.removeEventListener('resize', measure)
+    }
   }, [editingKey, debts.length, months, plan])
 
   const clearPending = useCallback(() => {
@@ -818,7 +830,7 @@ function MonthTable({
 
   return (
     <TipContext.Provider value={tipApi}>
-    <div className="planner-scroll relative">
+    <div ref={plannerRef} className="planner-scroll relative">
       <div
         ref={scrollerRef}
         className="drag-scroll"
@@ -888,43 +900,16 @@ function MonthTable({
           ))}
         </tbody>
       </table>
-        {editFrame && editingRow ? (
-          <>
-            <div
-              className="month-edit-frame"
-              style={{
-                top: editFrame.top,
-                left: editFrame.left,
-                width: editFrame.width,
-                height: editFrame.height,
-              }}
-            />
-            <div
-              data-no-drag
-              className="absolute z-30 flex items-center rounded-md bg-white p-1 shadow-md"
-              style={{
-                top: editFrame.top + editFrame.paidHeight + 4,
-                right: 16,
-              }}
-            >
-              <button
-                type="button"
-                className="hover-fill flex size-6 items-center justify-center rounded"
-                aria-label={`Save ${formatMonthName(editingRow.month)}`}
-                onClick={() => onSaveMonth(editingRow)}
-              >
-                <Check className="size-4" />
-              </button>
-              <button
-                type="button"
-                className="hover-fill flex size-6 items-center justify-center rounded"
-                aria-label="Cancel"
-                onClick={onCancelMonth}
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-          </>
+        {editFrame ? (
+          <div
+            className="month-edit-frame"
+            style={{
+              top: editFrame.top,
+              left: editFrame.left,
+              width: editFrame.width,
+              height: editFrame.height,
+            }}
+          />
         ) : null}
         </div>
       </div>
@@ -938,6 +923,30 @@ function MonthTable({
         data-scrolled={scrolled ? '' : undefined}
         style={{ left: MONTH_COL + LABEL_COL }}
       />
+      {editActionsTop != null && editingRow ? (
+        <div
+          data-no-drag
+          className="absolute z-30 flex items-center rounded-md bg-white p-1 shadow-md"
+          style={{ top: editActionsTop, right: 8 }}
+        >
+          <button
+            type="button"
+            className="hover-fill flex size-6 items-center justify-center rounded"
+            aria-label={`Save ${formatMonthName(editingRow.month)}`}
+            onClick={() => onSaveMonth(editingRow)}
+          >
+            <Check className="size-4" />
+          </button>
+          <button
+            type="button"
+            className="hover-fill flex size-6 items-center justify-center rounded"
+            aria-label="Cancel"
+            onClick={onCancelMonth}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      ) : null}
       {tip
         ? createPortal(
             <MonthDetailTip
