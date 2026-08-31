@@ -961,6 +961,31 @@ export function monthlyDepositNeed(
   )
 }
 
+export function leftoverPaycheckDeposit(
+  expenses: RecurringExpense[],
+  monthlyNet: number,
+) {
+  return Math.max(0, roundCents(monthlyNet - totalMonthlyExpenses(expenses)))
+}
+
+export function accountDepositNeed(
+  expenses: RecurringExpense[],
+  debts: Debt[],
+  account: Pick<BankAccount, 'id' | 'role'>,
+  accounts: BankAccount[],
+  monthlyNet: number,
+) {
+  if (account.role === 'overflow') {
+    return leftoverPaycheckDeposit(expenses, monthlyNet)
+  }
+  return monthlyDepositNeed(
+    expenses,
+    debts,
+    account.id,
+    billsAccount(accounts)?.id,
+  )
+}
+
 export function compareExpensesByDueDay(
   left: RecurringExpense,
   right: RecurringExpense,

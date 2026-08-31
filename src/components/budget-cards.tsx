@@ -61,7 +61,10 @@ import {
 } from '@/components/ui/select'
 import { MetricStrip } from '@/components/metric-strip'
 import { useBudget } from '@/lib/budget-context'
+import { averageMonthlyNet } from '@/lib/income'
+import { usePaystubs } from '@/lib/paystub-context'
 import {
+  accountDepositNeed,
   billsAccount,
   billedAmountFromMonthly,
   chargesForDebt,
@@ -2365,6 +2368,8 @@ function AccountLabel({
 
 const amountColClass = 'w-20 shrink-0 text-right tabular-nums'
 const lastFourColClass = 'w-[4.75rem] shrink-0 tabular-nums'
+const ACCOUNT_EDIT_GRID =
+  'grid grid-cols-[minmax(10rem,16rem)_5.5rem_7rem_28px] items-center gap-2'
 
 export function CardGearButton({
   label,
@@ -2451,11 +2456,16 @@ function DebtListRow({
 
 function AccountsCard() {
   const { accounts, expenses, debts } = useBudget()
+  const { paystubs } = usePaystubs()
   const [open, setOpen] = useState(false)
   const [drawerAccount, setDrawerAccount] = useState<string | null>(null)
   const listed = useMemo(
     () => accounts.filter((account) => account.kind === 'checking'),
     [accounts],
+  )
+  const monthlyNet = useMemo(
+    () => averageMonthlyNet(paystubs, new Date().getFullYear()),
+    [paystubs],
   )
 
   return (
@@ -2488,7 +2498,13 @@ function AccountsCard() {
               </div>
               {listed.map((account) => {
                 const selected = drawerAccount === account.id
-                const need = monthlyDepositNeed(expenses, debts, account.id)
+                const need = accountDepositNeed(
+                  expenses,
+                  debts,
+                  account,
+                  accounts,
+                  monthlyNet,
+                )
                 return (
                   <button
                     key={account.id}
@@ -2540,6 +2556,7 @@ type AccountDraft = {
   name: string
   lastFour: string
   kind: AccountKind
+  leftover: boolean
 }
 
 function accountSnapshot(drafts: AccountDraft[]) {
@@ -2549,6 +2566,7 @@ function accountSnapshot(drafts: AccountDraft[]) {
       name: draft.name.trim(),
       lastFour: draft.lastFour,
       kind: draft.kind,
+      leftover: draft.leftover,
     })),
   )
 }
@@ -2574,6 +2592,7 @@ function EditAccountsDialog({
       name: account.name,
       lastFour: account.lastFour,
       kind: account.kind,
+      leftover: account.role === 'overflow',
     }))
     setDrafts(next)
     setBaseline(accountSnapshot(next))
@@ -2610,6 +2629,15 @@ function EditAccountsDialog({
     )
   }
 
+  function setLeftover(id: string, leftover: boolean) {
+    setDrafts((current) =>
+      current.map((draft) => ({
+        ...draft,
+        leftover: leftover ? draft.id === id : draft.id === id ? false : draft.leftover,
+      })),
+    )
+  }
+
   function closeClean() {
     setConfirmOpen(false)
     setRemoveId(null)
@@ -2639,15 +2667,21 @@ function EditAccountsDialog({
     if (!canSubmit) return
     const kept = drafts.filter((draft) => draft.name.trim() !== '')
     const previous = new Map(accounts.map((account) => [account.id, account]))
+    const leftoverId = kept.find(
+      (draft) => draft.leftover && draft.kind === 'checking',
+    )?.id
     replaceAccounts(
       kept.map((draft) => {
         const current = previous.get(draft.id)
+        let role = current?.role ?? 'other'
+        if (draft.id === leftoverId) role = 'overflow'
+        else if (role === 'overflow') role = 'other'
         return {
           id: draft.id,
           name: draft.name.trim(),
           kind: draft.kind,
           lastFour: draft.lastFour,
-          role: current?.role ?? 'other',
+          role,
           balance: current?.balance ?? 0,
         }
       }),
@@ -2660,7 +2694,7 @@ function EditAccountsDialog({
     setFocusId(id)
     setDrafts((current) => [
       ...current,
-      { id, name: '', lastFour: '', kind: 'checking' },
+      { id, name: '', lastFour: '', kind: 'checking', leftover: false },
     ])
   }
 
@@ -2673,7 +2707,7 @@ function EditAccountsDialog({
         }}
       >
         <DialogContent
-          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
+          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-3.5 sm:max-w-none"
           showCloseButton={false}
           {...editDialogDismiss(confirmOpen || removeId != null, requestClose)}
           onEscapeKeyDown={(event) => {
@@ -2689,24 +2723,35 @@ function EditAccountsDialog({
             requestClose()
           }}
         >
-          <div className="-ml-6 -mr-4 border-b px-6 pr-4 pb-4">
+          <div className="-ml-3.5 -mr-4 border-b pr-4 pb-4 pl-3.5">
             <DialogHeader>
-              <DialogTitle className="text-2xl tracking-tight">
+              <DialogTitle className="pl-2.5 text-2xl tracking-tight">
                 Edit accounts
               </DialogTitle>
             </DialogHeader>
           </div>
 
           <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-y-auto">
-            <div className="grid grid-cols-[minmax(10rem,16rem)_5.5rem_28px] items-center gap-2 text-xs font-medium text-muted-foreground">
-              <span>Name</span>
+            <div
+              className={cn(
+                ACCOUNT_EDIT_GRID,
+                'text-xs font-medium text-muted-foreground',
+              )}
+            >
+              <span className={DEBT_LABEL_LEFT}>Name</span>
               <span>Last four</span>
+              <span
+                className="text-center leading-tight"
+                title="The rest of the paycheck goes into this account"
+              >
+                Rest of paycheck
+              </span>
               <span />
             </div>
             {drafts.map((draft) => (
               <div
                 key={draft.id}
-                className="grid grid-cols-[minmax(10rem,16rem)_5.5rem_28px] items-center gap-2"
+                className={ACCOUNT_EDIT_GRID}
               >
                 <Input
                   className={cn('h-8', EDIT_GHOST_FIELD)}
@@ -2731,6 +2776,26 @@ function EditAccountsDialog({
                   maxLength={4}
                   aria-label="Last four digits"
                 />
+                {draft.kind === 'checking' ? (
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={draft.leftover}
+                    aria-label="Rest of paycheck goes here"
+                    title="Rest of paycheck goes here"
+                    className={cn(
+                      'flex size-8 cursor-pointer items-center justify-center justify-self-center outline-none',
+                      EDIT_GHOST_BOX,
+                    )}
+                    onClick={() => setLeftover(draft.id, !draft.leftover)}
+                  >
+                    {draft.leftover ? (
+                      <Check className="size-3.5 text-neutral-500" />
+                    ) : null}
+                  </button>
+                ) : (
+                  <span />
+                )}
                 <Button
                   type="button"
                   variant="ghost"
@@ -2754,7 +2819,7 @@ function EditAccountsDialog({
             </Button>
           </div>
 
-          <DialogFooter className="-ml-6 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
+          <DialogFooter className="-ml-3.5 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
             <Button
               type="button"
               variant="ghost"
@@ -2805,7 +2870,7 @@ function EditAccountsDialog({
             <DialogTitle>Remove account?</DialogTitle>
             <DialogDescription>
               {removeTarget?.name
-                ? `Removing â€œ${removeTarget.name}â€ will delete it from this list.`
+                ? `Removing "${removeTarget.name}" will delete it from this list.`
                 : 'Removing this account will delete it from this list.'}{' '}
               This can&apos;t be undone from here.
             </DialogDescription>
@@ -2846,8 +2911,14 @@ function AccountDrawer({
   onClose: () => void
 }) {
   const { accounts, expenses, debts, updateExpense } = useBudget()
+  const { paystubs } = usePaystubs()
   const account = accounts.find((item) => item.id === accountId)
   const billsId = billsAccount(accounts)?.id
+  const monthlyNet = useMemo(
+    () => averageMonthlyNet(paystubs, new Date().getFullYear()),
+    [paystubs],
+  )
+  const isLeftover = account?.role === 'overflow'
   const lines = accountId
     ? depositLinesForAccount(expenses, debts, accountId, billsId)
     : []
@@ -2905,8 +2976,8 @@ function AccountDrawer({
     cancelEdit()
   }
 
-  const monthlyTotal = accountId
-    ? monthlyDepositNeed(expenses, debts, accountId, billsId)
+  const monthlyTotal = account
+    ? accountDepositNeed(expenses, debts, account, accounts, monthlyNet)
     : 0
   const biweeklyTotal = monthlyTotal / 2
 
@@ -2929,7 +3000,7 @@ function AccountDrawer({
           </DrawerTitle>
         </DrawerHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-          {lines.length === 0 ? (
+          {lines.length === 0 && !isLeftover ? (
             <p className="text-muted-foreground text-sm">
               No expenses assigned to this account yet.
             </p>
