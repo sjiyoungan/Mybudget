@@ -30,7 +30,7 @@ export function DashboardPage() {
   const remaining = income - expenseTotal
 
   return (
-    <main className="mx-auto grid max-w-5xl gap-6 px-6 py-8">
+    <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
         <section className="grid gap-4 md:grid-cols-3">
           <Link
             to="/income"

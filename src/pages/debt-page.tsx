@@ -152,7 +152,7 @@ export function DebtPage() {
   const interestPaid = plannedInterest(upcoming)
 
   return (
-    <main className="mx-auto grid max-w-5xl gap-6 px-6 py-8">
+    <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
       <h1 className="font-heading text-3xl font-medium">
         Debt payoff planner
       </h1>

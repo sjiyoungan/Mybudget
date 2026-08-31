@@ -72,7 +72,7 @@ export function AppShell() {
           ))}
         </div>
       </nav>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 pt-[60px]">
         <Outlet />
       </div>
     </div>
