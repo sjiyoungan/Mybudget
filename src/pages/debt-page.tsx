@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -10,7 +11,7 @@ import {
   type PointerEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, Circle, CircleCheck, Menu, Undo2 } from 'lucide-react'
+import { Check, ChevronDown, Menu, Undo2, X } from 'lucide-react'
 
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
 import { Button } from '@/components/ui/button'
@@ -222,6 +223,11 @@ function PlannerCard({
   const [debtsOpen, setDebtsOpen] = useState(false)
   const [undoStack, setUndoStack] = useState<DebtPlanState[]>([])
   const [editingKey, setEditingKey] = useState<string | null>(null)
+  const editBackupRef = useRef<{
+    plan: DebtPlanState
+    undo: DebtPlanState[]
+  } | null>(null)
+  const discardPaidCommit = useRef(false)
   const columns = useMemo(() => strategyDebtOrder(debts, plan), [debts, plan])
   const rows = view === 'planner' ? upcoming : [...history].reverse()
 
@@ -336,7 +342,13 @@ function PlannerCard({
           showLog={view === 'planner'}
           now={now}
           editingKey={editingKey}
-          onEditMonth={(row) => setEditingKey(monthKey(row.year, row.month))}
+          onEditMonth={(row) => {
+            const key = monthKey(row.year, row.month)
+            if (editingKey !== key) {
+              editBackupRef.current = { plan, undo: undoStack }
+            }
+            setEditingKey(key)
+          }}
           onSaveMonth={(row) => {
             const focused = document.activeElement
             const overrides: Record<string, number | null> = {}
@@ -357,9 +369,24 @@ function PlannerCard({
                 Object.keys(overrides).length > 0 ? overrides : undefined,
               ),
             )
+            editBackupRef.current = null
             setEditingKey(null)
           }}
+          onCancelMonth={() => {
+            discardPaidCommit.current = true
+            const backup = editBackupRef.current
+            setEditingKey(null)
+            if (backup) {
+              onPlanChange(backup.plan)
+              setUndoStack(backup.undo)
+              editBackupRef.current = null
+            }
+            queueMicrotask(() => {
+              discardPaidCommit.current = false
+            })
+          }}
           onPaidChange={(year, month, debtId, amount) => {
+            if (discardPaidCommit.current) return
             changePlan(setMonthPayment(plan, year, month, debtId, amount))
           }}
         />
@@ -594,6 +621,7 @@ function MonthTable({
   editingKey,
   onEditMonth,
   onSaveMonth,
+  onCancelMonth,
   onPaidChange,
 }: {
   debts: { id: string; lender: string; apr: number }[]
@@ -605,6 +633,7 @@ function MonthTable({
   editingKey: string | null
   onEditMonth: (row: PlannerMonth) => void
   onSaveMonth: (row: PlannerMonth) => void
+  onCancelMonth: () => void
   onPaidChange: (
     year: number,
     month: number,
@@ -613,6 +642,14 @@ function MonthTable({
   ) => void
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const tableWrapRef = useRef<HTMLDivElement>(null)
+  const [editFrame, setEditFrame] = useState<{
+    top: number
+    left: number
+    width: number
+    height: number
+    paidHeight: number
+  } | null>(null)
   const [scrolled, setScrolled] = useState(false)
   const [tip, setTip] = useState<MonthTip | null>(null)
   const pendingRef = useRef<{ key: string; timer: number } | null>(null)
@@ -627,6 +664,44 @@ function MonthTable({
   })
   const years = groupMonthsByYear(months)
   const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
+  const editingRow = months.find(
+    (row) => monthKey(row.year, row.month) === editingKey,
+  )
+
+  useLayoutEffect(() => {
+    if (!editingKey) {
+      setEditFrame(null)
+      return
+    }
+    const wrap = tableWrapRef.current
+    if (!wrap) return
+    const paid = wrap.querySelector('tr:has(.month-editing)')
+    const end = paid?.nextElementSibling
+    if (!(paid instanceof HTMLElement) || !(end instanceof HTMLElement)) return
+    const root = wrap
+    const paidRow = paid
+    const endRow = end
+
+    function measure() {
+      const wrapRect = root.getBoundingClientRect()
+      const paidRect = paidRow.getBoundingClientRect()
+      const endRect = endRow.getBoundingClientRect()
+      setEditFrame({
+        top: paidRect.top - wrapRect.top,
+        left: paidRect.left - wrapRect.left,
+        width: paidRect.width,
+        height: endRect.bottom - paidRect.top,
+        paidHeight: paidRect.height,
+      })
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(root)
+    observer.observe(paidRow)
+    observer.observe(endRow)
+    return () => observer.disconnect()
+  }, [editingKey, debts.length, months, plan])
 
   const clearPending = useCallback(() => {
     if (pendingRef.current) {
@@ -757,6 +832,7 @@ function MonthTable({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
+        <div ref={tableWrapRef} className="relative w-max min-w-full">
         <table className="w-max min-w-full border-separate border-spacing-0 select-none text-sm">
           <colgroup>
             <col style={{ width: MONTH_COL }} />
@@ -773,7 +849,7 @@ function MonthTable({
             {debts.map((debt) => (
               <th
                 key={debt.id}
-                className="px-5 pt-2 pb-2 text-center font-medium"
+                className="px-4 pt-2 pb-2 text-center font-medium"
               >
                 <div className="flex flex-col items-center whitespace-nowrap">
                   <span>{debt.lender}</span>
@@ -781,7 +857,7 @@ function MonthTable({
                 </div>
               </th>
             ))}
-            <th className="total-rule pt-2 pr-4 pb-2 pl-5 text-right font-medium">
+            <th className="total-rule pt-2 pr-4 pb-2 pl-4 text-right font-medium">
               Total
             </th>
           </tr>
@@ -807,12 +883,50 @@ function MonthTable({
               nowIdx={nowIdx}
               editingKey={editingKey}
               onEditMonth={onEditMonth}
-              onSaveMonth={onSaveMonth}
               onPaidChange={onPaidChange}
             />
           ))}
         </tbody>
       </table>
+        {editFrame && editingRow ? (
+          <>
+            <div
+              className="month-edit-frame"
+              style={{
+                top: editFrame.top,
+                left: editFrame.left,
+                width: editFrame.width,
+                height: editFrame.height,
+              }}
+            />
+            <div
+              data-no-drag
+              className="absolute z-30 flex items-center rounded-md bg-white p-1 shadow-md"
+              style={{
+                top: editFrame.top + editFrame.paidHeight + 4,
+                right: 16,
+              }}
+            >
+              <button
+                type="button"
+                className="hover-fill flex size-6 items-center justify-center rounded"
+                aria-label={`Save ${formatMonthName(editingRow.month)}`}
+                onClick={() => onSaveMonth(editingRow)}
+              >
+                <Check className="size-4" />
+              </button>
+              <button
+                type="button"
+                className="hover-fill flex size-6 items-center justify-center rounded"
+                aria-label="Cancel"
+                onClick={onCancelMonth}
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </>
+        ) : null}
+        </div>
       </div>
       <div
         className="sticky-edge"
@@ -884,7 +998,6 @@ function YearGroupRows({
   nowIdx,
   editingKey,
   onEditMonth,
-  onSaveMonth,
   onPaidChange,
 }: {
   year: number
@@ -899,7 +1012,6 @@ function YearGroupRows({
   nowIdx: number
   editingKey: string | null
   onEditMonth: (row: PlannerMonth) => void
-  onSaveMonth: (row: PlannerMonth) => void
   onPaidChange: (
     year: number,
     month: number,
@@ -943,7 +1055,6 @@ function YearGroupRows({
           nowIdx={nowIdx}
           editing={editingKey === monthKey(row.year, row.month)}
           onEditMonth={onEditMonth}
-          onSaveMonth={onSaveMonth}
           onPaidChange={onPaidChange}
         />
       ))}
@@ -963,7 +1074,6 @@ function MonthBlock({
   nowIdx,
   editing,
   onEditMonth,
-  onSaveMonth,
   onPaidChange,
 }: {
   year: number
@@ -977,7 +1087,6 @@ function MonthBlock({
   nowIdx: number
   editing: boolean
   onEditMonth: (row: PlannerMonth) => void
-  onSaveMonth: (row: PlannerMonth) => void
   onPaidChange: (
     year: number,
     month: number,
@@ -1019,7 +1128,7 @@ function MonthBlock({
                 />
               )
             })}
-            <td className="total-rule py-1.5 pr-4 pl-5 text-right tabular-nums">
+            <td className="total-rule py-1.5 pr-4 pl-4 text-right tabular-nums">
               {plannerUsd(startTotal)}
             </td>
           </tr>
@@ -1038,7 +1147,6 @@ function MonthBlock({
           }
           editing={editing}
           onEdit={() => onEditMonth(row)}
-          onSave={() => onSaveMonth(row)}
         />
         <LabelCell>Paid</LabelCell>
         {debts.map((debt) => {
@@ -1076,7 +1184,7 @@ function MonthBlock({
             />
           )
         })}
-        <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-5 text-right tabular-nums">
+        <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
           {plannerUsd(row.totalPaid)}
         </td>
       </tr>
@@ -1096,7 +1204,7 @@ function MonthBlock({
             />
           )
         })}
-        <td className="total-rule py-1.5 pr-4 pl-5 text-right font-medium tabular-nums">
+        <td className="total-rule py-1.5 pr-4 pl-4 text-right font-medium tabular-nums">
           {plannerUsd(
             row.remainingTotal,
             row.remainingTotal <= 0.005 && row.totalPaid > 0.005,
@@ -1152,20 +1260,31 @@ function formatMonthName(month: number) {
   })
 }
 
+function TaskAltIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M22 5.18 10.59 16.6l-4.24-4.24 1.41-1.41 2.83 2.83 10-10L22 5.18zm-2.21 5.04C19.92 10.79 20 11.39 20 12c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8c1.58 0 3.04.46 4.28 1.25l1.44-1.44C16.1 2.67 14.13 2 12 2 6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10c0-1.19-.22-2.33-.6-3.39z" />
+    </svg>
+  )
+}
+
 function MonthCell({
   label,
   rowSpan,
   showLog = false,
   editing = false,
   onEdit,
-  onSave,
 }: {
   label: string
   rowSpan: number
   showLog?: boolean
   editing?: boolean
   onEdit?: () => void
-  onSave?: () => void
 }) {
   return (
     <td
@@ -1182,18 +1301,14 @@ function MonthCell({
             type="button"
             data-no-drag
             className="text-muted-foreground hover:text-foreground flex size-5 items-center justify-center"
-            aria-label={editing ? `Save ${label}` : `Log ${label}`}
+            aria-label={`Log ${label}`}
+            aria-pressed={editing}
             onClick={(event) => {
               event.stopPropagation()
-              if (editing) onSave?.()
-              else onEdit?.()
+              if (!editing) onEdit?.()
             }}
           >
-            {editing ? (
-              <CircleCheck className="size-4" />
-            ) : (
-              <Circle className="size-4" />
-            )}
+            <TaskAltIcon className="size-4" />
           </button>
         </div>
       ) : (
@@ -1246,7 +1361,7 @@ function AmountCell({
     <td
       data-debt-tip={detailKey}
       className={cn(
-        'min-w-24 px-5 py-1.5 text-right tabular-nums',
+        'min-w-24 px-4 py-1.5 text-right tabular-nums',
         extraTone(highlighted, muted, faint),
         highlighted && EXTRA_FILL,
       )}
@@ -1304,7 +1419,7 @@ function PaidCell({
     <td
       data-debt-tip={detailKey}
       className={cn(
-        'min-w-24 px-5 py-1.5 text-right tabular-nums',
+        'min-w-24 px-4 py-1.5 text-right tabular-nums',
         extraTone(highlighted, muted, faint),
         highlighted && EXTRA_FILL,
       )}

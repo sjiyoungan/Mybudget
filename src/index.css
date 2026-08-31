@@ -223,11 +223,21 @@
   opacity: 1;
 }
 
-.planner-scroll table tr:has(.month-label:hover) > td,
-.planner-scroll table tr:has(.month-label:hover) + tr > td,
+.planner-scroll table tr:has(.month-label:hover):not(:has(.month-editing)) > td,
+.planner-scroll table tr:has(.month-label:hover):not(:has(.month-editing)) + tr > td {
+  background-color: #f6f6f6 !important;
+}
 .planner-scroll table tr:has(.month-editing) > td,
 .planner-scroll table tr:has(.month-editing) + tr > td {
-  background-color: #f6f6f6 !important;
+  background-color: #fff !important;
+}
+.month-edit-frame {
+  pointer-events: none;
+  position: absolute;
+  z-index: 21;
+  border: 1px solid #6b6b6b;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.16);
 }
 
 .paid-input {
