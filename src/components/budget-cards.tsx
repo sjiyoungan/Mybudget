@@ -38,6 +38,8 @@ import {
   monthlyNeedForAccount,
   overflowAccount,
   totalForCategory,
+  totalDebtMinimums,
+  totalMonthlyExpenses,
   type Debt,
   type RecurringExpense,
 } from '@/lib/budget'
@@ -1378,13 +1380,14 @@ export function ExpenseDetailCards() {
 }
 
 function ExpensesCard() {
-  const { categories, expenses } = useBudget()
+  const { categories, expenses, debts } = useBudget()
   const [open, setOpen] = useState(false)
   const [viewAll, setViewAll] = useState(false)
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null)
   const [amountEditId, setAmountEditId] = useState<string | null>(null)
 
-  const total = expenses.reduce((sum, item) => sum + item.amount, 0)
+  const debtMinimumTotal = totalDebtMinimums(debts)
+  const total = totalMonthlyExpenses(expenses, debts)
 
   return (
     <>
@@ -1456,6 +1459,30 @@ function ExpensesCard() {
                   </div>
                 )
               })}
+              <div className="col-span-2 grid grid-cols-subgrid gap-y-1">
+                <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
+                  <span>Debt</span>
+                  <span className="text-right tabular-nums">
+                    {formatUsd(debtMinimumTotal)}
+                  </span>
+                </div>
+                {viewAll && debts.length > 0 ? (
+                  <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
+                    <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1">
+                      {debts.map((debt) => (
+                        <Fragment key={debt.id}>
+                          <span className="text-neutral-600 pl-2">
+                            {debt.lender}
+                          </span>
+                          <span className="text-right text-neutral-600 tabular-nums">
+                            {formatUsd(debt.minimum)}
+                          </span>
+                        </Fragment>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="mt-3 flex justify-end">
               <button

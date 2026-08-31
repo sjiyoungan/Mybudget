@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { totalMonthlyExpenses } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
 import { formatUsd } from '@/lib/format'
 import { currentMonthNet } from '@/lib/income'
@@ -17,12 +18,12 @@ import { usePaystubs } from '@/lib/paystub-context'
 
 export function DashboardPage() {
   const { paystubs } = usePaystubs()
-  const { expenses } = useBudget()
+  const { expenses, debts } = useBudget()
 
   const income = useMemo(() => currentMonthNet(paystubs), [paystubs])
   const expenseTotal = useMemo(
-    () => expenses.reduce((sum, item) => sum + item.amount, 0),
-    [expenses],
+    () => totalMonthlyExpenses(expenses, debts),
+    [expenses, debts],
   )
   const remaining = income - expenseTotal
 

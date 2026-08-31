@@ -535,3 +535,17 @@ export function totalForCategory(
     .filter((item) => item.category === category)
     .reduce((sum, item) => sum + item.amount, 0)
 }
+
+export function totalDebtMinimums(debts: Debt[]) {
+  return debts.reduce((sum, item) => sum + item.minimum, 0)
+}
+
+export function totalMonthlyExpenses(
+  expenses: RecurringExpense[],
+  debts: Debt[],
+) {
+  return (
+    expenses.reduce((sum, item) => sum + item.amount, 0) +
+    totalDebtMinimums(debts)
+  )
+}
