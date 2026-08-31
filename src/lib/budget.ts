@@ -20,12 +20,14 @@ export type ExpenseCategoryGroup = {
   name: string
 }
 
+export const DEBT_CATEGORY_ID = 'debt'
+
 export const defaultExpenseCategories: ExpenseCategoryGroup[] = [
   { id: 'mortgage', name: 'Mortgage' },
   { id: 'pets', name: 'Pets' },
   { id: 'recurring', name: 'Recurring' },
   { id: 'variable', name: 'Variable' },
-  { id: 'debt', name: 'Debt' },
+  { id: DEBT_CATEGORY_ID, name: 'Debt' },
 ]
 
 export type ExpenseCategory = string
@@ -528,7 +530,16 @@ export function loadBudget(): BudgetState {
     localStorage.setItem(DEBT_BALANCE_SEED, '1')
   }
 
-  return state
+  const linked = syncLinkedDebts(state)
+  if (
+    linked.expenses !== state.expenses ||
+    linked.debts !== state.debts ||
+    linked.categories !== state.categories
+  ) {
+    saveBudget(linked)
+  }
+
+  return linked
 }
 
 export function saveBudget(state: BudgetState) {
@@ -596,4 +607,91 @@ export function totalDebtMinimums(debts: Debt[]) {
 
 export function totalMonthlyExpenses(expenses: RecurringExpense[]) {
   return expenses.reduce((sum, item) => sum + monthlyAmount(item), 0)
+}
+
+export function isDebtExpense(expense: Pick<RecurringExpense, 'category'>) {
+  return expense.category === DEBT_CATEGORY_ID
+}
+
+export function expenseFromDebt(
+  debt: Debt,
+  existing?: RecurringExpense,
+): RecurringExpense {
+  const frequency = existing?.frequency ?? 'monthly'
+  return {
+    id: debt.id,
+    name: debt.lender,
+    dueDay: debt.dueDay,
+    amount:
+      frequency === 'annual'
+        ? billedAmountFromMonthly(debt.minimum, frequency)
+        : debt.minimum,
+    frequency,
+    accountId: existing?.accountId ?? '',
+    category: DEBT_CATEGORY_ID,
+  }
+}
+
+export function debtFromExpense(
+  expense: RecurringExpense,
+  existing?: Debt,
+): Debt {
+  return {
+    id: expense.id,
+    lender: expense.name,
+    dueDay: expense.dueDay,
+    minimum: monthlyAmount(expense),
+    apr: existing?.apr ?? 0,
+    balance: existing?.balance ?? 0,
+  }
+}
+
+export function applyDebtsToExpenses(
+  expenses: RecurringExpense[],
+  debts: Debt[],
+): RecurringExpense[] {
+  const debtIds = new Set(debts.map((debt) => debt.id))
+  const byId = new Map(expenses.map((expense) => [expense.id, expense]))
+  const kept = expenses.filter(
+    (expense) => !debtIds.has(expense.id) && !isDebtExpense(expense),
+  )
+  const linked = debts.map((debt) => expenseFromDebt(debt, byId.get(debt.id)))
+  return [...kept, ...linked].sort(compareExpensesByDueDay)
+}
+
+export function applyExpensesToDebts(
+  expenses: RecurringExpense[],
+  debts: Debt[],
+): Debt[] {
+  const byId = new Map(debts.map((debt) => [debt.id, debt]))
+  const order = new Map(debts.map((debt, index) => [debt.id, index]))
+  return expenses
+    .filter(isDebtExpense)
+    .map((expense) => debtFromExpense(expense, byId.get(expense.id)))
+    .sort((left, right) => {
+      const leftIndex = order.get(left.id)
+      const rightIndex = order.get(right.id)
+      if (leftIndex != null && rightIndex != null) return leftIndex - rightIndex
+      if (leftIndex != null) return -1
+      if (rightIndex != null) return 1
+      return 0
+    })
+}
+
+export function syncLinkedDebts(state: BudgetState): BudgetState {
+  const debtIds = new Set(state.debts.map((debt) => debt.id))
+  const extra = state.expenses.filter(
+    (expense) => isDebtExpense(expense) && !debtIds.has(expense.id),
+  )
+  const debts = [
+    ...state.debts,
+    ...extra.map((expense) => debtFromExpense(expense)),
+  ]
+  const expenses = applyDebtsToExpenses(state.expenses, debts)
+  return {
+    ...state,
+    debts,
+    expenses,
+    categories: normalizeCategories(state.categories, expenses),
+  }
 }

@@ -8,6 +8,8 @@ import {
 } from 'react'
 
 import {
+  applyDebtsToExpenses,
+  applyExpensesToDebts,
   compareExpensesByDueDay,
   loadBudget,
   saveBudget,
@@ -19,6 +21,23 @@ import {
   type ExpenseCategoryGroup,
   type RecurringExpense,
 } from '@/lib/budget'
+
+function withLinkedExpenses(current: BudgetState, expenses: RecurringExpense[]) {
+  const next = [...expenses].sort(compareExpensesByDueDay)
+  return {
+    ...current,
+    expenses: next,
+    debts: applyExpensesToDebts(next, current.debts),
+  }
+}
+
+function withLinkedDebts(current: BudgetState, debts: Debt[]) {
+  return {
+    ...current,
+    debts,
+    expenses: applyDebtsToExpenses(current.expenses, debts),
+  }
+}
 
 type BudgetContextValue = {
   accounts: BankAccount[]
@@ -122,33 +141,33 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         }))
       },
       addExpense(input) {
-        setState((current) => ({
-          ...current,
-          expenses: [
+        setState((current) =>
+          withLinkedExpenses(current, [
             ...current.expenses,
             { ...input, id: crypto.randomUUID() },
-          ].sort(compareExpensesByDueDay),
-        }))
+          ]),
+        )
       },
       updateExpense(id, patch) {
-        setState((current) => ({
-          ...current,
-          expenses: current.expenses
-            .map((item) => (item.id === id ? { ...item, ...patch } : item))
-            .sort(compareExpensesByDueDay),
-        }))
+        setState((current) =>
+          withLinkedExpenses(
+            current,
+            current.expenses.map((item) =>
+              item.id === id ? { ...item, ...patch } : item,
+            ),
+          ),
+        )
       },
       removeExpense(id) {
-        setState((current) => ({
-          ...current,
-          expenses: current.expenses.filter((item) => item.id !== id),
-        }))
+        setState((current) =>
+          withLinkedExpenses(
+            current,
+            current.expenses.filter((item) => item.id !== id),
+          ),
+        )
       },
       replaceExpenses(expenses) {
-        setState((current) => ({
-          ...current,
-          expenses: [...expenses].sort(compareExpensesByDueDay),
-        }))
+        setState((current) => withLinkedExpenses(current, expenses))
       },
       replaceCategories(categories) {
         setState((current) => ({
@@ -163,22 +182,23 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         }))
       },
       addDebt(input) {
-        setState((current) => ({
-          ...current,
-          debts: [...current.debts, { ...input, id: crypto.randomUUID() }],
-        }))
+        setState((current) =>
+          withLinkedDebts(current, [
+            ...current.debts,
+            { ...input, id: crypto.randomUUID() },
+          ]),
+        )
       },
       removeDebt(id) {
-        setState((current) => ({
-          ...current,
-          debts: current.debts.filter((item) => item.id !== id),
-        }))
+        setState((current) =>
+          withLinkedDebts(
+            current,
+            current.debts.filter((item) => item.id !== id),
+          ),
+        )
       },
       replaceDebts(debts) {
-        setState((current) => ({
-          ...current,
-          debts,
-        }))
+        setState((current) => withLinkedDebts(current, debts))
       },
     }),
     [state],

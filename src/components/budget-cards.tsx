@@ -43,6 +43,7 @@ import {
   monthlyNeedForAccount,
   normalizeAccountKind,
   overflowAccount,
+  DEBT_CATEGORY_ID,
   totalForCategory,
   totalMonthlyExpenses,
   type AccountKind,
@@ -584,9 +585,13 @@ function EditExpensesDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { accounts, categories, expenses, replaceCategories, replaceExpenses } =
+  const { accounts, categories, expenses, debts, replaceCategories, replaceExpenses } =
     useBudget()
   const defaultAccountId = accounts[0]?.id ?? ''
+  const linkedDebtIds = useMemo(
+    () => new Set(debts.map((debt) => debt.id)),
+    [debts],
+  )
   const [categoryDrafts, setCategoryDrafts] = useState<CategoryDraft[]>([])
   const [drafts, setDrafts] = useState<ExpenseDraft[]>([])
   const [baseline, setBaseline] = useState('')
@@ -730,7 +735,7 @@ function EditExpensesDialog({
           dueDay: draft.dueDay === '' ? null : parseDay(draft.dueDay),
           amount: parseAmount(draft.amount) ?? 0,
           frequency: draft.frequency,
-          accountId: draft.accountId || defaultAccountId,
+          accountId: draft.accountId,
           category: draft.category,
         })),
     )
@@ -744,6 +749,10 @@ function EditExpensesDialog({
   }
 
   function handleDragOver(event: DragEvent<HTMLElement>, categoryId: string) {
+    if (draggingId && linkedDebtIds.has(draggingId) && categoryId !== DEBT_CATEGORY_ID) {
+      event.dataTransfer.dropEffect = 'none'
+      return
+    }
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
     setDropCategoryId(categoryId)
@@ -758,6 +767,11 @@ function EditExpensesDialog({
   function handleDrop(event: DragEvent<HTMLElement>, categoryId: string) {
     event.preventDefault()
     const id = event.dataTransfer.getData('text/plain') || draggingId
+    if (id && linkedDebtIds.has(id) && categoryId !== DEBT_CATEGORY_ID) {
+      setDraggingId(null)
+      setDropCategoryId(null)
+      return
+    }
     if (id) {
       setDrafts((current) => moveDraftToCategory(current, id, categoryId))
     }
@@ -928,6 +942,7 @@ function EditExpensesDialog({
                       onDragEnd={handleDragEnd}
                       canRemove={drafts.length > 1}
                       autoFocus={focusDraftId === draft.id}
+                      showHandle={!linkedDebtIds.has(draft.id)}
                     />
                   ))}
                   {items.length === 0 ? (
@@ -1041,7 +1056,10 @@ function EditExpensesDialog({
             <DialogDescription>
               {removeTarget?.name
                 ? `Removing “${removeTarget.name}” will delete it from this list.`
-                : 'Removing this expense will delete it from this list.'}{' '}
+                : 'Removing this expense will delete it from this list.'}
+              {removeId && linkedDebtIds.has(removeId)
+                ? ' It will also be removed from Debt.'
+                : ''}{' '}
               This can&apos;t be undone from here.
             </DialogDescription>
           </DialogHeader>
@@ -1094,7 +1112,7 @@ function EditOneExpenseDialog({
   const { accounts, categories, expenses, updateExpense, removeExpense } =
     useBudget()
   const expense = expenses.find((item) => item.id === expenseId)
-  const defaultAccountId = accounts[0]?.id ?? ''
+  const linkedDebt = expense?.category === DEBT_CATEGORY_ID
   const [draft, setDraft] = useState<ExpenseDraft | null>(null)
   const [baseline, setBaseline] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -1157,7 +1175,7 @@ function EditOneExpenseDialog({
       dueDay: draft.dueDay === '' ? null : parseDay(draft.dueDay),
       amount: parseAmount(draft.amount) ?? 0,
       frequency: draft.frequency,
-      accountId: draft.accountId || defaultAccountId,
+      accountId: draft.accountId,
       category: draft.category,
     })
     closeClean()
@@ -1228,6 +1246,7 @@ function EditOneExpenseDialog({
                       current ? { ...current, category } : current,
                     )
                   }
+                  disabled={linkedDebt}
                 >
                   <SelectTrigger aria-label="Category">
                     <SelectValue placeholder="Category" />
@@ -1335,7 +1354,10 @@ function EditOneExpenseDialog({
             <DialogDescription>
               {draft?.name
                 ? `Removing “${draft.name}” will delete it from this list.`
-                : 'Removing this expense will delete it from this list.'}{' '}
+                : 'Removing this expense will delete it from this list.'}
+              {linkedDebt
+                ? ' It will also be removed from Debt.'
+                : ''}{' '}
               This can&apos;t be undone from here.
             </DialogDescription>
           </DialogHeader>
