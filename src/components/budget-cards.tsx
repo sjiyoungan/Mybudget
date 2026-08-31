@@ -378,6 +378,7 @@ function ExpenseDraftRow({
   onDragEnd,
   canRemove,
   autoFocus = false,
+  showHandle = true,
 }: {
   draft: ExpenseDraft
   accounts: { id: string; name: string }[]
@@ -391,6 +392,7 @@ function ExpenseDraftRow({
   onDragEnd: () => void
   canRemove: boolean
   autoFocus?: boolean
+  showHandle?: boolean
 }) {
   return (
     <div
@@ -401,22 +403,24 @@ function ExpenseDraftRow({
         dragging && 'opacity-50',
       )}
     >
-      <button
-        type="button"
-        draggable
-        title="Drag to a category"
-        aria-label={`Move ${draft.name || 'expense'}`}
-        onDragStart={(event) => onDragStart(event, draft.id)}
-        onDragEnd={onDragEnd}
-        className={cn(
-          'text-neutral-400 hover:text-foreground absolute top-1/2 right-full mr-1 flex h-8 w-5 -translate-y-1/2 cursor-grab items-center justify-center active:cursor-grabbing',
-          dragging
-            ? 'opacity-100'
-            : 'opacity-0 group-hover/row:opacity-100',
-        )}
-      >
-        <Menu className="size-3.5" />
-      </button>
+      {showHandle ? (
+        <button
+          type="button"
+          draggable
+          title="Drag to a category"
+          aria-label={`Move ${draft.name || 'expense'}`}
+          onDragStart={(event) => onDragStart(event, draft.id)}
+          onDragEnd={onDragEnd}
+          className={cn(
+            'text-neutral-400 hover:text-foreground absolute top-1/2 right-full mr-1 flex h-8 w-5 -translate-y-1/2 cursor-grab items-center justify-center active:cursor-grabbing',
+            dragging
+              ? 'opacity-100'
+              : 'opacity-0 group-hover/row:opacity-100',
+          )}
+        >
+          <Menu className="size-3.5" />
+        </button>
+      ) : null}
       <Input
         className="h-8"
         value={draft.name}
@@ -964,6 +968,402 @@ function EditExpensesDialog({
   )
 }
 
+function oneExpenseSnapshot(draft: ExpenseDraft) {
+  return JSON.stringify({
+    name: draft.name.trim(),
+    amount: draft.amount.trim(),
+    dueDay: draft.dueDay.trim(),
+    category: draft.category,
+    accountId: draft.accountId,
+  })
+}
+
+function EditOneExpenseDialog({
+  expenseId,
+  onOpenChange,
+}: {
+  expenseId: string | null
+  onOpenChange: (open: boolean) => void
+}) {
+  const { accounts, categories, expenses, updateExpense, removeExpense } =
+    useBudget()
+  const expense = expenses.find((item) => item.id === expenseId)
+  const defaultAccountId = accounts[0]?.id ?? ''
+  const [draft, setDraft] = useState<ExpenseDraft | null>(null)
+  const [baseline, setBaseline] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [removeOpen, setRemoveOpen] = useState(false)
+  const [dueDayError, setDueDayError] = useState(false)
+
+  useLayoutEffect(() => {
+    if (!expenseId || !expense) {
+      setDraft(null)
+      setBaseline('')
+      setConfirmOpen(false)
+      setRemoveOpen(false)
+      setDueDayError(false)
+      return
+    }
+    const next = expenseToDraft(expense)
+    setDraft(next)
+    setBaseline(oneExpenseSnapshot(next))
+    setConfirmOpen(false)
+    setRemoveOpen(false)
+    setDueDayError(false)
+  }, [expenseId])
+
+  useEffect(() => {
+    if (expenseId != null && expense == null) {
+      onOpenChange(false)
+    }
+  }, [expense, expenseId, onOpenChange])
+
+  const namedCategoryIds = useMemo(
+    () => new Set(categories.map((item) => item.id)),
+    [categories],
+  )
+  const dirty = draft != null && oneExpenseSnapshot(draft) !== baseline
+  const canSubmit =
+    draft != null &&
+    dirty &&
+    !isDueDayInvalid(draft.dueDay) &&
+    draftIsComplete(draft, namedCategoryIds)
+
+  function closeClean() {
+    setConfirmOpen(false)
+    setRemoveOpen(false)
+    onOpenChange(false)
+  }
+
+  function requestClose() {
+    if (confirmOpen || removeOpen) return
+    if (dirty) {
+      setConfirmOpen(true)
+      return
+    }
+    closeClean()
+  }
+
+  function handleSave() {
+    if (!draft || !canSubmit) return
+    updateExpense(draft.id, {
+      name: draft.name.trim(),
+      dueDay: draft.dueDay === '' ? null : parseDay(draft.dueDay),
+      amount: parseAmount(draft.amount) ?? 0,
+      accountId: draft.accountId || defaultAccountId,
+      category: draft.category,
+    })
+    closeClean()
+  }
+
+  const open = expenseId != null && draft != null
+
+  return (
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) {
+            onOpenChange(true)
+            return
+          }
+          if (confirmOpen || removeOpen) return
+          if (document.visibilityState === 'hidden') return
+          requestClose()
+        }}
+      >
+        <DialogContent
+          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
+          showCloseButton={false}
+          onPointerDownOutside={(event) => {
+            event.preventDefault()
+            if (confirmOpen || removeOpen) return
+            if (document.visibilityState === 'hidden') return
+            requestClose()
+          }}
+          onInteractOutside={(event) => {
+            event.preventDefault()
+            if (confirmOpen || removeOpen) return
+            if (document.visibilityState === 'hidden') return
+            requestClose()
+          }}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault()
+            if (removeOpen) {
+              setRemoveOpen(false)
+              return
+            }
+            if (confirmOpen) {
+              setConfirmOpen(false)
+              return
+            }
+            requestClose()
+          }}
+        >
+          <div className="-ml-6 -mr-4 border-b px-6 pr-4 pb-4">
+            <DialogHeader>
+              <DialogTitle className="text-2xl tracking-tight">
+                Edit expense
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+
+          {draft ? (
+            <div className="mt-5 space-y-4">
+              <div className="grid max-w-56 gap-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Category
+                </span>
+                <Select
+                  value={draft.category}
+                  onValueChange={(category) =>
+                    setDraft((current) =>
+                      current ? { ...current, category } : current,
+                    )
+                  }
+                >
+                  <SelectTrigger aria-label="Category">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div
+                className={cn(
+                  'grid gap-2 text-xs font-medium text-muted-foreground',
+                  EXPENSE_ROW,
+                )}
+              >
+                <span>Name</span>
+                <span>Amount</span>
+                <span>Due day</span>
+                <span>Bank</span>
+                <span />
+              </div>
+
+              <ExpenseDraftRow
+                draft={draft}
+                accounts={accounts}
+                dragging={false}
+                dueDayError={dueDayError}
+                drafts={[draft]}
+                setDueDayError={setDueDayError}
+                onUpdate={(_id, patch) =>
+                  setDraft((current) =>
+                    current ? { ...current, ...patch } : current,
+                  )
+                }
+                onRemove={() => setRemoveOpen(true)}
+                onDragStart={() => {}}
+                onDragEnd={() => {}}
+                canRemove
+                showHandle={false}
+              />
+
+              {dueDayError ? (
+                <p className="text-destructive text-xs">
+                  Due day can&apos;t be more than the days in a month.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <DialogFooter className="-ml-6 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={requestClose}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={!canSubmit} onClick={handleSave}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogDescription>
+              You have unsaved edits. If you cancel, that information will be
+              lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+            >
+              Keep editing
+            </Button>
+            <Button type="button" variant="destructive" onClick={closeClean}>
+              Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={removeOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setRemoveOpen(false)
+        }}
+      >
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Remove expense?</DialogTitle>
+            <DialogDescription>
+              {draft?.name
+                ? `Removing “${draft.name}” will delete it from this list.`
+                : 'Removing this expense will delete it from this list.'}{' '}
+              This can&apos;t be undone from here.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRemoveOpen(false)}
+            >
+              Keep expense
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (!draft) return
+                removeExpense(draft.id)
+                closeClean()
+              }}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function ExpenseAmountEdit({
+  expense,
+  editing,
+  onEdit,
+}: {
+  expense: RecurringExpense
+  editing: boolean
+  onEdit: (id: string | null) => void
+}) {
+  const { updateExpense } = useBudget()
+  const [draft, setDraft] = useState(String(expense.amount))
+  const draftRef = useRef(draft)
+  const skipCommit = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const amountRef = useRef(expense.amount)
+  const updateRef = useRef(updateExpense)
+  draftRef.current = draft
+  amountRef.current = expense.amount
+  updateRef.current = updateExpense
+
+  useEffect(() => {
+    if (!editing) return
+    skipCommit.current = false
+    setDraft(String(expense.amount))
+  }, [editing, expense.amount])
+
+  useEffect(() => {
+    if (!editing) return
+    const node = inputRef.current
+    if (!node) return
+    node.focus()
+    node.select()
+  }, [editing])
+
+  useEffect(() => {
+    if (!editing) return
+    return () => {
+      if (skipCommit.current) return
+      const parsed = parseAmount(draftRef.current)
+      if (
+        parsed != null &&
+        parsed >= 0 &&
+        parsed !== amountRef.current
+      ) {
+        updateRef.current(expense.id, { amount: parsed })
+      }
+    }
+  }, [editing, expense.id])
+
+  useEffect(() => {
+    if (!editing) return
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (wrapRef.current?.contains(target)) return
+      onEdit(null)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [editing, onEdit])
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="cursor-text text-right text-neutral-600 tabular-nums"
+        onClick={(event) => {
+          event.stopPropagation()
+          onEdit(expense.id)
+        }}
+      >
+        {formatUsd(expense.amount)}
+      </button>
+    )
+  }
+
+  return (
+    <div
+      ref={wrapRef}
+      className="focus-within:border-ring focus-within:ring-ring/30 ml-auto flex h-7 w-[5.75rem] items-center rounded-lg border border-input px-1.5 hover:border-neutral-400 focus-within:ring-3"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <span className="pr-1 text-sm text-neutral-500">$</span>
+      <input
+        ref={inputRef}
+        className="h-full w-full bg-transparent text-right text-sm tabular-nums outline-none"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            onEdit(null)
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            skipCommit.current = true
+            onEdit(null)
+          }
+        }}
+        inputMode="decimal"
+        aria-label={`${expense.name} amount`}
+      />
+    </div>
+  )
+}
+
 function EmptyNote({ children }: { children: string }) {
   return <p className="text-muted-foreground text-sm">{children}</p>
 }
@@ -981,6 +1381,8 @@ function ExpensesCard() {
   const { categories, expenses } = useBudget()
   const [open, setOpen] = useState(false)
   const [viewAll, setViewAll] = useState(false)
+  const [editExpenseId, setEditExpenseId] = useState<string | null>(null)
+  const [amountEditId, setAmountEditId] = useState<string | null>(null)
 
   const total = expenses.reduce((sum, item) => sum + item.amount, 0)
 
@@ -1006,7 +1408,9 @@ function ExpensesCard() {
               className={cn(
                 'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4',
                 viewAll ? 'gap-y-3' : 'gap-y-1',
+                !viewAll && 'cursor-pointer',
               )}
+              onClick={() => setViewAll(true)}
             >
               {categories.map((item) => {
                 const details = expenses.filter(
@@ -1025,15 +1429,25 @@ function ExpensesCard() {
                     </div>
                     {viewAll && details.length > 0 ? (
                       <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
-                        <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1">
+                        <div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
                           {details.map((expense) => (
                             <Fragment key={expense.id}>
-                              <span className="text-neutral-600 pl-2">
+                              <button
+                                type="button"
+                                className="cursor-pointer pl-2 text-left text-neutral-600 hover:text-foreground"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setAmountEditId(null)
+                                  setEditExpenseId(expense.id)
+                                }}
+                              >
                                 {expense.name}
-                              </span>
-                              <span className="text-right text-neutral-600 tabular-nums">
-                                {formatUsd(expense.amount)}
-                              </span>
+                              </button>
+                              <ExpenseAmountEdit
+                                expense={expense}
+                                editing={amountEditId === expense.id}
+                                onEdit={setAmountEditId}
+                              />
                             </Fragment>
                           ))}
                         </div>
@@ -1048,7 +1462,14 @@ function ExpensesCard() {
                 type="button"
                 className="cursor-pointer bg-transparent p-0 text-sm"
                 aria-expanded={viewAll}
-                onClick={() => setViewAll((visible) => !visible)}
+                onClick={() => {
+                  if (viewAll) {
+                    setAmountEditId(null)
+                    setViewAll(false)
+                    return
+                  }
+                  setViewAll(true)
+                }}
               >
                 {viewAll ? 'Hide' : 'View all'}
               </button>
@@ -1058,6 +1479,12 @@ function ExpensesCard() {
       </Card>
 
       <EditExpensesDialog open={open} onOpenChange={setOpen} />
+      <EditOneExpenseDialog
+        expenseId={editExpenseId}
+        onOpenChange={(next) => {
+          if (!next) setEditExpenseId(null)
+        }}
+      />
     </>
   )
 }

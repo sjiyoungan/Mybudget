@@ -18,6 +18,9 @@ export function ExpensesPage() {
               Dashboard
             </Link>
           </Button>
+          <h1 className="font-heading mt-4 text-3xl font-medium">
+            Expenses
+          </h1>
         </div>
 
         <ExpenseDetailCards />
