@@ -71,6 +71,7 @@ import {
   estimatedCardMinimum,
   normalizeDebtType,
   ceilCents,
+  ceilDollars,
   totalDebtPayments,
   totalForCategory,
   totalMonthlyExpenses,
@@ -90,7 +91,7 @@ import {
   yearToDateInterest,
   type PlannerMonth,
 } from '@/lib/debt-plan'
-import { formatUsd, formatUsdNumber, formatUsdWholeUp } from '@/lib/format'
+import { formatUsd, formatUsdNumber, formatUsdWholeNumberUp, formatUsdWholeUp } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 function parseAmount(value: string) {
@@ -188,12 +189,14 @@ function DebtMoneyInput({
   ariaLabel,
   title,
   roundUp = false,
+  whole = false,
 }: {
   value: string
   onChange: (value: string) => void
   ariaLabel: string
   title?: string
   roundUp?: boolean
+  whole?: boolean
 }) {
   const [focused, setFocused] = useState(false)
   const [text, setText] = useState(value)
@@ -211,13 +214,29 @@ function DebtMoneyInput({
       onChange(raw)
       return
     }
-    const next = roundUp ? ceilCents(parsed) : parsed
+    const next = whole
+      ? ceilDollars(parsed)
+      : roundUp
+        ? ceilCents(parsed)
+        : parsed
     const current = parseAmount(value)
-    if (current != null && roundCents(current) === roundCents(next)) return
-    onChange(formatUsdNumber(next))
+    if (current != null) {
+      const same = whole
+        ? ceilDollars(current) === next
+        : roundCents(current) === roundCents(next)
+      if (same) return
+    }
+    onChange(whole ? formatUsdWholeNumberUp(next) : formatUsdNumber(next))
   }
 
-  const display = focused ? text : formatMoneyField(value)
+  const parsedValue = parseAmount(value)
+  const display = focused
+    ? text
+    : whole
+      ? parsedValue == null
+        ? value
+        : formatUsdWholeNumberUp(parsedValue)
+      : formatMoneyField(value)
   return (
     <div className={cn('flex h-8 items-center justify-end px-2.5', EDIT_GHOST_BOX)}>
       <span className="text-neutral-400 shrink-0 pr-0.5 text-sm">$</span>
@@ -238,8 +257,8 @@ function DebtMoneyInput({
           setText(event.target.value)
           onChange(event.target.value)
         }}
-        placeholder="0.00"
-        inputMode="decimal"
+        placeholder={whole ? '0' : '0.00'}
+        inputMode={whole ? 'numeric' : 'decimal'}
         aria-label={ariaLabel}
       />
     </div>
@@ -249,17 +268,24 @@ function DebtMoneyInput({
 function DebtMoneyDisplay({
   amount,
   ariaLabel,
+  whole = false,
+  muted = false,
 }: {
   amount: number
   ariaLabel: string
+  whole?: boolean
+  muted?: boolean
 }) {
   return (
     <div
-      className="flex h-8 items-center justify-end px-2.5 text-sm tabular-nums"
+      className={cn(
+        'flex h-8 items-center justify-end px-2.5 text-sm tabular-nums',
+        muted && 'text-neutral-400',
+      )}
       aria-label={ariaLabel}
     >
       <span className="text-neutral-400 shrink-0 pr-0.5">$</span>
-      <span>{formatUsdNumber(amount)}</span>
+      <span>{whole ? formatUsdWholeNumberUp(amount) : formatUsdNumber(amount)}</span>
     </div>
   )
 }
@@ -2782,7 +2808,7 @@ export function DebtsCard() {
           <div className="relative z-10 pointer-events-none px-(--card-spacing) pt-4 pb-4">
             <MetricStrip className="metric-grid-row">
               <DebtMetric label="Total balance" amount={totalBalance} />
-              <DebtMetric label="Total payments" amount={totalPayment} />
+              <DebtMetric label="Total payments" amount={totalPayment} wholeUp />
               <DebtMetric label="Extra this month" amount={extraThisMonth} />
               <DebtMetric
                 label="Interest paid this year"
@@ -2843,14 +2869,18 @@ function formatMonthsLeft(last: PlannerMonth, now: Date) {
 function DebtMetric({
   label,
   amount,
+  wholeUp = false,
 }: {
   label: string
   amount: number
+  wholeUp?: boolean
 }) {
   return (
     <div>
       <p className="text-muted-foreground text-sm">{label}</p>
-      <p className="mt-2 text-xl font-medium tabular-nums">{formatUsd(amount)}</p>
+      <p className="mt-2 text-xl font-medium tabular-nums">
+        {wholeUp ? formatUsdWholeUp(amount) : formatUsd(amount)}
+      </p>
     </div>
   )
 }
@@ -3076,7 +3106,7 @@ export function EditDebtsDialog({
   }
 
   function computedTotal(draft: DebtDraft) {
-    return ceilCents(
+    return ceilDollars(
       (moneyField(draft.minimum) ?? 0) +
         (moneyField(draft.extraPayment) ?? 0) +
         chargesAmount(draft),
@@ -3088,7 +3118,9 @@ export function EditDebtsDialog({
     const parsed = parseAmount(value)
     if (parsed == null) return
     const extra = roundCents(
-      parsed - (moneyField(draft.minimum) ?? 0) - chargesAmount(draft),
+      ceilDollars(parsed) -
+        (moneyField(draft.minimum) ?? 0) -
+        chargesAmount(draft),
     )
     updateDraft(draft.id, {
       extraPayment: extra === 0 ? '' : String(extra),
@@ -3365,6 +3397,8 @@ export function EditDebtsDialog({
                 <DebtMoneyDisplay
                   amount={chargesAmount(draft)}
                   ariaLabel="Charges"
+                  whole
+                  muted
                 />
                 <DebtMoneyInput
                   value={
@@ -3375,6 +3409,7 @@ export function EditDebtsDialog({
                   onChange={(value) => handleTotalChange(draft, value)}
                   ariaLabel="Total payments"
                   roundUp
+                  whole
                 />
                 <DebtColRule />
                 <DebtMoneyInput

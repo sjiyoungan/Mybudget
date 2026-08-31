@@ -14,6 +14,14 @@ export function formatUsdNumber(amount: number) {
   }).format(amount)
 }
 
+export function formatUsdWholeNumberUp(amount: number) {
+  const whole =
+    amount > 0 ? Math.ceil(amount - 1e-9) : amount < 0 ? Math.ceil(amount) : 0
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 0,
+  }).format(whole)
+}
+
 export function formatUsdWhole(amount: number) {
   return formatWholeUsd(Math.round(amount))
 }

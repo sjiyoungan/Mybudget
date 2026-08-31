@@ -387,6 +387,13 @@ export function ceilCents(value: number) {
   return Math.ceil(value * 100 - 1e-9) / 100
 }
 
+/** Round toward +∞ to the next dollar so displayed charges and totals drop cents. */
+export function ceilDollars(value: number) {
+  if (value > 0) return Math.ceil(value - 1e-9)
+  if (value < 0) return Math.ceil(value)
+  return 0
+}
+
 /** Typical card statement minimum: 1% of balance plus this month's interest, $25 floor. */
 export function estimatedCardMinimum(balance: number, apr: number) {
   if (balance <= 0.005) return 0
@@ -645,9 +652,10 @@ export function chargesForDebt(
   expenses: RecurringExpense[],
   debt: Pick<Debt, 'id' | 'chargeAccountId'>,
 ) {
-  return expenses
+  const sum = expenses
     .filter((expense) => isChargeOnDebt(expense, debt))
-    .reduce((sum, expense) => sum + monthlyAmount(expense), 0)
+    .reduce((total, expense) => total + monthlyAmount(expense), 0)
+  return ceilDollars(sum)
 }
 
 export function chargeExpensesForDebt(
@@ -661,7 +669,7 @@ export function totalPaymentForDebt(
   expenses: RecurringExpense[],
   debt: Pick<Debt, 'id' | 'minimum' | 'extraPayment' | 'chargeAccountId'>,
 ) {
-  return ceilCents(paymentWithoutCharges(debt) + chargesForDebt(expenses, debt))
+  return ceilDollars(paymentWithoutCharges(debt) + chargesForDebt(expenses, debt))
 }
 
 export type DepositLine = {
