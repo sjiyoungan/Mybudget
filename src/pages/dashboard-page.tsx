@@ -2,7 +2,6 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 
-import { AppHeader } from '@/components/app-header'
 import { DebtsCard } from '@/components/budget-cards'
 import {
   Card,
@@ -31,10 +30,7 @@ export function DashboardPage() {
   const remaining = income - expenseTotal
 
   return (
-    <div className="min-h-svh bg-background">
-      <AppHeader />
-
-      <main className="mx-auto grid max-w-5xl gap-6 px-6 py-8">
+    <main className="mx-auto grid max-w-5xl gap-6 px-6 py-8">
         <section className="grid gap-4 md:grid-cols-3">
           <Link
             to="/income"
@@ -73,7 +69,6 @@ export function DashboardPage() {
         </section>
 
         <DebtsCard />
-      </main>
-    </div>
+    </main>
   )
 }

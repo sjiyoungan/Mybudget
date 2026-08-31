@@ -4050,13 +4050,7 @@ export function EditDebtsDialog({
   )
 }
 
-export function CalculationsDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
+export function CalculationsPanel() {
   const { accounts, expenses, debts, updateAccountBalance } = useBudget()
   const bills = billsAccount(accounts)
   const overflow = overflowAccount(accounts)
@@ -4069,104 +4063,93 @@ export function CalculationsDialog({
   const stillShort = shortfall - transfer
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl" showCloseButton>
-        <DialogHeader>
-          <DialogTitle>Calculations</DialogTitle>
-          <DialogDescription>
-            Fill in what is in BoA Debit and Disc Debit. Need comes from the
-            bills assigned to the bills account.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="grid gap-3">
-            <p className="font-medium">
-              {bills?.name ?? 'Mark an account as Bills'}
-            </p>
-            {bills ? (
-              <>
-                <div className="grid gap-1">
-                  <label
-                    className="text-muted-foreground text-xs"
-                    htmlFor="bills-have"
-                  >
-                    How much I have
-                  </label>
-                  <Input
-                    id="bills-have"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={Number.isFinite(have) ? have : ''}
-                    onChange={(event) => {
-                      const parsed = parseAmount(event.target.value)
-                      updateAccountBalance(bills.id, parsed ?? 0)
-                    }}
-                  />
-                </div>
-                <CalcLine label="How much I need" value={formatUsd(need)} />
-                <CalcLine
-                  label="Still need in this account"
-                  value={formatUsd(shortfall)}
-                  warn={shortfall > 0}
-                />
-              </>
-            ) : (
-              <EmptyNote>
-                Set an account role to Bills to use this side.
-              </EmptyNote>
-            )}
-          </div>
-          <div className="grid gap-3">
-            <p className="font-medium">
-              {overflow?.name ?? 'Mark an account as Leftover'}
-            </p>
-            {overflow ? (
-              <>
-                <div className="grid gap-1">
-                  <label
-                    className="text-muted-foreground text-xs"
-                    htmlFor="overflow-have"
-                  >
-                    How much I have
-                  </label>
-                  <Input
-                    id="overflow-have"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={Number.isFinite(overflowHave) ? overflowHave : ''}
-                    onChange={(event) => {
-                      const parsed = parseAmount(event.target.value)
-                      updateAccountBalance(overflow.id, parsed ?? 0)
-                    }}
-                  />
-                </div>
-                <CalcLine
-                  label={`Transfer to ${bills?.name ?? 'bills account'}`}
-                  value={formatUsd(transfer)}
-                />
-                <CalcLine
-                  label="Left after the transfer"
-                  value={formatUsd(leftover)}
-                />
-                {stillShort > 0 ? (
-                  <CalcLine
-                    label="Still short after transferring"
-                    value={formatUsd(stillShort)}
-                    warn
-                  />
-                ) : null}
-              </>
-            ) : (
-              <EmptyNote>
-                Set an account role to Leftover to use this side.
-              </EmptyNote>
-            )}
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-3">
+        <p className="font-medium">
+          {bills?.name ?? 'Mark an account as Bills'}
+        </p>
+        {bills ? (
+          <>
+            <div className="grid gap-1">
+              <label
+                className="text-muted-foreground text-xs"
+                htmlFor="bills-have"
+              >
+                How much I have
+              </label>
+              <Input
+                id="bills-have"
+                type="number"
+                min={0}
+                step="0.01"
+                value={Number.isFinite(have) ? have : ''}
+                onChange={(event) => {
+                  const parsed = parseAmount(event.target.value)
+                  updateAccountBalance(bills.id, parsed ?? 0)
+                }}
+              />
+            </div>
+            <CalcLine label="How much I need" value={formatUsd(need)} />
+            <CalcLine
+              label="Still need in this account"
+              value={formatUsd(shortfall)}
+              warn={shortfall > 0}
+            />
+          </>
+        ) : (
+          <EmptyNote>
+            Set an account role to Bills to use this side.
+          </EmptyNote>
+        )}
+      </div>
+      <div className="grid gap-3">
+        <p className="font-medium">
+          {overflow?.name ?? 'Mark an account as Leftover'}
+        </p>
+        {overflow ? (
+          <>
+            <div className="grid gap-1">
+              <label
+                className="text-muted-foreground text-xs"
+                htmlFor="overflow-have"
+              >
+                How much I have
+              </label>
+              <Input
+                id="overflow-have"
+                type="number"
+                min={0}
+                step="0.01"
+                value={Number.isFinite(overflowHave) ? overflowHave : ''}
+                onChange={(event) => {
+                  const parsed = parseAmount(event.target.value)
+                  updateAccountBalance(overflow.id, parsed ?? 0)
+                }}
+              />
+            </div>
+            <CalcLine
+              label={`Transfer to ${bills?.name ?? 'bills account'}`}
+              value={formatUsd(transfer)}
+            />
+            <CalcLine
+              label="Left after the transfer"
+              value={formatUsd(leftover)}
+            />
+            {stillShort > 0 ? (
+              <CalcLine
+                label="Still short after transferring"
+                value={formatUsd(stillShort)}
+                warn
+              />
+            ) : null}
+          </>
+        ) : (
+          <EmptyNote>
+            Set an account role to Leftover to use this side.
+          </EmptyNote>
+        )}
+      </div>
+    </div>
   )
 }
 

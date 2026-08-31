@@ -1,10 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ArrowLeft, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 
-import { AppHeader } from '@/components/app-header'
 import { MetricStrip } from '@/components/metric-strip'
-import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -90,18 +87,9 @@ export function IncomePage() {
       : stubsForMonth(paystubs, selectedYear, activeMonth)
 
   return (
-    <div className="min-h-svh bg-background">
-      <AppHeader />
-
-      <main className="mx-auto grid max-w-5xl px-6 py-8">
-        <div>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/">
-              <ArrowLeft data-icon="inline-start" />
-              Dashboard
-            </Link>
-          </Button>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+    <>
+    <main className="mx-auto grid max-w-5xl px-6 py-8">
+      <div className="flex flex-wrap items-center gap-3">
             <h1 className="font-heading text-3xl font-medium">Income</h1>
             <Select
                 value={String(selectedYear)}
@@ -135,8 +123,7 @@ export function IncomePage() {
                   ))}
                 </SelectContent>
               </Select>
-          </div>
-        </div>
+      </div>
 
         <MetricStrip className="mt-8">
           <SummaryStat label="Year-to-date net pay" amount={ytdNet} />
@@ -215,7 +202,7 @@ export function IncomePage() {
           if (!open) setDeductionDrawer(null)
         }}
       />
-    </div>
+    </>
   )
 }
 

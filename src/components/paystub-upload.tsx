@@ -56,7 +56,11 @@ function summaryMessage(saved: number, skipped: number, failed: string[]) {
   return parts.join(' ')
 }
 
-export function PaystubUploadButton() {
+export function PaystubUploadButton({
+  className,
+}: {
+  className?: string
+}) {
   const { paystubs, upsertPaystub } = usePaystubs()
   const inputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(
@@ -152,7 +156,13 @@ export function PaystubUploadButton() {
       />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" size="sm" disabled={busy}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            className={className}
+          >
             <Upload data-icon="inline-start" />
             {progress
               ? `Reading ${progress.current}/${progress.total}…`
@@ -162,7 +172,7 @@ export function PaystubUploadButton() {
             )}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="start">
           <DropdownMenuItem
             onSelect={() => {
               inputRef.current?.click()

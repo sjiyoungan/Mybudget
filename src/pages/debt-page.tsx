@@ -10,10 +10,8 @@ import {
   type PointerEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Link } from 'react-router-dom'
-import { ArrowLeft, Check, ChevronDown, ListTodo, Menu, Undo2 } from 'lucide-react'
+import { Check, ChevronDown, ListTodo, Menu, Undo2 } from 'lucide-react'
 
-import { AppHeader } from '@/components/app-header'
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
 import { Button } from '@/components/ui/button'
 import {
@@ -154,21 +152,10 @@ export function DebtPage() {
   const interestPaid = plannedInterest(upcoming)
 
   return (
-    <div className="min-h-svh bg-background">
-      <AppHeader />
-
-      <main className="mx-auto grid max-w-5xl gap-6 px-6 py-8">
-        <div>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/">
-              <ArrowLeft data-icon="inline-start" />
-              Dashboard
-            </Link>
-          </Button>
-          <h1 className="font-heading mt-4 text-3xl font-medium">
-            Debt payoff planner
-          </h1>
-        </div>
+    <main className="mx-auto grid max-w-5xl gap-6 px-6 py-8">
+      <h1 className="font-heading text-3xl font-medium">
+        Debt payoff planner
+      </h1>
 
         <PlannerCard
           debts={debts}
@@ -181,8 +168,7 @@ export function DebtPage() {
         />
 
         <AffirmCard loans={plan.affirmLoans} totals={affirm} />
-      </main>
-    </div>
+    </main>
   )
 }
 
