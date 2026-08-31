@@ -228,7 +228,6 @@ export function AffirmCard({
   const [stuck, setStuck] = useState(false)
   const [canDrag, setCanDrag] = useState(false)
   const [drawerLoanId, setDrawerLoanId] = useState<string | null>(null)
-  const [adding, setAdding] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const drag = useRef({
     active: false,
@@ -330,7 +329,6 @@ export function AffirmCard({
     const without = loans.filter((loan) => loan.id !== next.id)
     onLoansChange(sortAffirmLoans([...without, next]))
     setDrawerLoanId(next.id)
-    setAdding(false)
   }
 
   const tableWidth = AFFIRM_ID_WIDTH + months.length * AFFIRM_MONTH_COL
@@ -384,17 +382,6 @@ export function AffirmCard({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <button
-              type="button"
-              className="hover-fill flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm"
-              onClick={() => {
-                setDrawerLoanId(null)
-                setAdding(true)
-              }}
-            >
-              <Plus className="size-3.5" />
-              Add
-            </button>
           </div>
         </div>
       </CardHeader>
@@ -474,7 +461,6 @@ export function AffirmCard({
                   const lastRow = rowIndex === schedules.length - 1
                   const name = loan.name.trim() || 'Amazon'
                   function openLoan() {
-                    setAdding(false)
                     setDrawerLoanId(loan.id)
                   }
                   return (
@@ -595,12 +581,11 @@ export function AffirmCard({
         </div>
       </CardContent>
       <AffirmLoanDrawer
-        open={adding || drawerLoan != null}
+        open={drawerLoan != null}
         loan={drawerLoan}
-        creating={adding}
+        creating={false}
         now={now}
         onClose={() => {
-          setAdding(false)
           setDrawerLoanId(null)
         }}
         onSave={saveLoan}
@@ -1157,7 +1142,7 @@ function AffirmLoanDrawer({
             )}
           </div>
         </DrawerHeader>
-        <div className="grid gap-4 px-4 pb-6">
+        <div className="grid gap-6 px-4 pb-6">
           <AffirmDetailField
             label="Loan ID"
             editing={editing}
