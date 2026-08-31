@@ -40,10 +40,12 @@ function subNavClass(isActive: boolean) {
 
 const TREE_ITEM_H = 32
 const TREE_ITEM_GAP = 2
+const TREE_FROM_PARENT = TREE_ITEM_H + TREE_ITEM_GAP
 const TREE_LINE_X = 7
 const TREE_RAIL_INSET = 6
 const TREE_CORNER = 5
-const TREE_STEM = 12
+const TREE_STEM = 11
+const TREE_ARROW = 5
 
 function NavTreeActivePath({
   activeIndex,
@@ -54,46 +56,36 @@ function NavTreeActivePath({
 }) {
   if (activeIndex < 0) return null
 
-  const height = itemCount * TREE_ITEM_H + (itemCount - 1) * TREE_ITEM_GAP
-  const y = activeIndex * (TREE_ITEM_H + TREE_ITEM_GAP) + TREE_ITEM_H / 2
+  const treeH = itemCount * TREE_ITEM_H + (itemCount - 1) * TREE_ITEM_GAP
+  const height = TREE_FROM_PARENT + treeH
+  const y =
+    TREE_FROM_PARENT +
+    activeIndex * (TREE_ITEM_H + TREE_ITEM_GAP) +
+    TREE_ITEM_H / 2
   const x = TREE_LINE_X
   const stemEnd = x + TREE_STEM
-  const markerId = 'nav-tree-arrow'
+  const width = stemEnd + TREE_ARROW + 2
 
   return (
     <svg
       className="nav-tree-active-path"
-      width={stemEnd + 8}
+      width={width}
       height={height}
-      viewBox={`0 0 ${stemEnd + 8} ${height}`}
+      viewBox={`0 0 ${width} ${height}`}
       fill="none"
+      overflow="visible"
       aria-hidden
     >
-      <defs>
-        <marker
-          id={markerId}
-          markerWidth="7"
-          markerHeight="7"
-          refX="5"
-          refY="3.5"
-          orient="auto"
-        >
-          <path
-            d="M1 1 L6 3.5 L1 6"
-            stroke="currentColor"
-            strokeWidth="1"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </marker>
-      </defs>
       <path
         d={`M ${x} ${TREE_RAIL_INSET} L ${x} ${y - TREE_CORNER} Q ${x} ${y} ${x + TREE_CORNER} ${y} L ${stemEnd} ${y}`}
         stroke="currentColor"
         strokeWidth="1"
         strokeLinecap="round"
         strokeLinejoin="round"
-        markerEnd={`url(#${markerId})`}
+      />
+      <path
+        d={`M ${stemEnd} ${y - 3.5} L ${stemEnd + TREE_ARROW} ${y} L ${stemEnd} ${y + 3.5} Z`}
+        fill="currentColor"
       />
     </svg>
   )
@@ -134,30 +126,32 @@ export function AppShell() {
         </div>
 
         <div className="grid gap-0.5">
-          {TOP_PAGES.map((page) => (
-            <NavLink
-              key={page.to}
-              to={page.to}
-              end={page.end}
-              className={({ isActive }) => navClass(isActive)}
-            >
-              {page.label}
-            </NavLink>
-          ))}
-          <div className="nav-tree">
-            <NavTreeActivePath
-              activeIndex={activeSubIndex}
-              itemCount={SUB_PAGES.length}
-            />
-            {SUB_PAGES.map((page) => (
+          <div className="nav-group">
+            {TOP_PAGES.map((page) => (
               <NavLink
                 key={page.to}
                 to={page.to}
-                className={({ isActive }) => subNavClass(isActive)}
+                end={page.end}
+                className={({ isActive }) => navClass(isActive)}
               >
                 {page.label}
               </NavLink>
             ))}
+            <div className="nav-tree">
+              {SUB_PAGES.map((page) => (
+                <NavLink
+                  key={page.to}
+                  to={page.to}
+                  className={({ isActive }) => subNavClass(isActive)}
+                >
+                  {page.label}
+                </NavLink>
+              ))}
+            </div>
+            <NavTreeActivePath
+              activeIndex={activeSubIndex}
+              itemCount={SUB_PAGES.length}
+            />
           </div>
           {BOTTOM_PAGES.map((page) => (
             <NavLink

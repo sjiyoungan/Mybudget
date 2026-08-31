@@ -338,7 +338,7 @@
   background-image: none !important;
 }
 
-.nav-tree {
+.nav-group {
   --nav-tree-gutter: 0.875rem;
   --nav-tree-line: 0.4375rem;
   --nav-tree-stroke: oklch(0.88 0 0);
@@ -346,9 +346,8 @@
   position: relative;
   display: grid;
   gap: 0.125rem;
-  padding-left: var(--nav-tree-gutter);
 }
-.nav-tree::before {
+.nav-group::before {
   content: '';
   position: absolute;
   left: var(--nav-tree-line);
@@ -357,15 +356,21 @@
   width: 1px;
   background: var(--nav-tree-stroke);
 }
+.nav-tree {
+  display: grid;
+  gap: 0.125rem;
+  padding-left: var(--nav-tree-gutter);
+}
 .nav-tree-active-path {
   position: absolute;
   left: 0;
   top: 0;
+  z-index: 2;
   color: var(--nav-tree-stroke-active);
   pointer-events: none;
   overflow: visible;
 }
-.dark .nav-tree {
+.dark .nav-group {
   --nav-tree-stroke: oklch(0.4 0 0);
   --nav-tree-stroke-active: oklch(0.82 0 0);
 }
