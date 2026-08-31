@@ -339,8 +339,9 @@
 }
 
 .nav-group {
-  --nav-tree-gutter: 0.875rem;
-  --nav-tree-line: 0.4375rem;
+  --nav-tree-gutter: 33px;
+  --nav-tree-line: 15px;
+  --nav-tree-rail-top: 25px;
   --nav-tree-stroke: oklch(0.88 0 0);
   --nav-tree-stroke-active: oklch(0.48 0 0);
   position: relative;
@@ -350,8 +351,8 @@
 .nav-group::before {
   content: '';
   position: absolute;
-  left: var(--nav-tree-line);
-  top: 0.375rem;
+  left: calc(var(--nav-tree-line) - 0.5px);
+  top: var(--nav-tree-rail-top);
   bottom: 0.375rem;
   width: 1px;
   background: var(--nav-tree-stroke);

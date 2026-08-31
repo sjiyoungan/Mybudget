@@ -1,3 +1,4 @@
+import { type CSSProperties } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { ChevronDown } from 'lucide-react'
 
@@ -41,11 +42,13 @@ function subNavClass(isActive: boolean) {
 const TREE_ITEM_H = 32
 const TREE_ITEM_GAP = 2
 const TREE_FROM_PARENT = TREE_ITEM_H + TREE_ITEM_GAP
-const TREE_LINE_X = 7
-const TREE_RAIL_INSET = 6
+const TREE_LINE_X = 15
+const TREE_RAIL_INSET = 25
 const TREE_CORNER = 5
 const TREE_STEM = 11
 const TREE_ARROW = 5
+const TREE_FILL_GAP = 2
+const TREE_GUTTER = TREE_LINE_X + TREE_STEM + TREE_ARROW + TREE_FILL_GAP
 
 function NavTreeActivePath({
   activeIndex,
@@ -126,7 +129,16 @@ export function AppShell() {
         </div>
 
         <div className="grid gap-0.5">
-          <div className="nav-group">
+          <div
+            className="nav-group"
+            style={
+              {
+                '--nav-tree-line': `${TREE_LINE_X}px`,
+                '--nav-tree-gutter': `${TREE_GUTTER}px`,
+                '--nav-tree-rail-top': `${TREE_RAIL_INSET}px`,
+              } as CSSProperties
+            }
+          >
             {TOP_PAGES.map((page) => (
               <NavLink
                 key={page.to}
