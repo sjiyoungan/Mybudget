@@ -58,8 +58,10 @@ function summaryMessage(saved: number, skipped: number, failed: string[]) {
 
 export function PaystubUploadButton({
   className,
+  iconOnly = false,
 }: {
   className?: string
+  iconOnly?: boolean
 }) {
   const { paystubs, upsertPaystub } = usePaystubs()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -158,21 +160,28 @@ export function PaystubUploadButton({
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant="outline"
-            size="sm"
+            variant={iconOnly ? 'ghost' : 'outline'}
+            size={iconOnly ? 'icon' : 'sm'}
             disabled={busy}
             className={className}
+            aria-label={
+              progress
+                ? `Reading ${progress.current}/${progress.total}`
+                : 'Upload'
+            }
           >
-            <Upload data-icon="inline-start" />
-            {progress
-              ? `Reading ${progress.current}/${progress.total}…`
-              : 'Upload'}
-            {progress ? null : (
+            <Upload data-icon={iconOnly ? undefined : 'inline-start'} />
+            {iconOnly ? null : progress ? (
+              `Reading ${progress.current}/${progress.total}…`
+            ) : (
+              'Upload'
+            )}
+            {iconOnly || progress ? null : (
               <ChevronDown className="size-3.5 text-muted-foreground" />
             )}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
+        <DropdownMenuContent align={iconOnly ? 'end' : 'start'}>
           <DropdownMenuItem
             onSelect={() => {
               inputRef.current?.click()
