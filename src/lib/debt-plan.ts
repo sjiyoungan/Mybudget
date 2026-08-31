@@ -184,6 +184,20 @@ export function affirmMonthPaid(
   return due != null && due <= dateKey(now)
 }
 
+/** Days until the next due day, wrapping from today (0 = due today). */
+export function affirmDueSortKey(startDate: string | undefined, now: Date) {
+  if (!startDate) return 1000
+  const started = parseYmd(startDate)
+  if (!started) return 1000
+  const today = now.getDate()
+  const lastThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const dayThisMonth = Math.min(started.day, lastThisMonth)
+  if (dayThisMonth >= today) return dayThisMonth - today
+  const lastNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0).getDate()
+  const dayNext = Math.min(started.day, lastNextMonth)
+  return lastThisMonth - today + dayNext
+}
+
 export function ymIndex(year: number, month: number) {
   return year * 12 + month
 }

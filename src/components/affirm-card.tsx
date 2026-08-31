@@ -27,6 +27,7 @@ import {
 import { Input } from '@/components/ui/input'
 import {
   affirmCurrentLoans,
+  affirmDueSortKey,
   affirmLoanPayments,
   affirmMonthPaid,
   affirmVisibleMonths,
@@ -691,13 +692,23 @@ function EditAffirmDialog({
 
   useLayoutEffect(() => {
     if (!open) return
-    const loaded = loans.map(draftFromStored)
+    const loaded = [...loans]
+      .sort((left, right) => {
+        const byDue =
+          affirmDueSortKey(left.startDate, now) -
+          affirmDueSortKey(right.startDate, now)
+        if (byDue !== 0) return byDue
+        const byName = left.name.localeCompare(right.name)
+        if (byName !== 0) return byName
+        return left.loanId.localeCompare(right.loanId)
+      })
+      .map(draftFromStored)
     setDrafts(loaded)
     setBaseline(JSON.stringify(loaded))
     setConfirmOpen(false)
     setRemoveId(null)
     setFocusId(null)
-  }, [open, loans])
+  }, [open, loans, now])
 
   const dirty = JSON.stringify(drafts) !== baseline
   const existingIds = useMemo(() => new Set(loans.map((loan) => loan.id)), [loans])
