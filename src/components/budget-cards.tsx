@@ -77,6 +77,9 @@ import {
   totalForCategory,
   totalMonthlyExpenses,
   totalMonthlyExpensesExcluding,
+  shownMonthlyPayment,
+  storedAmountFromShownPayment,
+  isDebtExpense,
   type AccountKind,
   type Debt,
   type DebtType,
@@ -544,6 +547,41 @@ function expenseToDraft(item: RecurringExpense): ExpenseDraft {
   }
 }
 
+function expenseToEditorDraft(
+  item: RecurringExpense,
+  expenses: RecurringExpense[],
+  debts: Debt[],
+): ExpenseDraft {
+  const draft = expenseToDraft(item)
+  if (!isDebtExpense(item)) return draft
+  return {
+    ...draft,
+    amount: String(
+      billedAmountFromMonthly(
+        shownMonthlyPayment(item, expenses, debts),
+        item.frequency,
+      ),
+    ),
+  }
+}
+
+function draftAmountToStore(
+  draft: ExpenseDraft,
+  expenses: RecurringExpense[],
+  debts: Debt[],
+) {
+  const parsed = parseAmount(draft.amount) ?? 0
+  const existing = expenses.find((item) => item.id === draft.id)
+  if (!existing || !isDebtExpense(existing)) return parsed
+  return storedAmountFromShownPayment(
+    monthlyAmount({ amount: parsed, frequency: draft.frequency }),
+    existing,
+    expenses,
+    debts,
+    draft.frequency,
+  )
+}
+
 function editorSnapshot(
   categories: CategoryDraft[],
   drafts: ExpenseDraft[],
@@ -913,7 +951,9 @@ function EditExpensesDialog({
   useLayoutEffect(() => {
     if (!open) return
     const nextCategories = categories.map((item) => ({ ...item }))
-    const nextDrafts = expenses.map(expenseToDraft)
+    const nextDrafts = expenses.map((item) =>
+      expenseToEditorDraft(item, expenses, debts),
+    )
     setCategoryDrafts(nextCategories)
     setDrafts(nextDrafts)
     setBaseline(editorSnapshot(nextCategories, nextDrafts))
@@ -1079,7 +1119,7 @@ function EditExpensesDialog({
           id: draft.id,
           name: draft.name.trim(),
           dueDay: draft.dueDay === '' ? null : parseDay(draft.dueDay),
-          amount: parseAmount(draft.amount) ?? 0,
+          amount: draftAmountToStore(draft, expenses, debts),
           frequency: draft.frequency,
           accountId: draft.accountId,
           category: draft.category,
@@ -1469,7 +1509,7 @@ function EditOneExpenseDialog({
   expenseId: string | null
   onOpenChange: (open: boolean) => void
 }) {
-  const { accounts, categories, expenses, updateExpense, removeExpense } =
+  const { accounts, categories, expenses, debts, updateExpense, removeExpense } =
     useBudget()
   const expense = expenses.find((item) => item.id === expenseId)
   const linkedDebt = expense?.category === DEBT_CATEGORY_ID
@@ -1488,7 +1528,7 @@ function EditOneExpenseDialog({
       setDueDayError(false)
       return
     }
-    const next = expenseToDraft(expense)
+    const next = expenseToEditorDraft(expense, expenses, debts)
     setDraft(next)
     setBaseline(oneExpenseSnapshot(next))
     setConfirmOpen(false)
@@ -1533,7 +1573,7 @@ function EditOneExpenseDialog({
     updateExpense(draft.id, {
       name: draft.name.trim(),
       dueDay: draft.dueDay === '' ? null : parseDay(draft.dueDay),
-      amount: parseAmount(draft.amount) ?? 0,
+      amount: draftAmountToStore(draft, expenses, debts),
       frequency: draft.frequency,
       accountId: draft.accountId,
       category: draft.category,
@@ -1740,8 +1780,8 @@ function ExpenseAmountEdit({
   onEdit: (id: string | null) => void
   muted?: boolean
 }) {
-  const { updateExpense } = useBudget()
-  const monthly = monthlyAmount(expense)
+  const { expenses, debts, updateExpense } = useBudget()
+  const monthly = shownMonthlyPayment(expense, expenses, debts)
   const [draft, setDraft] = useState(String(monthly))
   const draftRef = useRef(draft)
   const skipCommit = useRef(false)
@@ -1750,16 +1790,22 @@ function ExpenseAmountEdit({
   const monthlyRef = useRef(monthly)
   const frequencyRef = useRef(expense.frequency)
   const updateRef = useRef(updateExpense)
+  const expenseRef = useRef(expense)
+  const expensesRef = useRef(expenses)
+  const debtsRef = useRef(debts)
   draftRef.current = draft
   monthlyRef.current = monthly
   frequencyRef.current = expense.frequency
   updateRef.current = updateExpense
+  expenseRef.current = expense
+  expensesRef.current = expenses
+  debtsRef.current = debts
 
   useEffect(() => {
     if (!editing) return
     skipCommit.current = false
-    setDraft(String(monthlyAmount(expense)))
-  }, [editing, expense.amount, expense.frequency])
+    setDraft(String(monthly))
+  }, [editing, monthly])
 
   useEffect(() => {
     if (!editing) return
@@ -1780,7 +1826,13 @@ function ExpenseAmountEdit({
         parsed !== monthlyRef.current
       ) {
         updateRef.current(expense.id, {
-          amount: billedAmountFromMonthly(parsed, frequencyRef.current),
+          amount: storedAmountFromShownPayment(
+            parsed,
+            expenseRef.current,
+            expensesRef.current,
+            debtsRef.current,
+            frequencyRef.current,
+          ),
         })
       }
     }
@@ -1811,7 +1863,7 @@ function ExpenseAmountEdit({
           onEdit(expense.id)
         }}
       >
-        {formatUsd(monthlyAmount(expense))}
+        {formatUsd(shownMonthlyPayment(expense, expenses, debts))}
       </button>
     )
   }
@@ -1975,7 +2027,7 @@ function CategoryExpensesCard({
   title: string
   mode: 'expenses' | 'debt'
 }) {
-  const { categories, expenses } = useBudget()
+  const { categories, expenses, debts } = useBudget()
   const [open, setOpen] = useState(false)
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null)
   const [amountEditId, setAmountEditId] = useState<string | null>(null)
@@ -1990,7 +2042,11 @@ function CategoryExpensesCard({
   )
   const total =
     mode === 'debt'
-      ? totalForCategory(expenses, DEBT_CATEGORY_ID)
+      ? debtItems.reduce(
+          (sum, expense) =>
+            sum + shownMonthlyPayment(expense, expenses, debts),
+          0,
+        )
       : totalMonthlyExpensesExcluding(expenses, [DEBT_CATEGORY_ID])
 
   return (
