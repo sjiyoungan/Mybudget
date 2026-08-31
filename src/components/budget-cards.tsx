@@ -296,7 +296,7 @@ function DebtMoneyDisplay({
   return (
     <div
       className={cn(
-        'flex h-8 items-center justify-end px-2.5 text-sm tabular-nums',
+        'flex h-8 cursor-default items-center justify-end px-2.5 text-sm tabular-nums',
         muted && 'text-neutral-400',
       )}
       aria-label={ariaLabel}
