@@ -290,7 +290,7 @@ function PlannerCard({
 
   return (
     <>
-      <Card className="overflow-visible pb-1">
+      <Card className="pb-0">
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-8">
@@ -661,8 +661,12 @@ function MonthTable({
     width: number
     height: number
   } | null>(null)
-  const [editActionsTop, setEditActionsTop] = useState<number | null>(null)
+  const [editActions, setEditActions] = useState<{
+    top: number
+    right: number
+  } | null>(null)
   const [scrolled, setScrolled] = useState(false)
+  const [canDrag, setCanDrag] = useState(false)
   const [tip, setTip] = useState<MonthTip | null>(null)
   const pendingRef = useRef<{ key: string; timer: number } | null>(null)
   const hideRef = useRef<number | null>(null)
@@ -683,7 +687,7 @@ function MonthTable({
   useLayoutEffect(() => {
     if (!editingKey) {
       setEditFrame(null)
-      setEditActionsTop(null)
+      setEditActions(null)
       return
     }
     const wrap = tableWrapRef.current
@@ -708,7 +712,11 @@ function MonthTable({
         width: paidRect.width,
         height: endRect.bottom - paidRect.top,
       })
-      setEditActionsTop(endRect.bottom - shell.getBoundingClientRect().top + 4)
+      const plannerRect = shell.getBoundingClientRect()
+      setEditActions({
+        top: endRect.bottom + 4,
+        right: window.innerWidth - plannerRect.right + 8,
+      })
     }
 
     measure()
@@ -719,10 +727,12 @@ function MonthTable({
     observer.observe(shell)
     scroller?.addEventListener('scroll', measure)
     window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
     return () => {
       observer.disconnect()
       scroller?.removeEventListener('scroll', measure)
       window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
     }
   }, [editingKey, debts.length, months, plan])
 
@@ -791,16 +801,35 @@ function MonthTable({
 
   useEffect(() => () => hideTip(), [hideTip])
 
+  useLayoutEffect(() => {
+    const el = scrollerRef.current
+    if (!el) return
+    const node = el
+    function update() {
+      setCanDrag(node.scrollWidth > node.clientWidth + 1)
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(node)
+    const inner = node.firstElementChild
+    if (inner) observer.observe(inner)
+    window.addEventListener('resize', update)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [debts.length, months])
+
   const tipApi = useMemo(
     () => ({ enter, leave, hide: hideTip }),
     [enter, hideTip, leave],
   )
 
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return
+    if (event.button !== 0 || !canDrag) return
     if (
       event.target instanceof Element &&
-      event.target.closest('input, button, [data-no-drag]')
+      event.target.closest('input, button, [data-no-drag], .sticky')
     ) {
       return
     }
@@ -845,6 +874,7 @@ function MonthTable({
       <div
         ref={scrollerRef}
         className="drag-scroll"
+        data-can-drag={canDrag ? '' : undefined}
         onScroll={() => {
           const el = scrollerRef.current
           setScrolled((el?.scrollLeft ?? 0) > 0)
@@ -934,30 +964,33 @@ function MonthTable({
         data-scrolled={scrolled ? '' : undefined}
         style={{ left: MONTH_COL + LABEL_COL }}
       />
-      {editActionsTop != null && editingRow ? (
-        <div
-          data-no-drag
-          className="absolute z-30 flex items-center rounded-md bg-white p-1 shadow-md"
-          style={{ top: editActionsTop, right: 8 }}
-        >
-          <button
-            type="button"
-            className="hover-fill flex size-6 items-center justify-center rounded"
-            aria-label={`Save ${formatMonthName(editingRow.month)}`}
-            onClick={() => onSaveMonth(editingRow)}
-          >
-            <Check className="size-4" />
-          </button>
-          <button
-            type="button"
-            className="hover-fill flex size-6 items-center justify-center rounded"
-            aria-label="Cancel"
-            onClick={onCancelMonth}
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-      ) : null}
+      {editActions && editingRow
+        ? createPortal(
+            <div
+              data-no-drag
+              className="fixed z-30 flex items-center rounded-md bg-white p-1 shadow-md"
+              style={{ top: editActions.top, right: editActions.right }}
+            >
+              <button
+                type="button"
+                className="hover-fill flex size-6 items-center justify-center rounded"
+                aria-label={`Save ${formatMonthName(editingRow.month)}`}
+                onClick={() => onSaveMonth(editingRow)}
+              >
+                <Check className="size-4" />
+              </button>
+              <button
+                type="button"
+                className="hover-fill flex size-6 items-center justify-center rounded"
+                aria-label="Cancel"
+                onClick={onCancelMonth}
+              >
+                <X className="size-4" />
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
       {tip
         ? createPortal(
             <MonthDetailTip
@@ -1617,6 +1650,7 @@ function AffirmCard({
 
   const scrollerRef = useRef<HTMLDivElement>(null)
   const [scrolled, setScrolled] = useState(false)
+  const [canDrag, setCanDrag] = useState(false)
   const drag = useRef({
     active: false,
     moved: false,
@@ -1625,8 +1659,33 @@ function AffirmCard({
     pointerId: 0,
   })
 
+  useLayoutEffect(() => {
+    const el = scrollerRef.current
+    if (!el) return
+    const node = el
+    function update() {
+      setCanDrag(node.scrollWidth > node.clientWidth + 1)
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(node)
+    const inner = node.firstElementChild
+    if (inner) observer.observe(inner)
+    window.addEventListener('resize', update)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [loans, months])
+
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return
+    if (event.button !== 0 || !canDrag) return
+    if (
+      event.target instanceof Element &&
+      event.target.closest('.sticky')
+    ) {
+      return
+    }
     const el = scrollerRef.current
     if (!el) return
     drag.current = {
@@ -1671,6 +1730,7 @@ function AffirmCard({
           <div
             ref={scrollerRef}
             className="drag-scroll"
+            data-can-drag={canDrag ? '' : undefined}
             onScroll={() => {
               setScrolled((scrollerRef.current?.scrollLeft ?? 0) > 0)
             }}

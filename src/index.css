@@ -133,15 +133,21 @@
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  cursor: grab;
+  cursor: default;
   position: relative;
   z-index: 0;
 }
-.drag-scroll:active {
+.drag-scroll[data-can-drag] {
+  cursor: grab;
+}
+.drag-scroll[data-can-drag]:active {
   cursor: grabbing;
 }
 .drag-scroll::-webkit-scrollbar {
   display: none;
+}
+.drag-scroll .sticky {
+  cursor: default;
 }
 
 .planner-scroll {
