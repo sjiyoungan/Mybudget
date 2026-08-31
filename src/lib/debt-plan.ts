@@ -1,4 +1,9 @@
-import { paymentWithoutCharges, type Debt } from '@/lib/budget'
+import {
+  paymentWithoutCharges,
+  totalPaymentForDebt,
+  type Debt,
+  type RecurringExpense,
+} from '@/lib/budget'
 import {
   defaultMonthlyDebtBudget,
   defaultSnowballDebtId,
@@ -315,6 +320,10 @@ function extraPaidOnLine(paid: number, minimum: number, balanceBeforePay: number
   return roundCents(Math.max(0, paid - minDue))
 }
 
+function scheduledPayment(debt: Debt, expenses: RecurringExpense[]) {
+  return totalPaymentForDebt(expenses, debt)
+}
+
 function historyMonth(
   debts: Debt[],
   row: SeededHistoryMonth,
@@ -368,6 +377,7 @@ function historyMonth(
 export function projectDebtPlan(
   debts: Debt[],
   plan: DebtPlanState,
+  expenses: RecurringExpense[] = [],
   monthsAhead = 18,
   now = new Date(),
 ): PlannerMonth[] {
@@ -436,7 +446,7 @@ export function projectDebtPlan(
     for (const debt of owing) {
       if (locked.has(debt.id)) continue
       const due = afterInterest.get(debt.id) ?? 0
-      const minPay = roundCents(Math.min(paymentWithoutCharges(debt), due))
+      const minPay = roundCents(Math.min(scheduledPayment(debt, expenses), due))
       payments.set(debt.id, minPay)
       allocated += minPay
     }
@@ -474,7 +484,11 @@ export function projectDebtPlan(
       )
       const debt = debts.find((item) => item.id === line.debtId)
       line.paid = paid
-      line.extra = extraPaidOnLine(paid, debt ? paymentWithoutCharges(debt) : 0, due)
+      line.extra = extraPaidOnLine(
+        paid,
+        debt ? scheduledPayment(debt, expenses) : 0,
+        due,
+      )
       line.balance = roundCents(Math.max(0, due - paid))
       balances.set(line.debtId, line.balance)
     }

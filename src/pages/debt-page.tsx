@@ -119,7 +119,7 @@ function tipPosition(el: HTMLElement) {
 }
 
 export function DebtPage() {
-  const { debts } = useBudget()
+  const { debts, expenses } = useBudget()
   const [plan, setPlan] = useState<DebtPlanState>(() => loadDebtPlan())
   const now = useMemo(() => new Date(), [])
 
@@ -128,8 +128,8 @@ export function DebtPage() {
   }, [plan])
 
   const months = useMemo(
-    () => projectDebtPlan(debts, plan, PLAN_HORIZON, now),
-    [debts, plan, now],
+    () => projectDebtPlan(debts, plan, expenses, PLAN_HORIZON, now),
+    [debts, expenses, plan, now],
   )
   const affirm = affirmTotals(plan.affirmLoans)
   const upcoming = plannedThroughPayoff(months)

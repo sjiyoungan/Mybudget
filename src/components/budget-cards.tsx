@@ -2489,13 +2489,13 @@ function AccountDrawer({
 }
 
 export function DebtsCard() {
-  const { debts } = useBudget()
+  const { debts, expenses } = useBudget()
   const [open, setOpen] = useState(false)
   const now = useMemo(() => new Date(), [])
   const months = useMemo(() => {
     const plan = loadDebtPlan()
-    return projectDebtPlan(debts, plan, 120, now)
-  }, [debts, now])
+    return projectDebtPlan(debts, plan, expenses, 120, now)
+  }, [debts, expenses, now])
   const upcoming = useMemo(
     () => months.filter((row) => row.source === 'plan'),
     [months],
