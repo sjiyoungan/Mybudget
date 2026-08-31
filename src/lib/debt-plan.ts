@@ -546,6 +546,29 @@ export function payoffMonth(months: PlannerMonth[], debtId: string) {
   return months[index + 1] ?? null
 }
 
+/** Remaining after this month's planned payment — the plan table End row. */
+export function plannedCurrentBalances(
+  debts: Debt[],
+  plan: DebtPlanState,
+  expenses: RecurringExpense[],
+  now = new Date(),
+) {
+  const months = projectDebtPlan(debts, plan, expenses, 1, now)
+  const row =
+    months.find(
+      (item) =>
+        item.source === 'plan' &&
+        item.year === now.getFullYear() &&
+        item.month === now.getMonth(),
+    ) ?? months.find((item) => item.source === 'plan')
+  return new Map(
+    debts.map((debt) => {
+      const line = row?.lines.find((item) => item.debtId === debt.id)
+      return [debt.id, line?.balance ?? debt.balance] as const
+    }),
+  )
+}
+
 /** Earliest planned payoff first. Debts outside the horizon stay last. */
 export function sortDebtsByPayoff<T extends { id: string; balance: number }>(
   debts: T[],

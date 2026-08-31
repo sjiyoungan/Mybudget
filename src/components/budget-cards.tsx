@@ -1,5 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
-import { Check, ChevronRight, Menu, Pencil, Plus, Settings, Trash2 } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronRight,
+  ChevronsUpDown,
+  Menu,
+  Pencil,
+  Plus,
+  Settings,
+  Trash2,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -23,6 +34,12 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -53,6 +70,7 @@ import {
   isCreditCardDebt,
   estimatedCardMinimum,
   normalizeDebtType,
+  ceilCents,
   totalDebtPayments,
   totalForCategory,
   totalMonthlyExpenses,
@@ -66,16 +84,17 @@ import {
 import {
   loadDebtPlan,
   payoffMonth,
+  plannedCurrentBalances,
   projectDebtPlan,
   sortDebtsByPayoff,
   yearToDateInterest,
   type PlannerMonth,
 } from '@/lib/debt-plan'
-import { formatUsd } from '@/lib/format'
+import { formatUsd, formatUsdNumber, formatUsdWholeUp } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 function parseAmount(value: string) {
-  const parsed = Number.parseFloat(value)
+  const parsed = Number.parseFloat(value.replace(/[$,\s]/g, ''))
   return Number.isFinite(parsed) ? parsed : null
 }
 
@@ -88,6 +107,13 @@ function parseDay(value: string) {
 const DEBT_GHOST_FIELD =
   'border-transparent bg-transparent shadow-none hover:border-input hover:bg-transparent focus-visible:border-input focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent data-[state=open]:border-input'
 
+const DEBT_GHOST_BOX =
+  'rounded-lg border border-transparent hover:border-input focus-within:border-input'
+
+const DEBT_LABEL_LEFT = 'pl-2.5'
+const DEBT_LABEL_RIGHT = 'pr-2.5 text-right'
+const DEBT_LABEL_APR = 'pr-6 text-right'
+
 function AprInput({
   value,
   onChange,
@@ -96,7 +122,7 @@ function AprInput({
   onChange: (value: string) => void
 }) {
   return (
-    <div className="flex h-8 items-center justify-end rounded-lg border border-transparent px-2 hover:border-input focus-within:border-input">
+    <div className={cn('flex h-8 items-center justify-end px-2.5', DEBT_GHOST_BOX)}>
       <input
         className="placeholder:text-muted-foreground h-full min-w-0 w-full bg-transparent text-right text-sm tabular-nums outline-none"
         value={value}
@@ -106,6 +132,90 @@ function AprInput({
         aria-label="APR"
       />
       <span className="text-neutral-400 shrink-0 pl-0.5 text-sm">%</span>
+    </div>
+  )
+}
+
+function formatMoneyField(value: string) {
+  if (value.trim() === '') return ''
+  const parsed = parseAmount(value)
+  if (parsed == null) return value
+  return formatUsdNumber(parsed)
+}
+
+function DebtMoneyInput({
+  value,
+  onChange,
+  ariaLabel,
+  title,
+  roundUp = false,
+}: {
+  value: string
+  onChange: (value: string) => void
+  ariaLabel: string
+  title?: string
+  roundUp?: boolean
+}) {
+  const [focused, setFocused] = useState(false)
+  const [text, setText] = useState(value)
+  useEffect(() => {
+    if (!focused) setText(value)
+  }, [value, focused])
+
+  function commit(raw: string) {
+    if (raw.trim() === '') {
+      onChange('')
+      return
+    }
+    const parsed = parseAmount(raw)
+    if (parsed == null) {
+      onChange(raw)
+      return
+    }
+    onChange(formatUsdNumber(roundUp ? ceilCents(parsed) : parsed))
+  }
+
+  return (
+    <div className={cn('flex h-8 items-center justify-end px-2.5', DEBT_GHOST_BOX)}>
+      <span className="text-neutral-400 shrink-0 pr-0.5 text-sm">$</span>
+      <input
+        className="placeholder:text-muted-foreground h-full min-w-0 w-full bg-transparent text-right text-sm tabular-nums outline-none"
+        value={focused ? text : formatMoneyField(value)}
+        title={title}
+        onFocus={() => {
+          setFocused(true)
+          setText(value)
+        }}
+        onBlur={() => {
+          setFocused(false)
+          commit(text)
+        }}
+        onChange={(event) => {
+          setText(event.target.value)
+          onChange(event.target.value)
+        }}
+        placeholder="0.00"
+        inputMode="decimal"
+        aria-label={ariaLabel}
+      />
+    </div>
+  )
+}
+
+function DebtMoneyDisplay({
+  amount,
+  ariaLabel,
+}: {
+  amount: number
+  ariaLabel: string
+}) {
+  return (
+    <div
+      className="flex h-8 items-center justify-end px-2.5 text-sm tabular-nums"
+      aria-label={ariaLabel}
+    >
+      <span className="text-neutral-400 shrink-0 pr-0.5">$</span>
+      <span>{formatUsdNumber(amount)}</span>
     </div>
   )
 }
@@ -123,6 +233,7 @@ function DebtTypeSelect({
     <Select value={value} onValueChange={(next) => onChange(next as DebtType)}>
       <SelectTrigger
         className={cn('h-8 w-full', quiet && DEBT_GHOST_FIELD)}
+        chevron={quiet ? 'hover' : 'always'}
         aria-label="Debt type"
       >
         <SelectValue />
@@ -216,6 +327,7 @@ function BankSelect({
     >
       <SelectTrigger
         className={cn('w-full', quiet && DEBT_GHOST_FIELD)}
+        chevron={quiet ? 'hover' : 'always'}
         aria-label={ariaLabel}
       >
         <SelectValue placeholder={placeholder} />
@@ -1601,7 +1713,7 @@ function ExpenseMetric({
     <div>
       <p className="text-muted-foreground text-sm">{label}</p>
       <p className="mt-4 text-2xl font-normal tabular-nums">
-        {formatUsd(amount)}
+        {formatUsdWholeUp(amount)}
       </p>
     </div>
   )
@@ -2669,7 +2781,17 @@ type DebtDraft = {
 }
 
 const DEBT_ROW =
-  'grid-cols-[minmax(6.5rem,10.5rem)_8.5rem_5.25rem_5.25rem_5.25rem_5.25rem_minmax(8rem,11rem)_7rem_4.5rem_28px]'
+  'grid-cols-[minmax(4.5rem,8.5rem)_8.5rem_5.75rem_5.75rem_5.75rem_7rem_minmax(8rem,11rem)_7rem_7rem_4.5rem_28px]'
+
+type DebtSortKey = 'balance' | 'apr' | 'minimum' | 'total'
+type DebtSortDir = 'asc' | 'desc'
+
+const DEBT_SORT_OPTIONS: { key: DebtSortKey; label: string }[] = [
+  { key: 'balance', label: 'Current balance' },
+  { key: 'apr', label: 'APR' },
+  { key: 'minimum', label: 'Minimum payments' },
+  { key: 'total', label: 'Total payments' },
+]
 
 function debtSnapshot(drafts: DebtDraft[]) {
   return JSON.stringify(
@@ -2720,6 +2842,30 @@ function calculatedCardMinimum(draft: Pick<DebtDraft, 'type' | 'balance' | 'apr'
   return estimatedCardMinimum(balance, apr)
 }
 
+function draftToDebt(
+  draft: DebtDraft,
+  previous: Debt | undefined,
+): Debt | null {
+  const minimum = moneyField(draft.minimum)
+  const extraPayment = moneyField(draft.extraPayment)
+  const balance = moneyField(draft.balance)
+  const apr = aprField(draft.apr)
+  if (minimum == null || extraPayment == null || balance == null || apr == null)
+    return null
+  return {
+    id: draft.id,
+    lender: draft.lender.trim() || previous?.lender || 'New',
+    dueDay: previous?.dueDay ?? null,
+    minimum: ceilCents(minimum),
+    extraPayment,
+    paidFromAccountId: draft.paidFromAccountId,
+    chargeAccountId: previous?.chargeAccountId ?? draft.chargeAccountId,
+    type: draft.type,
+    apr,
+    balance,
+  }
+}
+
 export function EditDebtsDialog({
   open,
   onOpenChange,
@@ -2735,6 +2881,9 @@ export function EditDebtsDialog({
   const [focusId, setFocusId] = useState<string | null>(null)
   const [totalFocusId, setTotalFocusId] = useState<string | null>(null)
   const [totalText, setTotalText] = useState('')
+  const [sortKey, setSortKey] = useState<DebtSortKey | null>(null)
+  const [sortDir, setSortDir] = useState<DebtSortDir>('desc')
+  const now = useMemo(() => new Date(), [open])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -2761,6 +2910,8 @@ export function EditDebtsDialog({
     setFocusId(null)
     setTotalFocusId(null)
     setTotalText('')
+    setSortKey(null)
+    setSortDir('desc')
   }, [open])
 
   const dirty = useMemo(
@@ -2794,6 +2945,23 @@ export function EditDebtsDialog({
   const removeTarget = removeId
     ? drafts.find((draft) => draft.id === removeId)
     : undefined
+  const previousById = useMemo(
+    () => new Map(debts.map((debt) => [debt.id, debt])),
+    [debts],
+  )
+  const currentById = useMemo(() => {
+    if (!open) return new Map<string, number>()
+    const projected = drafts
+      .map((draft) => draftToDebt(draft, previousById.get(draft.id)))
+      .filter((item): item is Debt => item != null)
+    if (projected.length === 0) return new Map<string, number>()
+    return plannedCurrentBalances(
+      projected,
+      loadDebtPlan(),
+      expenses,
+      now,
+    )
+  }, [open, drafts, previousById, expenses, now])
 
   function updateDraft(id: string, patch: Partial<DebtDraft>) {
     setDrafts((current) =>
@@ -2821,7 +2989,7 @@ export function EditDebtsDialog({
   }
 
   function computedTotal(draft: DebtDraft) {
-    return roundCents(
+    return ceilCents(
       (moneyField(draft.minimum) ?? 0) +
         (moneyField(draft.extraPayment) ?? 0) +
         chargesAmount(draft),
@@ -2889,7 +3057,7 @@ export function EditDebtsDialog({
           id: draft.id,
           lender: draft.lender.trim(),
           dueDay: current?.dueDay ?? null,
-          minimum,
+          minimum: ceilCents(minimum),
           extraPayment,
           paidFromAccountId: draft.paidFromAccountId,
           chargeAccountId: current?.chargeAccountId ?? draft.chargeAccountId,
@@ -2908,6 +3076,30 @@ export function EditDebtsDialog({
     setFocusId(id)
     setDrafts((current) => [...current, emptyDebtDraft(id)])
   }
+
+  function handleSort(key: DebtSortKey) {
+    if (sortKey === key) {
+      setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    setSortDir('desc')
+  }
+
+  function sortValue(draft: DebtDraft) {
+    if (sortKey === 'apr') return aprField(draft.apr) ?? 0
+    if (sortKey === 'minimum') return moneyField(draft.minimum) ?? 0
+    if (sortKey === 'total') return computedTotal(draft)
+    return currentById.get(draft.id) ?? moneyField(draft.balance) ?? 0
+  }
+
+  const listedDrafts =
+    sortKey == null
+      ? drafts
+      : [...drafts].sort((left, right) => {
+          const delta = sortValue(left) - sortValue(right)
+          return sortDir === 'asc' ? delta : -delta
+        })
 
   return (
     <>
@@ -2953,11 +3145,57 @@ export function EditDebtsDialog({
           }}
         >
           <div className="-ml-6 -mr-4 border-b px-6 pr-4 pb-4">
-            <DialogHeader>
-              <DialogTitle className="text-2xl tracking-tight">
-                Edit debts
-              </DialogTitle>
-            </DialogHeader>
+            <div className="flex items-center justify-between gap-3">
+              <DialogHeader>
+                <DialogTitle className="text-2xl tracking-tight">
+                  Edit debts
+                </DialogTitle>
+              </DialogHeader>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="bg-white gap-1"
+                  onClick={addDebtRow}
+                >
+                  <Plus className="size-3.5" />
+                  Add debt
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      className="bg-white"
+                      aria-label="Sort debts"
+                      title="Sort"
+                    >
+                      <ChevronsUpDown className="size-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {DEBT_SORT_OPTIONS.map((option) => (
+                      <DropdownMenuItem
+                        key={option.key}
+                        className="justify-between gap-6"
+                        onSelect={() => handleSort(option.key)}
+                      >
+                        <span>{option.label}</span>
+                        {sortKey === option.key ? (
+                          sortDir === 'asc' ? (
+                            <ArrowUp className="size-3.5" />
+                          ) : (
+                            <ArrowDown className="size-3.5" />
+                          )
+                        ) : null}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
           </div>
 
           <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-x-auto overflow-y-auto">
@@ -2967,18 +3205,25 @@ export function EditDebtsDialog({
                 DEBT_ROW,
               )}
             >
-              <span>Lender</span>
-              <span>Type</span>
-              <span className="text-right">Minimum</span>
-              <span className="text-right">Extra</span>
-              <span className="text-right">Charges</span>
-              <span className="text-right">Total</span>
-              <span>Paid from</span>
-              <span className="text-right">Starting balance</span>
-              <span className="text-right">APR</span>
+              <span className={DEBT_LABEL_LEFT}>Lender</span>
+              <span className={DEBT_LABEL_LEFT}>Type</span>
+              <span className={DEBT_LABEL_RIGHT}>Minimum</span>
+              <span className={DEBT_LABEL_RIGHT}>Extra</span>
+              <span className={DEBT_LABEL_RIGHT}>Charges</span>
+              <span className={cn(DEBT_LABEL_RIGHT, 'whitespace-nowrap')}>
+                Total payments
+              </span>
+              <span className={DEBT_LABEL_LEFT}>Paid from</span>
+              <span className={cn(DEBT_LABEL_RIGHT, 'whitespace-nowrap')}>
+                Starting balance
+              </span>
+              <span className={cn(DEBT_LABEL_RIGHT, 'whitespace-nowrap')}>
+                Current balance
+              </span>
+              <span className={DEBT_LABEL_APR}>APR</span>
               <span />
             </div>
-            {drafts.map((draft) => (
+            {listedDrafts.map((draft) => (
               <div
                 key={draft.id}
                 className={cn('grid items-center gap-4', DEBT_ROW)}
@@ -2998,58 +3243,37 @@ export function EditDebtsDialog({
                   onChange={(type) => updateDraft(draft.id, { type })}
                   quiet
                 />
-                <Input
-                  className={cn('h-8 text-right tabular-nums', DEBT_GHOST_FIELD)}
+                <DebtMoneyInput
                   value={draft.minimum}
-                  onChange={(event) =>
-                    updateDraft(draft.id, { minimum: event.target.value })
+                  onChange={(minimum) => updateDraft(draft.id, { minimum })}
+                  ariaLabel="Minimum payment"
+                  roundUp
+                  title={
+                    draft.type === 'credit-card'
+                      ? '1% of remaining balance plus this month interest, rounded up'
+                      : undefined
                   }
-                  placeholder="0"
-                  inputMode="decimal"
-                  aria-label="Minimum payment"
-                    title={
-                      draft.type === 'credit-card'
-                        ? '1% of starting balance plus this month interest'
-                        : undefined
-                    }
                 />
-                <Input
-                  className={cn('h-8 text-right tabular-nums', DEBT_GHOST_FIELD)}
+                <DebtMoneyInput
                   value={draft.extraPayment}
-                  onChange={(event) =>
-                    updateDraft(draft.id, { extraPayment: event.target.value })
+                  onChange={(extraPayment) =>
+                    updateDraft(draft.id, { extraPayment })
                   }
-                  placeholder="0"
-                  inputMode="decimal"
-                  aria-label="Extra payment"
+                  ariaLabel="Extra payment"
                 />
-                <div
-                  className="text-muted-foreground h-8 px-2 text-right text-sm leading-8 tabular-nums"
-                  aria-label="Charges"
-                >
-                  {formatUsd(chargesAmount(draft))}
-                </div>
-                <Input
-                  className={cn('h-8 text-right tabular-nums', DEBT_GHOST_FIELD)}
+                <DebtMoneyDisplay
+                  amount={chargesAmount(draft)}
+                  ariaLabel="Charges"
+                />
+                <DebtMoneyInput
                   value={
                     totalFocusId === draft.id
                       ? totalText
                       : String(computedTotal(draft))
                   }
-                  onFocus={() => {
-                    setTotalFocusId(draft.id)
-                    setTotalText(String(computedTotal(draft)))
-                  }}
-                  onBlur={() => {
-                    setTotalFocusId(null)
-                    setTotalText('')
-                  }}
-                  onChange={(event) =>
-                    handleTotalChange(draft, event.target.value)
-                  }
-                  placeholder="0"
-                  inputMode="decimal"
-                  aria-label="Total payment"
+                  onChange={(value) => handleTotalChange(draft, value)}
+                  ariaLabel="Total payments"
+                  roundUp
                 />
                 <BankSelect
                   accounts={accounts}
@@ -3062,15 +3286,16 @@ export function EditDebtsDialog({
                   ariaLabel="Paid from"
                   placeholder="Paid from"
                 />
-                <Input
-                  className={cn('h-8 text-right tabular-nums', DEBT_GHOST_FIELD)}
+                <DebtMoneyInput
                   value={draft.balance}
-                  onChange={(event) =>
-                    updateDraft(draft.id, { balance: event.target.value })
+                  onChange={(balance) => updateDraft(draft.id, { balance })}
+                  ariaLabel="Starting balance"
+                />
+                <DebtMoneyDisplay
+                  amount={
+                    currentById.get(draft.id) ?? moneyField(draft.balance) ?? 0
                   }
-                  placeholder="0"
-                  inputMode="decimal"
-                  aria-label="Starting balance"
+                  ariaLabel="Current balance"
                 />
                 <AprInput
                   value={draft.apr}
@@ -3088,15 +3313,6 @@ export function EditDebtsDialog({
                 </Button>
               </div>
             ))}
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-1"
-              onClick={addDebtRow}
-            >
-              <Plus className="size-3.5" />
-              Add debt
-            </Button>
           </div>
 
           <DialogFooter className="-ml-6 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">

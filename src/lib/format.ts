@@ -7,12 +7,27 @@ export function formatUsd(amount: number) {
   return usd.format(amount)
 }
 
+export function formatUsdNumber(amount: number) {
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+}
+
 export function formatUsdWhole(amount: number) {
+  return formatWholeUsd(Math.round(amount))
+}
+
+export function formatUsdWholeUp(amount: number) {
+  return formatWholeUsd(Math.ceil(amount - 1e-9))
+}
+
+function formatWholeUsd(amount: number) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 0,
-  }).format(Math.round(amount))
+  }).format(amount)
 }
 
 export function formatLongDate(iso: string) {

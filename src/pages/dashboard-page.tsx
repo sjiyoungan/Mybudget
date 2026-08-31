@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/card'
 import { totalMonthlyExpenses } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
-import { formatUsd } from '@/lib/format'
+import { formatUsdWhole, formatUsdWholeUp } from '@/lib/format'
 import { currentMonthNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
 
@@ -20,9 +20,12 @@ export function DashboardPage() {
   const { paystubs } = usePaystubs()
   const { expenses } = useBudget()
 
-  const income = useMemo(() => currentMonthNet(paystubs), [paystubs])
+  const income = useMemo(
+    () => Math.round(currentMonthNet(paystubs)),
+    [paystubs],
+  )
   const expenseTotal = useMemo(
-    () => totalMonthlyExpenses(expenses),
+    () => Math.ceil(totalMonthlyExpenses(expenses) - 1e-9),
     [expenses],
   )
   const remaining = income - expenseTotal
@@ -43,7 +46,7 @@ export function DashboardPage() {
                   <CardDescription>Income</CardDescription>
                   <ChevronRight className="text-muted-foreground size-4" />
                 </div>
-                <CardTitle className="text-2xl">{formatUsd(income)}</CardTitle>
+                <CardTitle className="text-2xl">{formatUsdWhole(income)}</CardTitle>
               </CardHeader>
             </Card>
           </Link>
@@ -57,14 +60,14 @@ export function DashboardPage() {
                   <CardDescription>Expenses</CardDescription>
                   <ChevronRight className="text-muted-foreground size-4" />
                 </div>
-                <CardTitle className="text-2xl">{formatUsd(expenseTotal)}</CardTitle>
+                <CardTitle className="text-2xl">{formatUsdWholeUp(expenseTotal)}</CardTitle>
               </CardHeader>
             </Card>
           </Link>
           <Card>
             <CardHeader className="gap-5">
               <CardDescription>Remaining</CardDescription>
-              <CardTitle className="text-2xl">{formatUsd(remaining)}</CardTitle>
+              <CardTitle className="text-2xl">{formatUsdWhole(remaining)}</CardTitle>
             </CardHeader>
           </Card>
         </section>

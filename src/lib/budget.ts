@@ -382,12 +382,17 @@ export function monthlyInterest(balance: number, apr: number) {
   return roundCents((balance * Math.max(0, apr)) / 100 / 12)
 }
 
+/** Round toward +∞ to the next cent so minimums and totals never round down. */
+export function ceilCents(value: number) {
+  return Math.ceil(value * 100 - 1e-9) / 100
+}
+
 /** Typical card statement minimum: 1% of balance plus this month's interest, $25 floor. */
 export function estimatedCardMinimum(balance: number, apr: number) {
   if (balance <= 0.005) return 0
   const interest = monthlyInterest(balance, apr)
-  const percent = roundCents(balance * 0.01)
-  return Math.min(roundCents(Math.max(25, percent + interest)), roundCents(balance))
+  const percent = balance * 0.01
+  return Math.min(ceilCents(Math.max(25, percent + interest)), ceilCents(balance))
 }
 
 export function accountKindLabel(kind: AccountKind) {
@@ -656,7 +661,7 @@ export function totalPaymentForDebt(
   expenses: RecurringExpense[],
   debt: Pick<Debt, 'id' | 'minimum' | 'extraPayment' | 'chargeAccountId'>,
 ) {
-  return roundCents(paymentWithoutCharges(debt) + chargesForDebt(expenses, debt))
+  return ceilCents(paymentWithoutCharges(debt) + chargesForDebt(expenses, debt))
 }
 
 export type DepositLine = {
