@@ -36,7 +36,6 @@ import {
 } from '@/components/ui/select'
 import { useBudget } from '@/lib/budget-context'
 import {
-  accountKindLabel,
   billsAccount,
   billedAmountFromMonthly,
   monthlyAmount,
@@ -1648,7 +1647,7 @@ function AccountLabel({
 }
 
 const amountColClass = 'w-20 shrink-0 text-right tabular-nums'
-const typeColClass = 'w-[6.75rem] shrink-0'
+const lastFourColClass = 'w-[4.75rem] shrink-0 tabular-nums'
 
 export function CardGearButton({
   label,
@@ -1763,14 +1762,16 @@ function AccountsCard() {
           <div className="pt-2">
             <div className="grid gap-y-1">
               <div className="flex items-baseline">
-                <span className="min-w-0 flex-1" />
+                <span className="text-muted-foreground min-w-0 flex-1 text-xs font-medium">
+                  Name
+                </span>
                 <span
                   className={cn(
-                    typeColClass,
+                    lastFourColClass,
                     'text-muted-foreground mr-6 text-xs font-medium',
                   )}
                 >
-                  Type
+                  Last four
                 </span>
                 <AmountCols header left="Bi-weekly" right="Monthly" />
               </div>
@@ -1791,14 +1792,16 @@ function AccountsCard() {
                       selected && 'hover-fill-active',
                     )}
                   >
-                    <span className="min-w-0 flex-1">
-                      <AccountLabel
-                        name={account.name}
-                        lastFour={account.lastFour}
-                      />
+                    <span className="min-w-0 flex-1 truncate">
+                      {account.name}
                     </span>
-                    <span className={cn(typeColClass, 'text-muted-foreground mr-6')}>
-                      {accountKindLabel(account.kind)}
+                    <span
+                      className={cn(
+                        lastFourColClass,
+                        'text-muted-foreground mr-6',
+                      )}
+                    >
+                      {account.lastFour || ''}
                     </span>
                     <AmountCols
                       left={formatUsd(need / 2)}
