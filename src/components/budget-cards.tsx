@@ -51,6 +51,7 @@ import {
   MORTGAGE_CATEGORY_ID,
   VARIABLE_CATEGORY_ID,
   isCreditCardDebt,
+  estimatedCardMinimum,
   normalizeDebtType,
   totalDebtPayments,
   totalForCategory,
@@ -2711,6 +2712,14 @@ function aprField(value: string) {
   return parsed
 }
 
+function calculatedCardMinimum(draft: Pick<DebtDraft, 'type' | 'balance' | 'apr'>) {
+  if (draft.type !== 'credit-card') return null
+  const balance = moneyField(draft.balance)
+  const apr = aprField(draft.apr)
+  if (balance == null || balance <= 0.005 || apr == null) return null
+  return estimatedCardMinimum(balance, apr)
+}
+
 export function EditDebtsDialog({
   open,
   onOpenChange,
@@ -2729,7 +2738,7 @@ export function EditDebtsDialog({
 
   useLayoutEffect(() => {
     if (!open) return
-    const next = debts.map((debt) => ({
+    const loaded = debts.map((debt) => ({
       id: debt.id,
       lender: debt.lender,
       type: normalizeDebtType(debt.type, debt.lender),
@@ -2741,8 +2750,12 @@ export function EditDebtsDialog({
       balance: String(debt.balance),
       apr: String(debt.apr),
     }))
+    const next = loaded.map((draft) => {
+      const minimum = calculatedCardMinimum(draft)
+      return minimum == null ? draft : { ...draft, minimum: String(minimum) }
+    })
     setDrafts(next)
-    setBaseline(debtSnapshot(next))
+    setBaseline(debtSnapshot(loaded))
     setConfirmOpen(false)
     setRemoveId(null)
     setFocusId(null)
@@ -2784,7 +2797,19 @@ export function EditDebtsDialog({
 
   function updateDraft(id: string, patch: Partial<DebtDraft>) {
     setDrafts((current) =>
-      current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
+      current.map((draft) => {
+        if (draft.id !== id) return draft
+        const next = { ...draft, ...patch }
+        if (
+          next.type === 'credit-card' &&
+          patch.minimum == null &&
+          (patch.balance != null || patch.apr != null || patch.type != null)
+        ) {
+          const minimum = calculatedCardMinimum(next)
+          if (minimum != null) next.minimum = String(minimum)
+        }
+        return next
+      }),
     )
   }
 
@@ -2982,6 +3007,11 @@ export function EditDebtsDialog({
                   placeholder="0"
                   inputMode="decimal"
                   aria-label="Minimum payment"
+                    title={
+                      draft.type === 'credit-card'
+                        ? '1% of starting balance plus this month interest'
+                        : undefined
+                    }
                 />
                 <Input
                   className={cn('h-8 text-right tabular-nums', DEBT_GHOST_FIELD)}

@@ -377,6 +377,19 @@ export function isCreditCardDebt(debt: Pick<Debt, 'type' | 'lender'>) {
   return normalizeDebtType(debt.type, debt.lender) === 'credit-card'
 }
 
+export function monthlyInterest(balance: number, apr: number) {
+  if (balance <= 0.005) return 0
+  return roundCents((balance * Math.max(0, apr)) / 100 / 12)
+}
+
+/** Typical card statement minimum: 1% of balance plus this month's interest, $25 floor. */
+export function estimatedCardMinimum(balance: number, apr: number) {
+  if (balance <= 0.005) return 0
+  const interest = monthlyInterest(balance, apr)
+  const percent = roundCents(balance * 0.01)
+  return Math.min(roundCents(Math.max(25, percent + interest)), roundCents(balance))
+}
+
 export function accountKindLabel(kind: AccountKind) {
   return kind === 'credit' ? 'Credit card' : 'Checking'
 }
