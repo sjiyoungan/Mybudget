@@ -323,18 +323,18 @@
   background-image: none !important;
 }
 
-/* Metrics hug their content. Leftover width is split equally into the
-   gaps between metrics and the empty space after the last one, with
-   hairlines only between metrics. */
+/* Metrics hug their content. Leftover width is split so each gap
+   between metrics is 1fr and the empty space after the last metric is
+   half that, with hairlines only between metrics. */
 .metric-grid,
 .metric-grid-row {
   display: grid;
   width: 100%;
   align-items: stretch;
-  grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr);
+  grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 0.5fr);
 }
 .metric-grid.metric-cols-3 {
-  grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr);
+  grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 0.5fr);
 }
 .metric-grid > :not(.metric-rule),
 .metric-grid-row > :not(.metric-rule) {
@@ -355,7 +355,7 @@
 
 @media (width < 80rem) {
   .metric-grid:not(.metric-cols-3):not(.metric-grid-row) {
-    grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr);
+    grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 0.5fr);
     row-gap: 0.75rem;
   }
 }
