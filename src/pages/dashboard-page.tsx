@@ -24,13 +24,14 @@ export function DashboardPage() {
     () => expenses.reduce((sum, item) => sum + item.amount, 0),
     [expenses],
   )
+  const remaining = income - expenseTotal
 
   return (
     <div className="min-h-svh bg-background">
       <AppHeader />
 
       <main className="mx-auto grid max-w-5xl gap-6 px-6 py-8">
-        <section className="grid gap-4 md:grid-cols-2">
+        <section className="grid gap-4 md:grid-cols-3">
           <Link
             to="/income"
             className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -59,6 +60,12 @@ export function DashboardPage() {
               </CardHeader>
             </Card>
           </Link>
+          <Card>
+            <CardHeader className="gap-5">
+              <CardDescription>Remaining</CardDescription>
+              <CardTitle className="text-2xl">{formatUsd(remaining)}</CardTitle>
+            </CardHeader>
+          </Card>
         </section>
 
         <DebtsCard />
