@@ -1,4 +1,4 @@
-import { type Debt } from '@/lib/budget'
+import { paymentWithoutCharges, type Debt } from '@/lib/budget'
 import {
   defaultMonthlyDebtBudget,
   defaultSnowballDebtId,
@@ -320,7 +320,7 @@ function historyMonth(
   row: SeededHistoryMonth,
   previous: Map<string, number>,
 ): PlannerMonth {
-  const mins = new Map(debts.map((debt) => [debt.id, debt.minimum]))
+  const mins = new Map(debts.map((debt) => [debt.id, paymentWithoutCharges(debt)]))
   const lines: PlannerLine[] = debts.map((debt) => {
     const tracked =
       Object.prototype.hasOwnProperty.call(row.paid, debt.id) ||
@@ -436,7 +436,7 @@ export function projectDebtPlan(
     for (const debt of owing) {
       if (locked.has(debt.id)) continue
       const due = afterInterest.get(debt.id) ?? 0
-      const minPay = roundCents(Math.min(debt.minimum, due))
+      const minPay = roundCents(Math.min(paymentWithoutCharges(debt), due))
       payments.set(debt.id, minPay)
       allocated += minPay
     }
@@ -474,7 +474,7 @@ export function projectDebtPlan(
       )
       const debt = debts.find((item) => item.id === line.debtId)
       line.paid = paid
-      line.extra = extraPaidOnLine(paid, debt?.minimum ?? 0, due)
+      line.extra = extraPaidOnLine(paid, debt ? paymentWithoutCharges(debt) : 0, due)
       line.balance = roundCents(Math.max(0, due - paid))
       balances.set(line.debtId, line.balance)
     }

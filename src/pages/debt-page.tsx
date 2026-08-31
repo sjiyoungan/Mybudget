@@ -37,7 +37,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { type Debt } from '@/lib/budget'
+import { paymentWithoutCharges, type Debt } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
 import {
   PAYOFF_STRATEGIES,
@@ -421,7 +421,7 @@ function CustomOrderDialog({
                 {formatUsdWhole(debt.balance)}
               </span>
               <span className="text-right text-sm tabular-nums">
-                {formatUsdWhole(debt.minimum)}
+                {formatUsdWhole(paymentWithoutCharges(debt))}
               </span>
               <span className="text-right text-sm tabular-nums">
                 {formatUsdWhole(interestById.get(debt.id) ?? 0)}

@@ -13,6 +13,9 @@ export const seededAmazonDebt = {
   lender: 'Amazon',
   dueDay: null as number | null,
   minimum: 400,
+  extraPayment: 0,
+  paidFromAccountId: '',
+  chargeAccountId: '',
   apr: 24.49,
   balance: 10856.51,
 }

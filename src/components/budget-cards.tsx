@@ -38,11 +38,16 @@ import { useBudget } from '@/lib/budget-context'
 import {
   billsAccount,
   billedAmountFromMonthly,
+  chargesForDebt,
+  depositLinesForAccount,
   monthlyAmount,
-  monthlyNeedForAccount,
+  monthlyDepositNeed,
   normalizeAccountKind,
   overflowAccount,
+  paymentWithoutCharges,
+  roundCents,
   DEBT_CATEGORY_ID,
+  totalDebtPayments,
   totalForCategory,
   totalMonthlyExpenses,
   type AccountKind,
@@ -100,6 +105,8 @@ function BankSelect({
   value,
   onChange,
   onAdded,
+  ariaLabel = 'Bank account',
+  placeholder = 'Bank',
 }: {
   accounts: {
     id: string
@@ -110,6 +117,8 @@ function BankSelect({
   value: string
   onChange: (id: string) => void
   onAdded?: (account: { id: string; name: string }) => void
+  ariaLabel?: string
+  placeholder?: string
 }) {
   const { addAccount } = useBudget()
   const [open, setOpen] = useState(false)
@@ -169,8 +178,8 @@ function BankSelect({
       value={value || undefined}
       onValueChange={onChange}
     >
-      <SelectTrigger className="w-full" aria-label="Bank account">
-        <SelectValue placeholder="Bank" />
+      <SelectTrigger className="w-full" aria-label={ariaLabel}>
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
@@ -1733,21 +1742,20 @@ function DebtListRow({
 }
 
 function AccountsCard() {
-  const { accounts, expenses } = useBudget()
+  const { accounts, expenses, debts } = useBudget()
   const [open, setOpen] = useState(false)
   const [drawerAccount, setDrawerAccount] = useState<string | null>(null)
-  const listed = useMemo(() => {
-    const checking = accounts.filter((account) => account.kind === 'checking')
-    const credit = accounts.filter((account) => account.kind === 'credit')
-    return [...checking, ...credit]
-  }, [accounts])
+  const listed = useMemo(
+    () => accounts.filter((account) => account.kind === 'checking'),
+    [accounts],
+  )
 
   return (
     <>
       <Card className="self-start">
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
-            <CardTitle>Bank accounts</CardTitle>
+            <CardTitle>Deposits</CardTitle>
             <CardGearButton
               label="Edit accounts"
               onClick={() => setOpen(true)}
@@ -1756,14 +1764,14 @@ function AccountsCard() {
         </CardHeader>
         <CardContent className="grid">
           <p className="pb-4 text-2xl font-medium tabular-nums">
-            {accounts.length}
+            {listed.length}
           </p>
           <div className="border-border border-t" />
           <div className="pt-2">
             <div className="grid gap-y-1">
               <div className="flex items-baseline">
                 <span className="text-muted-foreground min-w-0 flex-1 text-xs font-medium">
-                  Name
+                  Account name
                 </span>
                 <span
                   className={cn(
@@ -1777,7 +1785,7 @@ function AccountsCard() {
               </div>
               {listed.map((account) => {
                 const selected = drawerAccount === account.id
-                const need = monthlyNeedForAccount(expenses, account.id)
+                const need = monthlyDepositNeed(expenses, debts, account.id)
                 return (
                   <button
                     key={account.id}
@@ -2157,9 +2165,11 @@ function AccountDrawer({
   accountId: string | null
   onClose: () => void
 }) {
-  const { accounts, expenses, updateExpense } = useBudget()
+  const { accounts, expenses, debts, updateExpense } = useBudget()
   const account = accounts.find((item) => item.id === accountId)
-  const items = expenses.filter((item) => item.accountId === accountId)
+  const lines = accountId
+    ? depositLinesForAccount(expenses, debts, accountId)
+    : []
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draftAccountId, setDraftAccountId] = useState('')
   const editRowRef = useRef<HTMLDivElement>(null)
@@ -2169,7 +2179,7 @@ function AccountDrawer({
     setDraftAccountId('')
   }, [accountId])
 
-  const editing = items.find((item) => item.id === editingId)
+  const editingExpense = expenses.find((item) => item.id === editingId)
 
   function cancelEdit() {
     setEditingId(null)
@@ -2202,14 +2212,14 @@ function AccountDrawer({
 
   function saveEdit() {
     if (!editingId || !draftAccountId) return
-    if (draftAccountId !== editing?.accountId) {
+    if (draftAccountId !== editingExpense?.accountId) {
       updateExpense(editingId, { accountId: draftAccountId })
     }
     cancelEdit()
   }
 
   const monthlyTotal = accountId
-    ? monthlyNeedForAccount(expenses, accountId)
+    ? monthlyDepositNeed(expenses, debts, accountId)
     : 0
   const biweeklyTotal = monthlyTotal / 2
 
@@ -2232,7 +2242,7 @@ function AccountDrawer({
           </DrawerTitle>
         </DrawerHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-          {items.length === 0 ? (
+          {lines.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               No expenses assigned to this account yet.
             </p>
@@ -2242,57 +2252,120 @@ function AccountDrawer({
                 <span className="min-w-0 flex-1" />
                 <AmountCols header left="Bi-weekly" right="Monthly" />
               </div>
-              {items.map((item) => {
-                const isEditing = editingId === item.id
+              {lines.map((line) => {
+                const isEditing = editingId === line.expense?.id
                 return (
-                  <div
-                    key={item.id}
-                    ref={isEditing ? editRowRef : undefined}
-                    className="hover-fill flex items-center rounded-lg py-2 pr-1 pl-1 [&:hover_.edit-pencil]:opacity-100"
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                      <span className="truncate">{item.name}</span>
-                      {isEditing ? null : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-xs"
-                          className="edit-pencil border-neutral-200 bg-white text-neutral-600 opacity-0 hover:bg-neutral-50 hover:text-foreground"
-                          onClick={() => startEdit(item)}
-                          title="Edit bank"
-                          aria-label={`Edit bank for ${item.name}`}
-                        >
-                          <Pencil className="size-3.5" />
-                        </Button>
+                  <div key={line.id} className="grid gap-y-1">
+                    <div
+                      ref={isEditing ? editRowRef : undefined}
+                      className="hover-fill flex items-center rounded-lg py-2 pr-1 pl-1 [&:hover_.edit-pencil]:opacity-100"
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="truncate">{line.name}</span>
+                        {line.expense && !isEditing ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-xs"
+                            className="edit-pencil border-neutral-200 bg-white text-neutral-600 opacity-0 hover:bg-neutral-50 hover:text-foreground"
+                            onClick={() => startEdit(line.expense!)}
+                            title="Edit bank"
+                            aria-label={`Edit bank for ${line.name}`}
+                          >
+                            <Pencil className="size-3.5" />
+                          </Button>
+                        ) : null}
+                      </div>
+                      {isEditing && line.expense ? (
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <div className="w-44">
+                            <BankSelect
+                              accounts={accounts}
+                              value={draftAccountId}
+                              onChange={setDraftAccountId}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-xs"
+                            className="bg-white"
+                            onClick={saveEdit}
+                            title="Save bank"
+                            aria-label="Save bank"
+                          >
+                            <Check className="size-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <AmountCols
+                          left={formatUsd(line.monthly / 2)}
+                          right={formatUsd(line.monthly)}
+                        />
                       )}
                     </div>
-                    {isEditing ? (
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <div className="w-44">
-                          <BankSelect
-                            accounts={accounts}
-                            value={draftAccountId}
-                            onChange={setDraftAccountId}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-xs"
-                          className="bg-white"
-                          onClick={saveEdit}
-                          title="Save bank"
-                          aria-label="Save bank"
-                        >
-                          <Check className="size-3.5" />
-                        </Button>
+                    {line.charges.length > 0 ? (
+                      <div className="rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
+                        {line.charges.map((charge) => {
+                          const chargeEditing = editingId === charge.id
+                          return (
+                            <div
+                              key={charge.id}
+                              ref={chargeEditing ? editRowRef : undefined}
+                              className="flex items-center py-1 pr-1 pl-1 [&:hover_.edit-pencil]:opacity-100"
+                            >
+                              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                <span className="truncate pl-2 text-neutral-600">
+                                  {charge.name}
+                                </span>
+                                {chargeEditing ? null : (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon-xs"
+                                    className="edit-pencil border-neutral-200 bg-white text-neutral-600 opacity-0 hover:bg-neutral-50 hover:text-foreground"
+                                    onClick={() => startEdit(charge)}
+                                    title="Edit bank"
+                                    aria-label={`Edit bank for ${charge.name}`}
+                                  >
+                                    <Pencil className="size-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                              {chargeEditing ? (
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                  <div className="w-44">
+                                    <BankSelect
+                                      accounts={accounts}
+                                      value={draftAccountId}
+                                      onChange={setDraftAccountId}
+                                    />
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon-xs"
+                                    className="bg-white"
+                                    onClick={saveEdit}
+                                    title="Save bank"
+                                    aria-label="Save bank"
+                                  >
+                                    <Check className="size-3.5" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-neutral-600">
+                                  <AmountCols
+                                    left={formatUsd(monthlyAmount(charge) / 2)}
+                                    right={formatUsd(monthlyAmount(charge))}
+                                  />
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
-                    ) : (
-                      <AmountCols
-                        left={formatUsd(monthlyAmount(item) / 2)}
-                        right={formatUsd(monthlyAmount(item))}
-                      />
-                    )}
+                    ) : null}
                   </div>
                 )
               })}
@@ -2329,7 +2402,7 @@ export function DebtsCard() {
     [debts, upcoming],
   )
   const totalBalance = debts.reduce((sum, item) => sum + item.balance, 0)
-  const totalMinimum = debts.reduce((sum, item) => sum + item.minimum, 0)
+  const totalPayment = totalDebtPayments(debts)
   const extraThisMonth =
     months.find(
       (row) =>
@@ -2371,7 +2444,7 @@ export function DebtsCard() {
           <div className="relative z-10 pointer-events-none px-(--card-spacing) pt-4 pb-4">
             <div className="metric-grid-row">
               <DebtMetric label="Total balance" amount={totalBalance} />
-              <DebtMetric label="Total minimums" amount={totalMinimum} />
+              <DebtMetric label="Total payments" amount={totalPayment} />
               <DebtMetric label="Extra this month" amount={extraThisMonth} />
               <DebtMetric
                 label="Interest paid this year"
@@ -2387,7 +2460,7 @@ export function DebtsCard() {
               <DebtListRow
                 header
                 creditor="Creditor"
-                minimum="Minimum"
+                minimum="Payment"
                 balance="Balance"
                 paidOff="Paid off"
               />
@@ -2397,7 +2470,7 @@ export function DebtsCard() {
                   <DebtListRow
                     key={item.id}
                     creditor={item.lender}
-                    minimum={formatUsd(item.minimum)}
+                    minimum={formatUsd(paymentWithoutCharges(item))}
                     balance={formatUsd(item.balance)}
                     paidOff={last ? formatMonthsLeft(last, now) : '—'}
                   />
@@ -2448,9 +2521,15 @@ type DebtDraft = {
   id: string
   lender: string
   minimum: string
+  extraPayment: string
+  paidFromAccountId: string
+  chargeAccountId: string
   balance: string
   apr: string
 }
+
+const DEBT_ROW =
+  'grid-cols-[minmax(8rem,12rem)_5.25rem_5.25rem_5.25rem_5.25rem_minmax(8rem,11rem)_minmax(8rem,11rem)_5.5rem_4.5rem_28px]'
 
 function debtSnapshot(drafts: DebtDraft[]) {
   return JSON.stringify(
@@ -2458,10 +2537,26 @@ function debtSnapshot(drafts: DebtDraft[]) {
       id: draft.id,
       lender: draft.lender.trim(),
       minimum: draft.minimum.trim(),
+      extraPayment: draft.extraPayment.trim(),
+      paidFromAccountId: draft.paidFromAccountId,
+      chargeAccountId: draft.chargeAccountId,
       balance: draft.balance.trim(),
       apr: draft.apr.trim(),
     })),
   )
+}
+
+function emptyDebtDraft(id: string): DebtDraft {
+  return {
+    id,
+    lender: '',
+    minimum: '',
+    extraPayment: '',
+    paidFromAccountId: '',
+    chargeAccountId: '',
+    balance: '',
+    apr: '',
+  }
 }
 
 function moneyField(value: string) {
@@ -2483,12 +2578,14 @@ export function EditDebtsDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { debts, replaceDebts } = useBudget()
+  const { accounts, expenses, debts, replaceDebts } = useBudget()
   const [drafts, setDrafts] = useState<DebtDraft[]>([])
   const [baseline, setBaseline] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
+  const [totalFocusId, setTotalFocusId] = useState<string | null>(null)
+  const [totalText, setTotalText] = useState('')
 
   useLayoutEffect(() => {
     if (!open) return
@@ -2496,6 +2593,10 @@ export function EditDebtsDialog({
       id: debt.id,
       lender: debt.lender,
       minimum: String(debt.minimum),
+      extraPayment:
+        debt.extraPayment === 0 ? '' : String(debt.extraPayment),
+      paidFromAccountId: debt.paidFromAccountId,
+      chargeAccountId: debt.chargeAccountId,
       balance: String(debt.balance),
       apr: String(debt.apr),
     }))
@@ -2504,6 +2605,8 @@ export function EditDebtsDialog({
     setConfirmOpen(false)
     setRemoveId(null)
     setFocusId(null)
+    setTotalFocusId(null)
+    setTotalText('')
   }, [open])
 
   const dirty = useMemo(
@@ -2519,8 +2622,11 @@ export function EditDebtsDialog({
       existingIds.has(draft.id) ||
       draft.lender.trim() !== '' ||
       draft.minimum.trim() !== '' ||
+      draft.extraPayment.trim() !== '' ||
       draft.balance.trim() !== '' ||
-      draft.apr.trim() !== '',
+      draft.apr.trim() !== '' ||
+      draft.paidFromAccountId !== '' ||
+      draft.chargeAccountId !== '',
   )
   const canSubmit =
     dirty &&
@@ -2528,6 +2634,7 @@ export function EditDebtsDialog({
       (draft) =>
         draft.lender.trim() !== '' &&
         moneyField(draft.minimum) != null &&
+        moneyField(draft.extraPayment) != null &&
         moneyField(draft.balance) != null &&
         aprField(draft.apr) != null,
     )
@@ -2539,6 +2646,33 @@ export function EditDebtsDialog({
     setDrafts((current) =>
       current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
     )
+  }
+
+  function chargesAmount(draft: DebtDraft) {
+    return chargesForDebt(expenses, {
+      id: draft.id,
+      chargeAccountId: draft.chargeAccountId,
+    })
+  }
+
+  function computedTotal(draft: DebtDraft) {
+    return roundCents(
+      (moneyField(draft.minimum) ?? 0) +
+        (moneyField(draft.extraPayment) ?? 0) +
+        chargesAmount(draft),
+    )
+  }
+
+  function handleTotalChange(draft: DebtDraft, value: string) {
+    setTotalText(value)
+    const parsed = parseAmount(value)
+    if (parsed == null) return
+    const extra = roundCents(
+      parsed - (moneyField(draft.minimum) ?? 0) - chargesAmount(draft),
+    )
+    updateDraft(draft.id, {
+      extraPayment: extra === 0 ? '' : String(extra),
+    })
   }
 
   function closeClean() {
@@ -2563,8 +2697,11 @@ export function EditDebtsDialog({
       existingIds.has(id) ||
       draft.lender.trim() !== '' ||
       draft.minimum.trim() !== '' ||
+      draft.extraPayment.trim() !== '' ||
       draft.balance.trim() !== '' ||
-      draft.apr.trim() !== ''
+      draft.apr.trim() !== '' ||
+      draft.paidFromAccountId !== '' ||
+      draft.chargeAccountId !== ''
     ) {
       setRemoveId(id)
       return
@@ -2580,13 +2717,18 @@ export function EditDebtsDialog({
         const minimum = moneyField(draft.minimum)
         const balance = moneyField(draft.balance)
         const apr = aprField(draft.apr)
-        if (minimum == null || balance == null || apr == null) return null
+        const extraPayment = moneyField(draft.extraPayment)
+        if (minimum == null || extraPayment == null || balance == null || apr == null)
+          return null
         const current = previous.get(draft.id)
         return {
           id: draft.id,
           lender: draft.lender.trim(),
           dueDay: current?.dueDay ?? null,
           minimum,
+          extraPayment,
+          paidFromAccountId: draft.paidFromAccountId,
+          chargeAccountId: draft.chargeAccountId,
           apr,
           balance,
         } satisfies Debt
@@ -2599,10 +2741,7 @@ export function EditDebtsDialog({
   function addDebtRow() {
     const id = crypto.randomUUID()
     setFocusId(id)
-    setDrafts((current) => [
-      ...current,
-      { id, lender: '', minimum: '', balance: '', apr: '' },
-    ])
+    setDrafts((current) => [...current, emptyDebtDraft(id)])
   }
 
   return (
@@ -2655,10 +2794,20 @@ export function EditDebtsDialog({
             </DialogHeader>
           </div>
 
-          <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-y-auto">
-            <div className="grid grid-cols-[minmax(10rem,16rem)_6.5rem_6.5rem_5.5rem_28px] items-center gap-2 text-xs font-medium text-muted-foreground">
+          <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-x-auto overflow-y-auto">
+            <div
+              className={cn(
+                'grid items-center gap-2 text-xs font-medium text-muted-foreground',
+                DEBT_ROW,
+              )}
+            >
               <span>Lender</span>
               <span className="text-right">Minimum</span>
+              <span className="text-right">Extra</span>
+              <span className="text-right">Charges</span>
+              <span className="text-right">Total</span>
+              <span>Paid from</span>
+              <span>Account</span>
               <span className="text-right">Balance</span>
               <span className="text-right">APR</span>
               <span />
@@ -2666,7 +2815,7 @@ export function EditDebtsDialog({
             {drafts.map((draft) => (
               <div
                 key={draft.id}
-                className="grid grid-cols-[minmax(10rem,16rem)_6.5rem_6.5rem_5.5rem_28px] items-center gap-2"
+                className={cn('grid items-center gap-2', DEBT_ROW)}
               >
                 <Input
                   className="h-8"
@@ -2687,6 +2836,62 @@ export function EditDebtsDialog({
                   placeholder="0"
                   inputMode="decimal"
                   aria-label="Minimum payment"
+                />
+                <Input
+                  className="h-8 text-right tabular-nums"
+                  value={draft.extraPayment}
+                  onChange={(event) =>
+                    updateDraft(draft.id, { extraPayment: event.target.value })
+                  }
+                  placeholder="0"
+                  inputMode="decimal"
+                  aria-label="Extra payment"
+                />
+                <div
+                  className="text-muted-foreground h-8 px-2 text-right text-sm leading-8 tabular-nums"
+                  aria-label="Charges"
+                >
+                  {formatUsd(chargesAmount(draft))}
+                </div>
+                <Input
+                  className="h-8 text-right tabular-nums"
+                  value={
+                    totalFocusId === draft.id
+                      ? totalText
+                      : String(computedTotal(draft))
+                  }
+                  onFocus={() => {
+                    setTotalFocusId(draft.id)
+                    setTotalText(String(computedTotal(draft)))
+                  }}
+                  onBlur={() => {
+                    setTotalFocusId(null)
+                    setTotalText('')
+                  }}
+                  onChange={(event) =>
+                    handleTotalChange(draft, event.target.value)
+                  }
+                  placeholder="0"
+                  inputMode="decimal"
+                  aria-label="Total payment"
+                />
+                <BankSelect
+                  accounts={accounts}
+                  value={draft.paidFromAccountId}
+                  onChange={(id) =>
+                    updateDraft(draft.id, { paidFromAccountId: id })
+                  }
+                  ariaLabel="Paid from"
+                  placeholder="Paid from"
+                />
+                <BankSelect
+                  accounts={accounts}
+                  value={draft.chargeAccountId}
+                  onChange={(id) =>
+                    updateDraft(draft.id, { chargeAccountId: id })
+                  }
+                  ariaLabel="Account"
+                  placeholder="Account"
                 />
                 <Input
                   className="h-8 text-right tabular-nums"
@@ -2822,10 +3027,10 @@ export function CalculationsDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { accounts, expenses, updateAccountBalance } = useBudget()
+  const { accounts, expenses, debts, updateAccountBalance } = useBudget()
   const bills = billsAccount(accounts)
   const overflow = overflowAccount(accounts)
-  const need = bills ? monthlyNeedForAccount(expenses, bills.id) : 0
+  const need = bills ? monthlyDepositNeed(expenses, debts, bills.id) : 0
   const have = bills?.balance ?? 0
   const shortfall = Math.max(0, need - have)
   const overflowHave = overflow?.balance ?? 0

@@ -49,6 +49,9 @@ export type Debt = {
   lender: string
   dueDay: number | null
   minimum: number
+  extraPayment: number
+  paidFromAccountId: string
+  chargeAccountId: string
   apr: number
   balance: number
 }
@@ -264,6 +267,9 @@ function sheetDebts(): Debt[] {
     lender,
     dueDay,
     minimum,
+    extraPayment: 0,
+    paidFromAccountId: '',
+    chargeAccountId: '',
     apr,
     balance: 0,
   })
@@ -441,11 +447,22 @@ function normalizeDebt(value: unknown): Debt | null {
       ? item.dueDay
       : null
   const apr = typeof item.apr === 'number' && Number.isFinite(item.apr) ? item.apr : 0
+  const extraPayment =
+    typeof item.extraPayment === 'number' && Number.isFinite(item.extraPayment)
+      ? item.extraPayment
+      : 0
+  const paidFromAccountId =
+    typeof item.paidFromAccountId === 'string' ? item.paidFromAccountId : ''
+  const chargeAccountId =
+    typeof item.chargeAccountId === 'string' ? item.chargeAccountId : ''
   return {
     id: item.id,
     lender,
     dueDay,
     minimum: item.minimum,
+    extraPayment,
+    paidFromAccountId,
+    chargeAccountId,
     apr,
     balance: item.balance,
   }
@@ -555,6 +572,112 @@ export function monthlyNeedForAccount(
     .reduce((sum, item) => sum + monthlyAmount(item), 0)
 }
 
+export function paymentWithoutCharges(debt: Pick<Debt, 'minimum' | 'extraPayment'>) {
+  return roundCents(debt.minimum + debt.extraPayment)
+}
+
+export function chargesForDebt(
+  expenses: RecurringExpense[],
+  debt: Pick<Debt, 'id' | 'chargeAccountId'>,
+) {
+  if (!debt.chargeAccountId) return 0
+  return expenses
+    .filter(
+      (expense) =>
+        expense.accountId === debt.chargeAccountId &&
+        expense.id !== debt.id &&
+        !isDebtExpense(expense),
+    )
+    .reduce((sum, expense) => sum + monthlyAmount(expense), 0)
+}
+
+export function chargeExpensesForDebt(
+  expenses: RecurringExpense[],
+  debt: Debt,
+) {
+  if (!debt.chargeAccountId) return []
+  return expenses.filter(
+    (expense) =>
+      expense.accountId === debt.chargeAccountId &&
+      expense.id !== debt.id &&
+      !isDebtExpense(expense),
+  )
+}
+
+export function totalPaymentForDebt(
+  expenses: RecurringExpense[],
+  debt: Pick<Debt, 'id' | 'minimum' | 'extraPayment' | 'chargeAccountId'>,
+) {
+  return roundCents(paymentWithoutCharges(debt) + chargesForDebt(expenses, debt))
+}
+
+export type DepositLine = {
+  id: string
+  name: string
+  monthly: number
+  expense?: RecurringExpense
+  charges: RecurringExpense[]
+}
+
+export function depositLinesForAccount(
+  expenses: RecurringExpense[],
+  debts: Debt[],
+  accountId: string,
+): DepositLine[] {
+  const paidFromHere = debts.filter((debt) => debt.paidFromAccountId === accountId)
+  const listed = new Set<string>()
+  const lines: DepositLine[] = []
+
+  for (const expense of expenses) {
+    if (expense.accountId !== accountId) continue
+    const debt = paidFromHere.find((item) => item.id === expense.id)
+    listed.add(expense.id)
+    if (debt) {
+      lines.push({
+        id: expense.id,
+        name: expense.name,
+        monthly: paymentWithoutCharges(debt),
+        expense,
+        charges: chargeExpensesForDebt(expenses, debt),
+      })
+      continue
+    }
+    lines.push({
+      id: expense.id,
+      name: expense.name,
+      monthly: monthlyAmount(expense),
+      expense,
+      charges: [],
+    })
+  }
+
+  for (const debt of paidFromHere) {
+    if (listed.has(debt.id)) continue
+    lines.push({
+      id: debt.id,
+      name: debt.lender,
+      monthly: paymentWithoutCharges(debt),
+      charges: chargeExpensesForDebt(expenses, debt),
+    })
+  }
+
+  return lines
+}
+
+export function monthlyDepositNeed(
+  expenses: RecurringExpense[],
+  debts: Debt[],
+  accountId: string,
+) {
+  return depositLinesForAccount(expenses, debts, accountId).reduce(
+    (sum, line) =>
+      sum +
+      line.monthly +
+      line.charges.reduce((chargeSum, expense) => chargeSum + monthlyAmount(expense), 0),
+    0,
+  )
+}
+
 export function compareExpensesByDueDay(
   left: RecurringExpense,
   right: RecurringExpense,
@@ -605,6 +728,10 @@ export function totalDebtMinimums(debts: Debt[]) {
   return debts.reduce((sum, item) => sum + item.minimum, 0)
 }
 
+export function totalDebtPayments(debts: Debt[]) {
+  return debts.reduce((sum, item) => sum + paymentWithoutCharges(item), 0)
+}
+
 export function totalMonthlyExpenses(expenses: RecurringExpense[]) {
   return expenses.reduce((sum, item) => sum + monthlyAmount(item), 0)
 }
@@ -618,16 +745,17 @@ export function expenseFromDebt(
   existing?: RecurringExpense,
 ): RecurringExpense {
   const frequency = existing?.frequency ?? 'monthly'
+  const monthly = paymentWithoutCharges(debt)
   return {
     id: debt.id,
     name: debt.lender,
     dueDay: debt.dueDay,
     amount:
       frequency === 'annual'
-        ? billedAmountFromMonthly(debt.minimum, frequency)
-        : debt.minimum,
+        ? billedAmountFromMonthly(monthly, frequency)
+        : monthly,
     frequency,
-    accountId: existing?.accountId ?? '',
+    accountId: debt.paidFromAccountId || existing?.accountId || '',
     category: DEBT_CATEGORY_ID,
   }
 }
@@ -636,13 +764,26 @@ export function debtFromExpense(
   expense: RecurringExpense,
   existing?: Debt,
 ): Debt {
+  const monthly = monthlyAmount(expense)
+  if (!existing) {
+    return {
+      id: expense.id,
+      lender: expense.name,
+      dueDay: expense.dueDay,
+      minimum: monthly,
+      extraPayment: 0,
+      paidFromAccountId: expense.accountId,
+      chargeAccountId: '',
+      apr: 0,
+      balance: 0,
+    }
+  }
   return {
-    id: expense.id,
+    ...existing,
     lender: expense.name,
     dueDay: expense.dueDay,
-    minimum: monthlyAmount(expense),
-    apr: existing?.apr ?? 0,
-    balance: existing?.balance ?? 0,
+    extraPayment: roundCents(monthly - existing.minimum),
+    paidFromAccountId: expense.accountId,
   }
 }
 
