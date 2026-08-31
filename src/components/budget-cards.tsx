@@ -3159,7 +3159,7 @@ function AccountDrawer({
                             />
                           </span>
                         </div>
-                        <p className="text-muted-foreground px-1 pt-2 pb-0.5 text-xs font-medium">
+                        <p className="text-muted-foreground px-1 pt-3 pb-0.5 text-xs font-medium uppercase">
                           On this card
                         </p>
                         {line.charges.map((charge) => {
