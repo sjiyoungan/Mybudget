@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { Check, ChevronRight, Menu, Pencil, Plus, Settings, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -1470,7 +1470,7 @@ function ExpenseAmountEdit({
     return (
       <button
         type="button"
-        className="cursor-text text-right text-neutral-600 tabular-nums"
+        className="cursor-text text-right tabular-nums"
         onClick={(event) => {
           event.stopPropagation()
           onEdit(expense.id)
@@ -1542,10 +1542,11 @@ export function ExpenseDetailCards() {
 
       <section className="grid items-start gap-6 lg:grid-cols-2">
         <ExpensesCard />
-        <DebtExpensesCard />
+        <div className="grid gap-6">
+          <DebtExpensesCard />
+          <AccountsCard />
+        </div>
       </section>
-
-      <AccountsCard />
     </div>
   )
 }
@@ -1580,6 +1581,40 @@ function DebtExpensesCard() {
   return <CategoryExpensesCard title="Debt" mode="debt" />
 }
 
+function ExpenseLine({
+  expense,
+  editingAmount,
+  onEditAmount,
+  onEditName,
+}: {
+  expense: RecurringExpense
+  editingAmount: boolean
+  onEditAmount: (id: string | null) => void
+  onEditName: (id: string) => void
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        className="cursor-pointer py-2 text-left"
+        onClick={() => {
+          onEditAmount(null)
+          onEditName(expense.id)
+        }}
+      >
+        {expense.name}
+      </button>
+      <div className="flex items-baseline justify-end py-2">
+        <ExpenseAmountEdit
+          expense={expense}
+          editing={editingAmount}
+          onEdit={onEditAmount}
+        />
+      </div>
+    </>
+  )
+}
+
 function CategoryExpensesCard({
   title,
   mode,
@@ -1589,7 +1624,6 @@ function CategoryExpensesCard({
 }) {
   const { categories, expenses } = useBudget()
   const [open, setOpen] = useState(false)
-  const [viewAll, setViewAll] = useState(mode === 'debt')
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null)
   const [amountEditId, setAmountEditId] = useState<string | null>(null)
 
@@ -1623,134 +1657,53 @@ function CategoryExpensesCard({
           <div className="border-border border-t" />
           <div className="pt-2">
             {mode === 'debt' ? (
-              <>
-                <div
-                  className={cn(
-                    'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1',
-                    !viewAll && 'cursor-pointer',
-                  )}
-                  onClick={() => setViewAll(true)}
-                >
-                  {viewAll && debtItems.length > 0 ? (
-                    <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
-                      <div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
-                        {debtItems.map((expense) => (
-                          <Fragment key={expense.id}>
-                            <button
-                              type="button"
-                              className="cursor-pointer pl-2 text-left text-neutral-600 hover:text-foreground"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setAmountEditId(null)
-                                setEditExpenseId(expense.id)
-                              }}
-                            >
-                              {expense.name}
-                            </button>
-                            <ExpenseAmountEdit
-                              expense={expense}
-                              editing={amountEditId === expense.id}
-                              onEdit={setAmountEditId}
-                            />
-                          </Fragment>
-                        ))}
-                      </div>
-                    </div>
-                  ) : viewAll ? (
+              <div className="grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4">
+                {debtItems.length === 0 ? (
+                  <div className="col-span-2">
                     <EmptyNote>No debt payments yet.</EmptyNote>
-                  ) : null}
-                </div>
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    className="cursor-pointer bg-transparent p-0 text-sm"
-                    aria-expanded={viewAll}
-                    onClick={() => {
-                      if (viewAll) {
-                        setAmountEditId(null)
-                        setViewAll(false)
-                        return
-                      }
-                      setViewAll(true)
-                    }}
-                  >
-                    {viewAll ? 'Hide' : 'View all'}
-                  </button>
-                </div>
-              </>
+                  </div>
+                ) : (
+                  debtItems.map((expense) => (
+                    <ExpenseLine
+                      key={expense.id}
+                      expense={expense}
+                      editingAmount={amountEditId === expense.id}
+                      onEditAmount={setAmountEditId}
+                      onEditName={setEditExpenseId}
+                    />
+                  ))
+                )}
+              </div>
             ) : (
-              <>
-                <div
-                  className={cn(
-                    'grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4',
-                    viewAll ? 'gap-y-3' : 'gap-y-1',
-                    !viewAll && 'cursor-pointer',
-                  )}
-                  onClick={() => setViewAll(true)}
-                >
-                  {shownCategories.map((item) => {
-                    const details = expenses.filter(
-                      (expense) => expense.category === item.id,
-                    )
-                    return (
-                      <div
-                        key={item.id}
-                        className="col-span-2 grid grid-cols-subgrid gap-y-1"
-                      >
-                        <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
-                          <span>{item.name}</span>
-                          <span className="text-right tabular-nums">
-                            {formatUsd(totalForCategory(expenses, item.id))}
-                          </span>
-                        </div>
-                        {viewAll && details.length > 0 ? (
-                          <div className="col-span-2 rounded-[6px] bg-[#f6f6f6] px-1.5 py-1">
-                            <div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
-                              {details.map((expense) => (
-                                <Fragment key={expense.id}>
-                                  <button
-                                    type="button"
-                                    className="cursor-pointer pl-2 text-left text-neutral-600 hover:text-foreground"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setAmountEditId(null)
-                                      setEditExpenseId(expense.id)
-                                    }}
-                                  >
-                                    {expense.name}
-                                  </button>
-                                  <ExpenseAmountEdit
-                                    expense={expense}
-                                    editing={amountEditId === expense.id}
-                                    onEdit={setAmountEditId}
-                                  />
-                                </Fragment>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
+              <div className="grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-3">
+                {shownCategories.map((item) => {
+                  const details = expenses.filter(
+                    (expense) => expense.category === item.id,
+                  )
+                  return (
+                    <div
+                      key={item.id}
+                      className="col-span-2 grid grid-cols-subgrid"
+                    >
+                      <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
+                        <span>{item.name}</span>
+                        <span className="text-right tabular-nums">
+                          {formatUsd(totalForCategory(expenses, item.id))}
+                        </span>
                       </div>
-                    )
-                  })}
-                </div>
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    className="cursor-pointer bg-transparent p-0 text-sm"
-                    aria-expanded={viewAll}
-                    onClick={() => {
-                      if (viewAll) {
-                        setAmountEditId(null)
-                        setViewAll(false)
-                        return
-                      }
-                      setViewAll(true)
-                    }}
-                  >
-                    {viewAll ? 'Hide' : 'View all'}
-                  </button>
-                </div>
-              </>
+                      {details.map((expense) => (
+                        <ExpenseLine
+                          key={expense.id}
+                          expense={expense}
+                          editingAmount={amountEditId === expense.id}
+                          onEditAmount={setAmountEditId}
+                          onEditName={setEditExpenseId}
+                        />
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
         </CardContent>
