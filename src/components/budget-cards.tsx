@@ -226,7 +226,7 @@ function DebtMoneyDisplay({
 function DebtColRule() {
   return (
     <span
-      className="bg-border block min-h-8 w-px justify-self-center self-stretch"
+      className="bg-border -my-1 block min-h-8 w-px justify-self-center self-stretch"
       aria-hidden
     />
   )
@@ -3239,10 +3239,10 @@ export function EditDebtsDialog({
             </div>
           </div>
 
-          <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-x-auto overflow-y-auto">
+          <div className="mt-5 max-h-[min(70vh,40rem)] overflow-x-auto overflow-y-auto">
             <div
               className={cn(
-                'grid items-center gap-4 text-xs font-medium text-muted-foreground',
+                'grid items-center gap-4 py-1 text-xs font-medium text-muted-foreground',
                 DEBT_ROW,
               )}
             >
@@ -3269,7 +3269,7 @@ export function EditDebtsDialog({
             {listedDrafts.map((draft) => (
               <div
                 key={draft.id}
-                className={cn('grid items-center gap-4', DEBT_ROW)}
+                className={cn('grid items-center gap-4 py-1', DEBT_ROW)}
               >
                 <Input
                   className={cn('h-8', DEBT_GHOST_FIELD)}
