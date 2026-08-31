@@ -126,22 +126,35 @@ function isPortaledMenuTarget(target: EventTarget | null) {
   return (
     node.closest('[data-slot="select-content"]') != null ||
     node.closest('[data-slot="dropdown-menu-content"]') != null ||
-    node.closest('[data-radix-popper-content-wrapper]') != null
+    node.closest('[data-slot="popover-content"]') != null ||
+    node.closest('[data-radix-popper-content-wrapper]') != null ||
+    node.closest('[role="listbox"]') != null
   )
 }
 
-function ignoreDialogOutside(
-  event: {
-    preventDefault: () => void
-    target: EventTarget | null
-    detail?: { originalEvent?: Event }
-  },
+function editDialogDismiss(
   blocked: boolean,
+  requestClose: () => void,
 ) {
-  event.preventDefault()
-  if (blocked) return true
-  if (document.visibilityState === 'hidden') return true
-  return isPortaledMenuTarget(outsideEventTarget(event))
+  return {
+    onFocusOutside: (event: { preventDefault: () => void }) => {
+      event.preventDefault()
+    },
+    onPointerDownOutside: (event: {
+      preventDefault: () => void
+      target: EventTarget | null
+      detail?: { originalEvent?: Event }
+    }) => {
+      event.preventDefault()
+      if (blocked) return
+      if (document.visibilityState === 'hidden') return
+      if (isPortaledMenuTarget(outsideEventTarget(event))) return
+      requestClose()
+    },
+    onInteractOutside: (event: { preventDefault: () => void }) => {
+      event.preventDefault()
+    },
+  }
 }
 
 const EDIT_GHOST_FIELD =
@@ -1145,26 +1158,16 @@ function EditExpensesDialog({
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (next) {
-            onOpenChange(true)
-            return
-          }
-          if (confirmOpen || removeId || addCategoryOpen) return
-          if (document.visibilityState === 'hidden') return
-          requestClose()
+          if (next) onOpenChange(true)
         }}
       >
         <DialogContent
           className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-1 sm:max-w-none"
           showCloseButton={false}
-          onPointerDownOutside={(event) => {
-            if (ignoreDialogOutside(event, confirmOpen || removeId != null || addCategoryOpen)) return
-            requestClose()
-          }}
-          onInteractOutside={(event) => {
-            if (ignoreDialogOutside(event, confirmOpen || removeId != null || addCategoryOpen)) return
-            requestClose()
-          }}
+          {...editDialogDismiss(
+            confirmOpen || removeId != null || addCategoryOpen,
+            requestClose,
+          )}
           onEscapeKeyDown={(event) => {
             event.preventDefault()
             if (addCategoryOpen) {
@@ -1546,26 +1549,13 @@ function EditOneExpenseDialog({
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (next) {
-            onOpenChange(true)
-            return
-          }
-          if (confirmOpen || removeOpen) return
-          if (document.visibilityState === 'hidden') return
-          requestClose()
+          if (next) onOpenChange(true)
         }}
       >
         <DialogContent
           className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
           showCloseButton={false}
-          onPointerDownOutside={(event) => {
-            if (ignoreDialogOutside(event, confirmOpen || removeOpen)) return
-            requestClose()
-          }}
-          onInteractOutside={(event) => {
-            if (ignoreDialogOutside(event, confirmOpen || removeOpen)) return
-            requestClose()
-          }}
+          {...editDialogDismiss(confirmOpen || removeOpen, requestClose)}
           onEscapeKeyDown={(event) => {
             event.preventDefault()
             if (removeOpen) {
@@ -2424,26 +2414,13 @@ function EditAccountsDialog({
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (next) {
-            onOpenChange(true)
-            return
-          }
-          if (confirmOpen || removeId) return
-          if (document.visibilityState === 'hidden') return
-          requestClose()
+          if (next) onOpenChange(true)
         }}
       >
         <DialogContent
           className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-6 sm:max-w-none"
           showCloseButton={false}
-          onPointerDownOutside={(event) => {
-            if (ignoreDialogOutside(event, confirmOpen || removeId != null)) return
-            requestClose()
-          }}
-          onInteractOutside={(event) => {
-            if (ignoreDialogOutside(event, confirmOpen || removeId != null)) return
-            requestClose()
-          }}
+          {...editDialogDismiss(confirmOpen || removeId != null, requestClose)}
           onEscapeKeyDown={(event) => {
             event.preventDefault()
             if (removeId) {
@@ -3285,27 +3262,14 @@ export function EditDebtsDialog({
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (next) {
-            onOpenChange(true)
-            return
-          }
-          if (confirmOpen || removeId) return
-          if (document.visibilityState === 'hidden') return
-          requestClose()
+          if (next) onOpenChange(true)
         }}
       >
         <DialogContent
           className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-3.5 sm:max-w-none"
           showCloseButton={false}
           onOpenAutoFocus={(event) => event.preventDefault()}
-          onPointerDownOutside={(event) => {
-            if (ignoreDialogOutside(event, confirmOpen || removeId != null)) return
-            requestClose()
-          }}
-          onInteractOutside={(event) => {
-            if (ignoreDialogOutside(event, confirmOpen || removeId != null)) return
-            requestClose()
-          }}
+          {...editDialogDismiss(confirmOpen || removeId != null, requestClose)}
           onEscapeKeyDown={(event) => {
             event.preventDefault()
             if (removeId) {
