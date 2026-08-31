@@ -146,10 +146,10 @@ function ignoreDialogOutside(
 }
 
 const EDIT_GHOST_FIELD =
-  'border-transparent bg-transparent shadow-none transition-colors hover:border-neutral-400 hover:bg-transparent focus-visible:border-neutral-400 focus-visible:ring-0 focus-visible:ring-transparent dark:bg-transparent dark:hover:bg-transparent data-[state=open]:border-neutral-400'
+  'edit-ghost-field border-transparent bg-transparent shadow-none transition-colors hover:bg-transparent focus-visible:ring-0 focus-visible:ring-transparent dark:bg-transparent dark:hover:bg-transparent'
 
 const EDIT_GHOST_BOX =
-  'rounded-lg border border-transparent transition-colors hover:border-neutral-400 focus-within:border-neutral-400'
+  'edit-ghost-box rounded-lg border border-transparent transition-colors'
 
 const DEBT_LABEL_LEFT = 'pl-2.5'
 const DEBT_LABEL_RIGHT = 'pr-2.5 text-right'
@@ -1156,7 +1156,7 @@ function EditExpensesDialog({
         }}
       >
         <DialogContent
-          className="w-max max-w-[calc(100%-2rem)] gap-0 p-4 sm:max-w-none"
+          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-1 sm:max-w-none"
           showCloseButton={false}
           onPointerDownOutside={(event) => {
             if (ignoreDialogOutside(event, confirmOpen || removeId != null || addCategoryOpen)) return
@@ -1318,7 +1318,7 @@ function EditExpensesDialog({
           </div>
           </div>
 
-          <DialogFooter className="mt-5 items-center sm:justify-end sm:gap-4">
+          <DialogFooter className="-ml-1 -mr-4 mt-5 items-center sm:justify-end sm:gap-4">
             <Button
               type="button"
               variant="ghost"

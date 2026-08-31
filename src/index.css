@@ -208,6 +208,16 @@
   box-shadow: inset 1px 0 0 var(--border);
 }
 
+/* Tailwind v4 wraps hover:* in @media (hover: hover), which often never
+   matches on Windows, so click/focus showed a stroke and mouse hover did not. */
+.edit-ghost-field:hover,
+.edit-ghost-field:focus-visible,
+.edit-ghost-field[data-state='open'],
+.edit-ghost-box:hover,
+.edit-ghost-box:focus-within {
+  border-color: var(--ring);
+}
+
 .planner-scroll table tr:has(.month-label:hover) > td,
 .planner-scroll table tr:has(.month-label:hover) + tr > td {
   background-color: #f6f6f6 !important;
