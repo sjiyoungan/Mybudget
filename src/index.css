@@ -324,16 +324,17 @@
 }
 
 /* Metrics hug their content. Leftover width is split equally into the
-   gaps between metrics, with each hairline centered. */
+   gaps between metrics and the empty space after the last one, with
+   hairlines only between metrics. */
 .metric-grid,
 .metric-grid-row {
   display: grid;
   width: 100%;
   align-items: stretch;
-  grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content);
+  grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr);
 }
 .metric-grid.metric-cols-3 {
-  grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content);
+  grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr);
 }
 .metric-grid > :not(.metric-rule),
 .metric-grid-row > :not(.metric-rule) {
