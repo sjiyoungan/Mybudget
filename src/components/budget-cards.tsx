@@ -1321,9 +1321,12 @@ function EditExpensesDialog({
                     <p className="pl-2.5 text-sm font-medium">{category.name}</p>
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       size="icon-xs"
-                      className="border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700"
+                      className={cn(
+                        EDIT_GHOST_FIELD,
+                        'text-neutral-500 hover:bg-transparent hover:text-neutral-700',
+                      )}
                       aria-label={`Add expense to ${category.name}`}
                       onClick={() => addExpenseToCategory(category.id)}
                     >
