@@ -2081,8 +2081,8 @@ function AccountsCard() {
                       {account.lastFour || ''}
                     </span>
                     <AmountCols
-                      left={formatUsd(need / 2)}
-                      right={formatUsd(need)}
+                      left={formatUsdWholeUp(need / 2)}
+                      right={formatUsdWholeUp(need)}
                     />
                   </button>
                 )
@@ -2562,8 +2562,8 @@ function AccountDrawer({
                         </div>
                       ) : (
                         <AmountCols
-                          left={formatUsd(line.monthly / 2)}
-                          right={formatUsd(line.monthly)}
+                          left={formatUsdWholeUp(line.monthly / 2)}
+                          right={formatUsdWholeUp(line.monthly)}
                         />
                       )}
                     </div>
@@ -2619,8 +2619,8 @@ function AccountDrawer({
                               ) : (
                                 <span className="text-neutral-600">
                                   <AmountCols
-                                    left={formatUsd(monthlyAmount(charge) / 2)}
-                                    right={formatUsd(monthlyAmount(charge))}
+                                    left={formatUsdWholeUp(monthlyAmount(charge) / 2)}
+                                    right={formatUsdWholeUp(monthlyAmount(charge))}
                                   />
                                 </span>
                               )}
@@ -2636,8 +2636,8 @@ function AccountDrawer({
               <div className="flex items-baseline py-2 pr-1 pl-1">
                 <span className="min-w-0 flex-1">Total</span>
                 <AmountCols
-                  left={formatUsd(biweeklyTotal)}
-                  right={formatUsd(monthlyTotal)}
+                  left={formatUsdWholeUp(biweeklyTotal)}
+                  right={formatUsdWholeUp(monthlyTotal)}
                 />
               </div>
             </div>

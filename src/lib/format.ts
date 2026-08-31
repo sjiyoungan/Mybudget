@@ -19,7 +19,9 @@ export function formatUsdWhole(amount: number) {
 }
 
 export function formatUsdWholeUp(amount: number) {
-  return formatWholeUsd(Math.ceil(amount - 1e-9))
+  if (amount > 0) return formatWholeUsd(Math.ceil(amount - 1e-9))
+  if (amount < 0) return formatWholeUsd(Math.ceil(amount))
+  return formatWholeUsd(0)
 }
 
 function formatWholeUsd(amount: number) {
