@@ -765,9 +765,9 @@ function draftAmountToStore(
 ) {
   const parsed = parseAmount(draft.amount) ?? 0
   const existing = expenses.find((item) => item.id === draft.id)
-  if (!existing || !isDebtExpense(existing)) return parsed
+  if (!existing || !isDebtExpense(existing)) return ceilDollars(parsed)
   return storedAmountFromShownPayment(
-    monthlyAmount({ amount: parsed, frequency: draft.frequency }),
+    monthlyAmount({ amount: ceilDollars(parsed), frequency: draft.frequency }),
     existing,
     expenses,
     debts,
@@ -879,19 +879,13 @@ function MoneyInput({
   onChange: (value: string) => void
 }) {
   return (
-    <div className={cn('flex h-8 w-full items-center justify-end gap-[2px] px-2.5', EDIT_GHOST_BOX)}>
-      <span className="text-neutral-400 shrink-0 text-sm">$</span>
-      <input
-        className="placeholder:text-muted-foreground h-full min-w-0 w-auto max-w-full bg-transparent text-right text-sm tabular-nums outline-none [field-sizing:content]"
+    <div className="w-full">
+      <DebtMoneyInput
         value={value}
-        size={Math.max(value.length, 1)}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
-        }}
-        inputMode="decimal"
-        placeholder="0"
-        aria-label="Amount"
+        onChange={onChange}
+        ariaLabel="Amount"
+        roundUp
+        whole
       />
     </div>
   )
@@ -1984,7 +1978,7 @@ function ExpenseAmountEdit({
 }) {
   const { expenses, debts, updateExpense } = useBudget()
   const monthly = shownMonthlyPayment(expense, expenses, debts)
-  const [draft, setDraft] = useState(String(monthly))
+  const [draft, setDraft] = useState(() => String(ceilDollars(monthly)))
   const draftRef = useRef(draft)
   const skipCommit = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -2006,7 +2000,7 @@ function ExpenseAmountEdit({
   useEffect(() => {
     if (!editing) return
     skipCommit.current = false
-    setDraft(String(monthly))
+    setDraft(String(ceilDollars(monthly)))
   }, [editing, monthly])
 
   useEffect(() => {
@@ -2022,14 +2016,12 @@ function ExpenseAmountEdit({
     return () => {
       if (skipCommit.current) return
       const parsed = parseAmount(draftRef.current)
-      if (
-        parsed != null &&
-        parsed >= 0 &&
-        parsed !== monthlyRef.current
-      ) {
+      const next =
+        parsed != null && parsed >= 0 ? ceilDollars(parsed) : null
+      if (next != null && next !== ceilDollars(monthlyRef.current)) {
         updateRef.current(expense.id, {
           amount: storedAmountFromShownPayment(
-            parsed,
+            next,
             expenseRef.current,
             expensesRef.current,
             debtsRef.current,
@@ -2065,7 +2057,7 @@ function ExpenseAmountEdit({
           onEdit(expense.id)
         }}
       >
-        {formatUsd(shownMonthlyPayment(expense, expenses, debts))}
+        {formatUsdWholeUp(shownMonthlyPayment(expense, expenses, debts))}
       </button>
     )
   }
@@ -2265,7 +2257,7 @@ function CategoryExpensesCard({
         </CardHeader>
         <CardContent className="grid">
           <p className="pb-4 text-2xl font-medium tabular-nums">
-            {formatUsd(total)}
+            {formatUsdWholeUp(total)}
           </p>
           <div className="border-border border-t" />
           <div className="pt-2">
@@ -2302,7 +2294,7 @@ function CategoryExpensesCard({
                       <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
                         <span>{item.name}</span>
                         <span className="text-right tabular-nums">
-                          {formatUsd(totalForCategory(expenses, item.id))}
+                          {formatUsdWholeUp(totalForCategory(expenses, item.id))}
                         </span>
                       </div>
                       {details.length > 0 ? (

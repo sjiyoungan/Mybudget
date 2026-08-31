@@ -25,7 +25,7 @@ export function DashboardPage() {
     [paystubs],
   )
   const expenseTotal = useMemo(
-    () => Math.ceil(totalMonthlyExpenses(expenses) - 1e-9),
+    () => totalMonthlyExpenses(expenses),
     [expenses],
   )
   const remaining = income - expenseTotal

@@ -587,6 +587,12 @@ export function monthlyAmount(
   return expense.amount
 }
 
+export function ceiledMonthlyAmount(
+  expense: Pick<RecurringExpense, 'amount' | 'frequency'>,
+) {
+  return ceilDollars(monthlyAmount(expense))
+}
+
 export function billedAmountFromMonthly(
   monthly: number,
   frequency: ExpenseFrequency,
@@ -911,7 +917,7 @@ export function depositLinesForAccount(
       lines.push({
         id: expense.id,
         name: expense.name,
-        monthly: debt ? paymentWithoutCharges(debt) : monthlyAmount(expense),
+        monthly: debt ? paymentWithoutCharges(debt) : ceiledMonthlyAmount(expense),
         expense,
         charges: debt ? chargeExpensesForDebt(expenses, debt) : [],
         kind: 'debt',
@@ -921,7 +927,7 @@ export function depositLinesForAccount(
     lines.push({
       id: expense.id,
       name: expense.name,
-      monthly: monthlyAmount(expense),
+      monthly: ceiledMonthlyAmount(expense),
       expense,
       charges: [],
       kind: 'checking',
@@ -1028,7 +1034,7 @@ export function totalForCategory(
 ) {
   return expenses
     .filter((item) => item.category === category && !isHiddenExpense(item))
-    .reduce((sum, item) => sum + monthlyAmount(item), 0)
+    .reduce((sum, item) => sum + ceiledMonthlyAmount(item), 0)
 }
 
 export function totalDebtMinimums(debts: Debt[]) {
@@ -1042,7 +1048,7 @@ export function totalDebtPayments(debts: Debt[]) {
 export function totalMonthlyExpenses(expenses: RecurringExpense[]) {
   return expenses
     .filter((item) => !isHiddenExpense(item))
-    .reduce((sum, item) => sum + monthlyAmount(item), 0)
+    .reduce((sum, item) => sum + ceiledMonthlyAmount(item), 0)
 }
 
 export function totalMonthlyExpensesExcluding(
@@ -1052,7 +1058,7 @@ export function totalMonthlyExpensesExcluding(
   const skip = new Set(categoryIds)
   return expenses
     .filter((item) => !skip.has(item.category) && !isHiddenExpense(item))
-    .reduce((sum, item) => sum + monthlyAmount(item), 0)
+    .reduce((sum, item) => sum + ceiledMonthlyAmount(item), 0)
 }
 
 export function isDebtExpense(expense: Pick<RecurringExpense, 'category'>) {
