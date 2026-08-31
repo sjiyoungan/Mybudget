@@ -331,7 +331,8 @@
 .nav-tree {
   --nav-tree-gutter: 0.875rem;
   --nav-tree-line: 0.4375rem;
-  --nav-tree-stroke: oklch(0.86 0 0);
+  --nav-tree-stroke: oklch(0.88 0 0);
+  --nav-tree-stroke-active: oklch(0.48 0 0);
   position: relative;
   display: grid;
   gap: 0.125rem;
@@ -346,30 +347,17 @@
   width: 1px;
   background: var(--nav-tree-stroke);
 }
-.nav-tree-item-active::before,
-.nav-tree-item-active::after {
-  content: '';
+.nav-tree-active-path {
   position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--nav-tree-stroke-active);
   pointer-events: none;
-}
-.nav-tree-item-active::before {
-  left: calc(var(--nav-tree-line) - var(--nav-tree-gutter));
-  top: 50%;
-  width: 0.625rem;
-  height: 1px;
-  transform: translateY(-50%);
-  background: var(--nav-tree-stroke);
-}
-.nav-tree-item-active::after {
-  left: calc(var(--nav-tree-line) - var(--nav-tree-gutter) + 0.625rem);
-  top: 50%;
-  transform: translateY(-50%);
-  border-top: 3px solid transparent;
-  border-bottom: 3px solid transparent;
-  border-left: 4px solid var(--nav-tree-stroke);
+  overflow: visible;
 }
 .dark .nav-tree {
   --nav-tree-stroke: oklch(0.4 0 0);
+  --nav-tree-stroke-active: oklch(0.82 0 0);
 }
 
 /* Metrics hug their content. Leftover width is split so each gap
