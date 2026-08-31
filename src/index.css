@@ -323,17 +323,17 @@
   background-image: none !important;
 }
 
-/* Equal-width metric cells. Hairlines sit in a 40px gap (20px each side). */
+/* Metrics hug their content. Leftover width is split equally into the
+   gaps (including after the last metric), with each hairline centered. */
 .metric-grid,
 .metric-grid-row {
   display: grid;
   width: 100%;
   align-items: stretch;
-  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr) 1px minmax(0, 1fr) 1px minmax(0, 1fr);
-  column-gap: 1.25rem;
+  grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr);
 }
 .metric-grid.metric-cols-3 {
-  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr) 1px minmax(0, 1fr);
+  grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr);
 }
 .metric-grid > :not(.metric-rule),
 .metric-grid-row > :not(.metric-rule) {
@@ -342,24 +342,20 @@
   padding-block: 0.5rem;
 }
 .metric-rule {
-  width: 1px;
+  min-width: 1px;
   justify-self: stretch;
   align-self: stretch;
-  background-color: var(--border);
   pointer-events: none;
+  background-image: linear-gradient(var(--border), var(--border));
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 1px 100%;
 }
 
 @media (width < 80rem) {
   .metric-grid:not(.metric-cols-3):not(.metric-grid-row) {
-    grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+    grid-template-columns: minmax(0, max-content) minmax(1px, 1fr) minmax(0, max-content) minmax(1px, 1fr);
     row-gap: 0.75rem;
-  }
-  .metric-grid:not(.metric-cols-3):not(.metric-grid-row) > :nth-child(4) {
-    grid-column: 1 / -1;
-    width: auto;
-    height: 1px;
-    flex: none;
-    align-self: stretch;
   }
 }
 
@@ -370,6 +366,10 @@
   .metric-grid.metric-cols-3 > .metric-rule {
     width: 100%;
     height: 1px;
-    justify-self: stretch;
+    background-image: none;
+    background-color: var(--border);
+  }
+  .metric-grid.metric-cols-3 > .metric-rule:last-child {
+    display: none;
   }
 }

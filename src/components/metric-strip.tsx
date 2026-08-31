@@ -29,6 +29,9 @@ export function MetricStrip({
           {child}
         </Fragment>
       ))}
+      {items.length > 0 ? (
+        <span className="metric-rule" aria-hidden />
+      ) : null}
     </section>
   )
 }
