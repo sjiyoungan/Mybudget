@@ -269,13 +269,12 @@ function PromoField({
         <button
           type="button"
           className={cn(
-            'flex h-8 w-full items-center px-2.5 text-left text-sm',
+            'flex h-8 w-full items-center px-1.5 text-left text-sm',
             EDIT_GHOST_BOX,
-            !summary && 'text-muted-foreground',
           )}
           aria-label="Promo"
         >
-          <span className="min-w-0 truncate">{summary || 'Promo'}</span>
+          <span className="min-w-0 truncate tabular-nums">{summary}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -3324,7 +3323,7 @@ type DebtDraft = {
 }
 
 const DEBT_ROW =
-  'grid-cols-[minmax(4rem,6.5rem)_7rem_minmax(6rem,9rem)_7rem_4.5rem_1px_5.75rem_5.75rem_5.75rem_7rem_1px_7rem_7rem_28px]'
+  'grid-cols-[minmax(4rem,6.5rem)_7rem_minmax(6rem,9rem)_5rem_4.5rem_1px_5.75rem_5.25rem_5.25rem_6rem_1px_6.5rem_7rem_28px]'
 
 type DebtSortKey = 'balance' | 'apr' | 'minimum' | 'total'
 type DebtSortDir = 'asc' | 'desc'
@@ -3702,7 +3701,7 @@ export function EditDebtsDialog({
           <div className="mt-5 max-h-[min(70vh,40rem)] overflow-x-auto overflow-y-auto">
             <div
               className={cn(
-                'grid items-center gap-4 py-1 text-xs font-medium text-muted-foreground',
+                'grid items-center gap-3 py-1 text-xs font-medium text-muted-foreground',
                 DEBT_ROW,
               )}
             >
@@ -3730,7 +3729,7 @@ export function EditDebtsDialog({
             {listedDrafts.map((draft) => (
               <div
                 key={draft.id}
-                className={cn('grid items-center gap-4 py-1', DEBT_ROW)}
+                className={cn('grid items-center gap-3 py-1', DEBT_ROW)}
               >
                 <Input
                   className={cn('h-8', EDIT_GHOST_FIELD)}
@@ -3755,6 +3754,7 @@ export function EditDebtsDialog({
                   }
                   includeCards={false}
                   quiet
+                  hideLastFour
                   ariaLabel="Paid from"
                   placeholder="Paid from"
                 />

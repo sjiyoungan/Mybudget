@@ -508,8 +508,9 @@ export function formatPromoEndsOn(endsOn: string | null, short = false): string 
 
 export function formatPromoSummary(apr: number | null, endsOn: string | null) {
   const rate = apr == null ? '' : `${apr}%`
-  const date = formatPromoEndsOn(endsOn, true)
-  return [rate, date].filter(Boolean).join(' ')
+  const end = promoEndYearMonth(endsOn)
+  const date = end ? `${end.month + 1}/${String(end.year).slice(-2)}` : ''
+  return [rate, date].filter(Boolean).join(' – ')
 }
 
 /** Promo still applies in this calendar month (inclusive of the expiry month). */
