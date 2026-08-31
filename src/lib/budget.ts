@@ -818,17 +818,16 @@ export function paymentWithoutCharges(debt: Pick<Debt, 'minimum' | 'extraPayment
 
 function isChargeOnDebt(
   expense: RecurringExpense,
-  debt: Pick<Debt, 'id' | 'chargeAccountId'>,
+  debt: Pick<Debt, 'id'>,
 ) {
   if (isHiddenExpense(expense)) return false
   if (expense.id === debt.id || isDebtExpense(expense)) return false
-  if (expense.accountId === debt.id) return true
-  return debt.chargeAccountId !== '' && expense.accountId === debt.chargeAccountId
+  return expense.accountId === debt.id
 }
 
 export function chargesForDebt(
   expenses: RecurringExpense[],
-  debt: Pick<Debt, 'id' | 'chargeAccountId'>,
+  debt: Pick<Debt, 'id'>,
 ) {
   const sum = expenses
     .filter((expense) => isChargeOnDebt(expense, debt))
@@ -838,7 +837,7 @@ export function chargesForDebt(
 
 export function chargeExpensesForDebt(
   expenses: RecurringExpense[],
-  debt: Pick<Debt, 'id' | 'chargeAccountId'>,
+  debt: Pick<Debt, 'id'>,
 ) {
   return expenses.filter((expense) => isChargeOnDebt(expense, debt))
 }
