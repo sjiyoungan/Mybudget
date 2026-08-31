@@ -66,7 +66,7 @@ import { cn } from '@/lib/utils'
 type PlannerView = 'planner' | 'history'
 
 const MONTH_COL = 72
-const LABEL_COL = 96
+const LABEL_COL = 64
 const EXTRA_FILL = 'bg-[#F3E6E9]'
 const EXTRA_LINE = 'bg-[#E0D0D3]'
 const EXTRA_DARK = 'text-[#3A121C]'
@@ -475,7 +475,7 @@ function MonthTable({
   editPaid,
   onPaidChange,
 }: {
-  debts: { id: string; lender: string }[]
+  debts: { id: string; lender: string; apr: number }[]
   plan: DebtPlanState
   months: PlannerMonth[]
   showStart: boolean
@@ -647,9 +647,12 @@ function MonthTable({
             {debts.map((debt) => (
               <th
                 key={debt.id}
-                className="px-5 pt-2 pb-2 text-center font-medium whitespace-nowrap"
+                className="px-5 pt-2 pb-2 text-center font-medium"
               >
-                {debt.lender}
+                <div className="flex flex-col items-center whitespace-nowrap">
+                  <span>{debt.lender}</span>
+                  <span className="font-normal tabular-nums">{debt.apr}%</span>
+                </div>
               </th>
             ))}
             <th className="total-rule pt-2 pr-4 pb-2 pl-5 text-right font-medium">
@@ -918,7 +921,7 @@ function MonthBlock({
         </td>
       </tr>
       <tr>
-        <LabelCell>End balance</LabelCell>
+        <LabelCell>End</LabelCell>
         {debts.map((debt) => {
           const line = paidById.get(debt.id)
           const balance = line?.balance ?? 0
