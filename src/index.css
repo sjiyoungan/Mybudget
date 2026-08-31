@@ -185,6 +185,29 @@
   );
 }
 
+.affirm-totals {
+  position: relative;
+}
+.affirm-totals[data-more]::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -16px;
+  height: 16px;
+  background: linear-gradient(
+    to top,
+    rgb(0 0 0 / 0.08),
+    rgb(0 0 0 / 0.03) 40%,
+    transparent
+  );
+}
+
+.drag-scroll td.affirm-loan-hit {
+  cursor: pointer;
+}
+
 .no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;

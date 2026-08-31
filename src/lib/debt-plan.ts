@@ -946,6 +946,68 @@ export function monthsBetweenYm(start: string, end: string) {
   return months
 }
 
+export function affirmPaymentMonths(
+  startMonth: string,
+  startingBalance: number,
+  monthly: number,
+) {
+  if (monthly <= 0.005) return startMonth ? [startMonth] : []
+  const count = Math.max(
+    1,
+    Math.ceil((roundCents(startingBalance) - 0.005) / monthly),
+  )
+  const start = parseYm(startMonth)
+  if (!start) return []
+  const first = ymIndex(start.year, start.month)
+  return Array.from({ length: count }, (_, offset) => {
+    const index = first + offset
+    return monthKey(Math.floor(index / 12), index % 12)
+  })
+}
+
+export function completeAffirmLoan(
+  input: {
+    id?: string
+    name: string
+    loanId: string
+    startMonth: string
+    startingBalance: number
+    monthly: number
+  },
+  now: Date,
+): AffirmLoan {
+  const startingBalance = roundCents(Math.max(0, input.startingBalance))
+  const monthly = roundCents(Math.max(0, input.monthly))
+  const months = affirmPaymentMonths(input.startMonth, startingBalance, monthly)
+  const lastPayment = months[months.length - 1] ?? input.startMonth
+  const nowKey = monthKey(now.getFullYear(), now.getMonth())
+  let remaining = startingBalance
+  if (nowKey >= input.startMonth && months.length > 0) {
+    const through = nowKey < lastPayment ? nowKey : lastPayment
+    const paidMonths = monthsBetweenYm(input.startMonth, through).length
+    remaining = roundCents(Math.max(0, startingBalance - monthly * paidMonths))
+  }
+  return {
+    id: input.id ?? `affirm-${crypto.randomUUID()}`,
+    name: input.name.trim() || 'Affirm',
+    loanId: input.loanId.trim(),
+    startMonth: input.startMonth,
+    lastPayment,
+    startingBalance,
+    monthly,
+    remaining,
+  }
+}
+
+export function sortAffirmLoans(loans: AffirmLoan[]) {
+  return [...loans].sort((left, right) => {
+    if (left.monthly !== right.monthly) return left.monthly - right.monthly
+    const byName = left.name.localeCompare(right.name)
+    if (byName !== 0) return byName
+    return left.loanId.localeCompare(right.loanId)
+  })
+}
+
 /** Scheduled payment in each month from start through last payment. */
 export function affirmLoanPayments(loan: AffirmLoan) {
   const months = monthsBetweenYm(loan.startMonth, loan.lastPayment)

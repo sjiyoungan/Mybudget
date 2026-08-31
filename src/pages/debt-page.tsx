@@ -9,18 +9,17 @@ import {
   useState,
   type DragEvent,
   type PointerEvent,
-  type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Menu, Undo2, X } from 'lucide-react'
 
+import { AffirmCard } from '@/components/affirm-card'
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
 import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
 import {
   Dialog,
@@ -40,10 +39,7 @@ import { paymentWithoutCharges, type Debt } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
 import {
   PAYOFF_STRATEGIES,
-  affirmLoanPayments,
-  affirmVisibleMonths,
   debtFreeLabel,
-  formatYm,
   loadDebtPlan,
   historyRows,
   logPlannerMonth,
@@ -59,13 +55,12 @@ import {
   strategyLabel,
   withLiveMonthlyBudget,
   ymIndex,
-  type AffirmLoan,
   type DebtPlanState,
   type PayoffStrategy,
   type PlannerLine,
   type PlannerMonth,
 } from '@/lib/debt-plan'
-import { formatUsd, formatUsdWhole } from '@/lib/format'
+import { formatUsdWhole } from '@/lib/format'
 import { currentMonthNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
 import { cn } from '@/lib/utils'
@@ -74,17 +69,6 @@ type PlannerView = 'planner' | 'history'
 
 const MONTH_COL = 88
 const LABEL_COL = 64
-const AFFIRM_MONTH_COL = 88
-const AFFIRM_ID_COLS = [
-  { key: 'name', label: 'Name', width: 140, align: 'left' as const },
-  { key: 'loanId', label: 'Loan ID', width: 112, align: 'left' as const },
-  { key: 'start', label: 'Starting month', width: 104, align: 'left' as const },
-  { key: 'last', label: 'Last payment', width: 104, align: 'left' as const },
-  { key: 'startBal', label: 'Starting bal', width: 92, align: 'right' as const },
-  { key: 'monthly', label: 'Monthly', width: 80, align: 'right' as const },
-  { key: 'balance', label: 'Balance', width: 88, align: 'right' as const },
-] as const
-const AFFIRM_ID_WIDTH = AFFIRM_ID_COLS.reduce((sum, col) => sum + col.width, 0)
 const EXTRA_FILL = 'bg-[#F3E6E9]'
 const EXTRA_LINE = 'bg-[#E0D0D3]'
 const EXTRA_DARK = 'text-[#3A121C]'
@@ -181,7 +165,13 @@ export function DebtPage() {
           onPlanChange={setPlan}
         />
 
-        <AffirmCard loans={plan.affirmLoans} now={now} />
+        <AffirmCard
+          loans={plan.affirmLoans}
+          now={now}
+          onLoansChange={(affirmLoans) => {
+            setPlan((current) => ({ ...current, affirmLoans }))
+          }}
+        />
     </main>
   )
 }
@@ -1577,302 +1567,4 @@ function parseUsdInput(raw: string) {
 
 function roundCents(value: number) {
   return Math.round(value * 100) / 100
-}
-
-function affirmStickyLeft(index: number) {
-  return AFFIRM_ID_COLS.slice(0, index).reduce((sum, col) => sum + col.width, 0)
-}
-
-function AffirmFreezeCell({
-  index,
-  header = false,
-  className,
-  title,
-  children,
-}: {
-  index: number
-  header?: boolean
-  className?: string
-  title?: string
-  children?: ReactNode
-}) {
-  const col = AFFIRM_ID_COLS[index]
-  const Tag = header ? 'th' : 'td'
-  return (
-    <Tag
-      title={title}
-      className={cn(
-        'sticky bg-card',
-        header ? 'z-20' : 'z-10',
-        index === 0 ? 'pl-4 pr-3' : 'px-3',
-        col.align === 'right' ? 'text-right' : 'text-left',
-        className,
-      )}
-      style={{
-        left: affirmStickyLeft(index),
-        width: col.width,
-        minWidth: col.width,
-        maxWidth: col.width,
-      }}
-    >
-      {children}
-    </Tag>
-  )
-}
-
-function AffirmCard({
-  loans,
-  now,
-}: {
-  loans: AffirmLoan[]
-  now: Date
-}) {
-  const months = useMemo(() => affirmVisibleMonths(loans, now), [loans, now])
-  const schedules = useMemo(
-    () => loans.map((loan) => ({ loan, payments: affirmLoanPayments(loan) })),
-    [loans],
-  )
-  const monthTotals = useMemo(() => {
-    const totals: Record<string, number> = {}
-    for (const ym of months) {
-      totals[ym] = roundCents(
-        schedules.reduce((sum, row) => sum + (row.payments[ym] ?? 0), 0),
-      )
-    }
-    return totals
-  }, [months, schedules])
-  const allMonthly = roundCents(
-    loans.reduce((sum, loan) => sum + loan.monthly, 0),
-  )
-  const remaining = roundCents(
-    loans.reduce((sum, loan) => sum + loan.remaining, 0),
-  )
-
-  const scrollerRef = useRef<HTMLDivElement>(null)
-  const [scrolled, setScrolled] = useState(false)
-  const [canDrag, setCanDrag] = useState(false)
-  const drag = useRef({
-    active: false,
-    moved: false,
-    startX: 0,
-    scroll: 0,
-    pointerId: 0,
-  })
-
-  useLayoutEffect(() => {
-    const el = scrollerRef.current
-    if (!el) return
-    const node = el
-    function update() {
-      setCanDrag(node.scrollWidth > node.clientWidth + 1)
-    }
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(node)
-    const inner = node.firstElementChild
-    if (inner) observer.observe(inner)
-    window.addEventListener('resize', update)
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', update)
-    }
-  }, [loans, months])
-
-  function onPointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || !canDrag) return
-    if (
-      event.target instanceof Element &&
-      event.target.closest('.sticky')
-    ) {
-      return
-    }
-    const el = scrollerRef.current
-    if (!el) return
-    drag.current = {
-      active: true,
-      moved: false,
-      startX: event.clientX,
-      scroll: el.scrollLeft,
-      pointerId: event.pointerId,
-    }
-  }
-
-  function onPointerMove(event: PointerEvent<HTMLDivElement>) {
-    if (!drag.current.active) return
-    const el = scrollerRef.current
-    if (!el) return
-    const dx = event.clientX - drag.current.startX
-    if (!drag.current.moved && Math.abs(dx) < 6) return
-    if (!drag.current.moved) {
-      drag.current.moved = true
-      el.setPointerCapture(event.pointerId)
-    }
-    el.scrollLeft = drag.current.scroll - dx
-    setScrolled(el.scrollLeft > 0)
-  }
-
-  function onPointerUp(event: PointerEvent<HTMLDivElement>) {
-    if (!drag.current.active) return
-    const el = scrollerRef.current
-    if (drag.current.moved && el?.hasPointerCapture(event.pointerId)) {
-      el.releasePointerCapture(event.pointerId)
-    }
-    drag.current.active = false
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Affirm</CardTitle>
-      </CardHeader>
-      <CardContent className="px-0">
-        <div className="relative isolate">
-          <div
-            ref={scrollerRef}
-            className="drag-scroll"
-            data-can-drag={canDrag ? '' : undefined}
-            onScroll={() => {
-              setScrolled((scrollerRef.current?.scrollLeft ?? 0) > 0)
-            }}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-          >
-            <table className="w-max min-w-full border-separate border-spacing-0 select-none text-sm">
-              <colgroup>
-                {AFFIRM_ID_COLS.map((col) => (
-                  <col key={col.key} style={{ width: col.width }} />
-                ))}
-                {months.map((ym) => (
-                  <col key={ym} style={{ width: AFFIRM_MONTH_COL }} />
-                ))}
-              </colgroup>
-              <thead>
-                <tr>
-                  <AffirmFreezeCell index={0} header className="pt-1 pb-1 font-medium tabular-nums">
-                    {loans.length || ''}
-                  </AffirmFreezeCell>
-                  <AffirmFreezeCell index={1} header className="pt-1 pb-1 font-medium tabular-nums">
-                    {loans.length > 0 ? formatUsd(allMonthly) : ''}
-                  </AffirmFreezeCell>
-                  <AffirmFreezeCell index={2} header className="pt-1 pb-1" />
-                  <AffirmFreezeCell index={3} header className="pt-1 pb-1" />
-                  <AffirmFreezeCell index={4} header className="pt-1 pb-1" />
-                  <AffirmFreezeCell index={5} header className="pt-1 pb-1" />
-                  <AffirmFreezeCell index={6} header className="pt-1 pb-1 font-medium tabular-nums">
-                    {loans.length > 0 ? formatUsd(remaining) : ''}
-                  </AffirmFreezeCell>
-                  {months.map((ym) => (
-                    <th
-                      key={ym}
-                      className="relative z-0 px-3 pt-1 pb-1 text-right font-medium tabular-nums"
-                    >
-                      {monthTotals[ym] > 0.005 ? formatUsd(monthTotals[ym]) : ''}
-                    </th>
-                  ))}
-                </tr>
-                <tr className="text-muted-foreground text-xs">
-                  {AFFIRM_ID_COLS.map((col, index) => (
-                    <AffirmFreezeCell
-                      key={col.key}
-                      index={index}
-                      header
-                      className="border-border border-b py-2 font-medium whitespace-nowrap"
-                    >
-                      {col.label}
-                    </AffirmFreezeCell>
-                  ))}
-                  {months.map((ym) => (
-                    <th
-                      key={ym}
-                      className="border-border relative z-0 border-b px-3 py-2 text-right font-medium whitespace-nowrap"
-                    >
-                      {formatYm(ym)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {schedules.map(({ loan, payments }, rowIndex) => {
-                  const showName =
-                    rowIndex === 0 || loan.name !== loans[rowIndex - 1]?.name
-                  return (
-                    <tr key={loan.id}>
-                      <AffirmFreezeCell
-                        index={0}
-                        className="border-border truncate border-b py-2 whitespace-nowrap"
-                        title={showName ? loan.name : undefined}
-                      >
-                        {showName ? loan.name : ''}
-                      </AffirmFreezeCell>
-                      <AffirmFreezeCell
-                        index={1}
-                        className="border-border truncate border-b py-2 whitespace-nowrap text-muted-foreground"
-                      >
-                        {loan.loanId}
-                      </AffirmFreezeCell>
-                      <AffirmFreezeCell
-                        index={2}
-                        className="border-border border-b py-2 whitespace-nowrap"
-                      >
-                        {loan.startMonth ? formatYm(loan.startMonth) : ''}
-                      </AffirmFreezeCell>
-                      <AffirmFreezeCell
-                        index={3}
-                        className="border-border border-b py-2 whitespace-nowrap"
-                      >
-                        {loan.lastPayment ? formatYm(loan.lastPayment) : ''}
-                      </AffirmFreezeCell>
-                      <AffirmFreezeCell
-                        index={4}
-                        className="border-border border-b py-2 tabular-nums"
-                      >
-                        {formatUsd(loan.startingBalance)}
-                      </AffirmFreezeCell>
-                      <AffirmFreezeCell
-                        index={5}
-                        className="border-border border-b py-2 tabular-nums"
-                      >
-                        {formatUsd(loan.monthly)}
-                      </AffirmFreezeCell>
-                      <AffirmFreezeCell
-                        index={6}
-                        className="border-border border-b py-2 tabular-nums"
-                      >
-                        {formatUsd(loan.remaining)}
-                      </AffirmFreezeCell>
-                      {months.map((ym) => {
-                        const amount = payments[ym]
-                        return (
-                          <td
-                            key={ym}
-                            className="border-border relative z-0 border-b px-3 py-2 text-right tabular-nums"
-                          >
-                            {amount != null && amount > 0.005
-                              ? formatUsd(amount)
-                              : ''}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div
-            className="sticky-edge"
-            data-scrolled={scrolled ? '' : undefined}
-            style={{ width: AFFIRM_ID_WIDTH }}
-          />
-          <div
-            className="sticky-shadow"
-            data-scrolled={scrolled ? '' : undefined}
-            style={{ left: AFFIRM_ID_WIDTH }}
-          />
-        </div>
-      </CardContent>
-    </Card>
-  )
 }
