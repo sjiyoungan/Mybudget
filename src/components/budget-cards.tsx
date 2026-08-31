@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   ArrowDown,
   ArrowUp,
@@ -480,17 +480,35 @@ function draftIsComplete(draft: ExpenseDraft, categoryIds: Set<string>) {
   )
 }
 
-function moveDraftToCategory(
+function reorderDraft(
   drafts: ExpenseDraft[],
   draftId: string,
   category: string,
+  targetId?: string,
 ) {
   const from = drafts.findIndex((item) => item.id === draftId)
   if (from < 0) return drafts
-  const next = [...drafts]
-  const [item] = next.splice(from, 1)
+  const item = drafts[from]
   if (!item) return drafts
   const updated = { ...item, category }
+
+  if (targetId && targetId !== draftId) {
+    const to = drafts.findIndex((entry) => entry.id === targetId)
+    if (to < 0) return drafts
+    const next = [...drafts]
+    next.splice(from, 1)
+    next.splice(to, 0, updated)
+    if (
+      item.category === category &&
+      next.every((entry, index) => entry.id === drafts[index]?.id)
+    ) {
+      return drafts
+    }
+    return next
+  }
+
+  const next = [...drafts]
+  next.splice(from, 1)
   let insertAt = next.length
   for (let i = next.length - 1; i >= 0; i -= 1) {
     if (next[i]?.category === category) {
@@ -498,6 +516,7 @@ function moveDraftToCategory(
       break
     }
   }
+  if (from === insertAt && item.category === category) return drafts
   next.splice(insertAt, 0, updated)
   return next
 }
@@ -580,26 +599,17 @@ function ModalDueDayInput({
 function CategoryDropGroup({
   categoryId,
   active,
-  onDragOver,
-  onDragLeave,
-  onDrop,
   children,
 }: {
   categoryId?: string
   active: boolean
-  onDragOver: (event: DragEvent<HTMLElement>) => void
-  onDragLeave: (event: DragEvent<HTMLElement>) => void
-  onDrop: (event: DragEvent<HTMLElement>) => void
   children: ReactNode
 }) {
   return (
     <section
       data-category-id={categoryId}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
       className={cn(
-        'space-y-2 rounded-lg p-1',
+        'space-y-1 rounded-lg p-1',
         active && 'bg-neutral-50 ring-1 ring-neutral-200',
       )}
     >
@@ -640,8 +650,7 @@ function ExpenseDraftRow({
   setDueDayError,
   onUpdate,
   onRemove,
-  onDragStart,
-  onDragEnd,
+  onMovePointerDown,
   canRemove,
   autoFocus = false,
   showHandle = true,
@@ -654,8 +663,7 @@ function ExpenseDraftRow({
   setDueDayError: (value: boolean) => void
   onUpdate: (id: string, patch: Partial<ExpenseDraft>) => void
   onRemove: () => void
-  onDragStart: (event: DragEvent<HTMLButtonElement>, id: string) => void
-  onDragEnd: () => void
+  onMovePointerDown: (event: { button: number; preventDefault: () => void }, id: string) => void
   canRemove: boolean
   autoFocus?: boolean
   showHandle?: boolean
@@ -664,7 +672,7 @@ function ExpenseDraftRow({
     <div
       data-draft-id={draft.id}
       className={cn(
-        'group/row relative grid items-center gap-2',
+        'group/row relative grid items-center gap-2 py-0.5',
         EXPENSE_ROW,
         dragging && 'opacity-50',
       )}
@@ -672,17 +680,16 @@ function ExpenseDraftRow({
       {showHandle ? (
         <button
           type="button"
-          draggable
-          title="Drag to a category"
+          data-drag-handle
+          title="Drag to reorder"
           aria-label={`Move ${draft.name || 'expense'}`}
-          onDragStart={(event) => onDragStart(event, draft.id)}
-          onDragEnd={onDragEnd}
-          className={cn(
-            'text-neutral-400 hover:text-foreground absolute top-1/2 right-full mr-1 flex h-8 w-5 -translate-y-1/2 cursor-grab items-center justify-center active:cursor-grabbing',
-            dragging
-              ? 'opacity-100'
-              : 'opacity-0 group-hover/row:opacity-100',
-          )}
+          onPointerDown={(event) => onMovePointerDown(event, draft.id)}
+          onMouseDown={(event) => {
+            if (event.button !== 0) return
+            event.preventDefault()
+            onMovePointerDown(event, draft.id)
+          }}
+          className="text-neutral-400 hover:text-foreground absolute top-1/2 right-full mr-1 flex h-8 w-5 -translate-y-1/2 cursor-grab items-center justify-center touch-none opacity-70 hover:opacity-100 active:cursor-grabbing"
         >
           <Menu className="size-3.5" />
         </button>
@@ -771,6 +778,9 @@ function EditExpensesDialog({
   const [focusDraftId, setFocusDraftId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const pendingScrollCategoryId = useRef<string | null>(null)
+  const draggingIdRef = useRef<string | null>(null)
+  const moveDraftUnderPointerRef = useRef<(x: number, y: number) => void>(() => {})
+  const stopDragListenersRef = useRef<(() => void) | null>(null)
 
   useLayoutEffect(() => {
     if (!open) return
@@ -784,6 +794,9 @@ function EditExpensesDialog({
     setDueDayError(false)
     setDraggingId(null)
     setDropCategoryId(null)
+    draggingIdRef.current = null
+    stopDragListenersRef.current?.()
+    stopDragListenersRef.current = null
     setAddCategoryOpen(false)
     setNewCategoryName('')
     setFocusDraftId(null)
@@ -908,47 +921,69 @@ function EditExpensesDialog({
     closeClean()
   }
 
-  function handleDragStart(event: DragEvent<HTMLButtonElement>, id: string) {
-    event.dataTransfer.setData('text/plain', id)
-    event.dataTransfer.effectAllowed = 'move'
+  function canDropInCategory(id: string, categoryId: string) {
+    return !(linkedDebtIds.has(id) && categoryId !== DEBT_CATEGORY_ID)
+  }
+
+  function handleMovePointerDown(
+    event: { button: number; preventDefault: () => void },
+    id: string,
+  ) {
+    if (event.button !== 0) return
+    event.preventDefault()
+    draggingIdRef.current = id
     setDraggingId(id)
-  }
+    if (stopDragListenersRef.current) return
 
-  function handleDragOver(event: DragEvent<HTMLElement>, categoryId: string) {
-    if (draggingId && linkedDebtIds.has(draggingId) && categoryId !== DEBT_CATEGORY_ID) {
-      event.dataTransfer.dropEffect = 'none'
-      return
+    function onMove(moveEvent: { clientX: number; clientY: number }) {
+      moveDraftUnderPointerRef.current(moveEvent.clientX, moveEvent.clientY)
     }
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    setDropCategoryId(categoryId)
-  }
-
-  function handleDragLeave(event: DragEvent<HTMLElement>) {
-    const next = event.relatedTarget
-    if (next instanceof Node && event.currentTarget.contains(next)) return
-    setDropCategoryId(null)
-  }
-
-  function handleDrop(event: DragEvent<HTMLElement>, categoryId: string) {
-    event.preventDefault()
-    const id = event.dataTransfer.getData('text/plain') || draggingId
-    if (id && linkedDebtIds.has(id) && categoryId !== DEBT_CATEGORY_ID) {
+    function onUp() {
+      stopDragListenersRef.current?.()
+      stopDragListenersRef.current = null
+      draggingIdRef.current = null
       setDraggingId(null)
       setDropCategoryId(null)
-      return
     }
-    if (id) {
-      setDrafts((current) => moveDraftToCategory(current, id, categoryId))
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    stopDragListenersRef.current = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('pointercancel', onUp)
     }
-    setDraggingId(null)
-    setDropCategoryId(null)
   }
 
-  function handleDragEnd() {
-    setDraggingId(null)
-    setDropCategoryId(null)
+  function moveDraftUnderPointer(clientX: number, clientY: number) {
+    const id = draggingIdRef.current
+    if (!id) return
+    const el = document.elementFromPoint(clientX, clientY)
+    if (!(el instanceof Element)) return
+    const row = el.closest('[data-draft-id]')
+    const section = el.closest('[data-category-id]')
+    const categoryId = section?.getAttribute('data-category-id') ?? ''
+    if (!canDropInCategory(id, categoryId)) return
+    setDropCategoryId(categoryId)
+    const targetId = row?.getAttribute('data-draft-id')
+    if (targetId && targetId !== id) {
+      setDrafts((current) => reorderDraft(current, id, categoryId, targetId))
+      return
+    }
+    if (section && !row) {
+      setDrafts((current) => {
+        const item = current.find((draft) => draft.id === id)
+        if (item?.category === categoryId) return current
+        return reorderDraft(current, id, categoryId)
+      })
+    }
   }
+
+  moveDraftUnderPointerRef.current = moveDraftUnderPointer
 
   return (
     <>
@@ -1020,7 +1055,10 @@ function EditExpensesDialog({
 
           <div
             ref={listRef}
-            className="-ml-6 mt-5 max-h-[min(70vh,40rem)] space-y-4 overflow-y-auto pl-6"
+            className={cn(
+              '-ml-6 mt-5 max-h-[min(70vh,40rem)] space-y-4 overflow-y-auto pl-6',
+              draggingId && 'select-none',
+            )}
           >
             <div
               className={cn(
@@ -1040,9 +1078,6 @@ function EditExpensesDialog({
               <CategoryDropGroup
                 categoryId=""
                 active={dropCategoryId === ''}
-                onDragOver={(event) => handleDragOver(event, '')}
-                onDragLeave={handleDragLeave}
-                onDrop={(event) => handleDrop(event, '')}
               >
                 <p className="text-muted-foreground text-sm font-medium">
                   Uncategorized
@@ -1058,8 +1093,7 @@ function EditExpensesDialog({
                     setDueDayError={setDueDayError}
                     onUpdate={updateDraft}
                     onRemove={() => requestRemove(draft.id)}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
+                    onMovePointerDown={handleMovePointerDown}
                     canRemove={drafts.length > 1}
                     autoFocus={focusDraftId === draft.id}
                   />
@@ -1076,9 +1110,6 @@ function EditExpensesDialog({
                   key={category.id}
                   categoryId={category.id}
                   active={dropCategoryId === category.id}
-                  onDragOver={(event) => handleDragOver(event, category.id)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={(event) => handleDrop(event, category.id)}
                 >
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">{category.name}</p>
@@ -1104,8 +1135,7 @@ function EditExpensesDialog({
                       setDueDayError={setDueDayError}
                       onUpdate={updateDraft}
                       onRemove={() => requestRemove(draft.id)}
-                      onDragStart={handleDragStart}
-                      onDragEnd={handleDragEnd}
+                      onMovePointerDown={handleMovePointerDown}
                       canRemove={drafts.length > 1}
                       autoFocus={focusDraftId === draft.id}
                       showHandle={!linkedDebtIds.has(draft.id)}
@@ -1454,8 +1484,7 @@ function EditOneExpenseDialog({
                   )
                 }
                 onRemove={() => setRemoveOpen(true)}
-                onDragStart={() => {}}
-                onDragEnd={() => {}}
+                onMovePointerDown={() => {}}
                 canRemove
                 showHandle={false}
               />

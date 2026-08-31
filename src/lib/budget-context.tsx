@@ -10,7 +10,6 @@ import {
 import {
   applyDebtsToExpenses,
   applyExpensesToDebts,
-  compareExpensesByDueDay,
   loadBudget,
   saveBudget,
   type AccountKind,
@@ -23,11 +22,10 @@ import {
 } from '@/lib/budget'
 
 function withLinkedExpenses(current: BudgetState, expenses: RecurringExpense[]) {
-  const next = [...expenses].sort(compareExpensesByDueDay)
   return {
     ...current,
-    expenses: next,
-    debts: applyExpensesToDebts(next, current.debts),
+    expenses,
+    debts: applyExpensesToDebts(expenses, current.debts),
   }
 }
 

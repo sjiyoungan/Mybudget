@@ -857,11 +857,28 @@ export function applyDebtsToExpenses(
 ): RecurringExpense[] {
   const debtIds = new Set(debts.map((debt) => debt.id))
   const byId = new Map(expenses.map((expense) => [expense.id, expense]))
-  const kept = expenses.filter(
-    (expense) => !debtIds.has(expense.id) && !isDebtExpense(expense),
+  const linkedById = new Map(
+    debts.map((debt) => [debt.id, expenseFromDebt(debt, byId.get(debt.id))]),
   )
-  const linked = debts.map((debt) => expenseFromDebt(debt, byId.get(debt.id)))
-  return [...kept, ...linked].sort(compareExpensesByDueDay)
+  const used = new Set<string>()
+  const next: RecurringExpense[] = []
+  for (const expense of expenses) {
+    if (debtIds.has(expense.id) || isDebtExpense(expense)) {
+      const linked = linkedById.get(expense.id)
+      if (linked) {
+        next.push(linked)
+        used.add(expense.id)
+      }
+      continue
+    }
+    next.push(expense)
+  }
+  for (const debt of debts) {
+    if (used.has(debt.id)) continue
+    const linked = linkedById.get(debt.id)
+    if (linked) next.push(linked)
+  }
+  return next
 }
 
 export function applyExpensesToDebts(
