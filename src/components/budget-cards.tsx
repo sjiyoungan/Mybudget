@@ -1017,7 +1017,7 @@ function ExpenseDraftRow({
     <div
       data-draft-id={draft.id}
       className={cn(
-        'group/row relative grid items-center gap-2 py-0.5 pl-6',
+        'group/row relative grid items-center gap-2 py-0.5 pr-4 pl-4',
         EXPENSE_ROW,
         dragging && 'opacity-50',
         draft.hidden && 'opacity-50',
@@ -1034,7 +1034,7 @@ function ExpenseDraftRow({
             event.preventDefault()
             onMovePointerDown(event, draft.id)
           }}
-          className="text-neutral-400 hover:text-foreground group/handle absolute inset-y-0 left-0 z-10 flex w-6 cursor-grab items-center justify-center touch-none active:cursor-grabbing"
+          className="text-neutral-400 hover:text-foreground group/handle absolute inset-y-0 left-0 z-10 flex w-4 cursor-grab items-center justify-center touch-none active:cursor-grabbing"
         >
           <Menu className="size-3.5 opacity-0 group-hover/handle:opacity-100 group-focus-visible/handle:opacity-100 group-active/handle:opacity-100" />
         </button>
@@ -1395,7 +1395,7 @@ function EditExpensesDialog({
         }}
       >
         <DialogContent
-          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-1 sm:max-w-none"
+          className="w-max max-w-[calc(100%-2rem)] gap-0 p-4 sm:max-w-none"
           showCloseButton={false}
           {...editDialogDismiss(
             confirmOpen || removeId != null || addCategoryOpen,
@@ -1418,9 +1418,9 @@ function EditExpensesDialog({
             requestClose()
           }}
         >
-          <div className="border-b pb-4">
+          <div className="-mx-4 border-b px-4 pb-4">
             <div className="flex items-center justify-between gap-3">
-              <DialogHeader className="pl-6">
+              <DialogHeader>
                 <DialogTitle className="pl-2.5 text-2xl tracking-tight">
                   Edit expenses
                 </DialogTitle>
@@ -1442,7 +1442,7 @@ function EditExpensesDialog({
 
           <div
             ref={listWrapRef}
-            className="scroll-more relative mt-5"
+            className="scroll-more relative -mx-4 mt-5"
           >
           <div
             ref={listRef}
@@ -1462,7 +1462,7 @@ function EditExpensesDialog({
           >
             <div
               className={cn(
-                'bg-popover sticky top-0 z-10 grid gap-2 pb-1 pl-6 text-xs font-medium text-muted-foreground',
+                'bg-popover sticky top-0 z-10 grid gap-2 pb-1 pr-4 pl-4 text-xs font-medium text-muted-foreground',
                 EXPENSE_ROW,
               )}
             >
@@ -1475,10 +1475,10 @@ function EditExpensesDialog({
                 active={dropCategoryId === ''}
               >
                 <div>
-                  <p className="text-muted-foreground pl-6 text-sm font-medium">
+                  <p className="text-muted-foreground pl-4 text-sm font-semibold">
                     <span className="pl-2.5">Uncategorized</span>
                   </p>
-                  <div className="bg-neutral-300 mt-1.5 h-px w-full" aria-hidden />
+                  <div className="bg-neutral-300 mx-4 mt-1.5 h-px" aria-hidden />
                 </div>
                 {uncategorized.map((draft) => (
                   <ExpenseDraftRow
@@ -1510,8 +1510,8 @@ function EditExpensesDialog({
                   active={dropCategoryId === category.id}
                 >
                   <div>
-                    <div className="flex items-center gap-2 pl-6">
-                    <p className="pl-2.5 text-sm font-medium">{category.name}</p>
+                    <div className="flex items-center gap-2 pl-4">
+                    <p className="pl-2.5 text-sm font-semibold">{category.name}</p>
                     <Button
                       type="button"
                       variant="ghost"
@@ -1526,7 +1526,7 @@ function EditExpensesDialog({
                       <Plus className="size-3.5" />
                     </Button>
                     </div>
-                    <div className="bg-neutral-300 mt-1.5 h-px w-full" aria-hidden />
+                    <div className="bg-neutral-300 mx-4 mt-1.5 h-px" aria-hidden />
                   </div>
                   {items.map((draft) => (
                     <ExpenseDraftRow
@@ -1546,8 +1546,8 @@ function EditExpensesDialog({
                     />
                   ))}
                   {items.length === 0 ? (
-                    <p className="text-muted-foreground py-2 pl-[2.125rem] text-xs">
-                      Drop an expense here
+                    <p className="text-muted-foreground py-2 pl-4 text-xs">
+                      <span className="pl-2.5">Drop an expense here</span>
                     </p>
                   ) : null}
                 </CategoryDropGroup>
@@ -1555,14 +1555,14 @@ function EditExpensesDialog({
             })}
 
             {dueDayError ? (
-              <p className="text-destructive text-xs">
+              <p className="text-destructive px-4 text-xs">
                 Due day can&apos;t be more than the days in a month.
               </p>
             ) : null}
           </div>
           </div>
 
-          <DialogFooter className="-ml-1 -mr-4 mt-5 items-center sm:justify-end sm:gap-4">
+          <DialogFooter className="relative z-20 items-center sm:justify-end sm:gap-4">
             <Button
               type="button"
               variant="ghost"

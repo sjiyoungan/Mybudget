@@ -187,14 +187,14 @@
   display: none;
 }
 
-.scroll-more[data-more]::after {
+.scroll-more[data-more] + [data-slot='dialog-footer']::before {
   content: "";
   pointer-events: none;
   position: absolute;
   right: 0;
-  bottom: 0;
   left: 0;
-  z-index: 10;
+  top: -16px;
+  z-index: 1;
   height: 16px;
   background: linear-gradient(
     to top,
