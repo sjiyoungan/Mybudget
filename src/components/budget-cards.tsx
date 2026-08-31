@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
   Eye,
@@ -44,6 +45,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -73,6 +79,10 @@ import {
   normalizeDebtType,
   ceilCents,
   ceilDollars,
+  formatPromoEndsOn,
+  formatPromoSummary,
+  parsePromoEndsOn,
+  promoEndYearMonth,
   totalDebtPayments,
   totalForCategory,
   totalMonthlyExpenses,
@@ -190,6 +200,186 @@ function AprInput({
       />
       <span className="text-neutral-400 shrink-0 pl-0.5 text-sm">%</span>
     </div>
+  )
+}
+
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+function promoDateInputValue(endsOn: string) {
+  const parsed = parsePromoEndsOn(endsOn)
+  if (!parsed) return endsOn
+  return formatPromoEndsOn(parsed, true)
+}
+
+function PromoField({
+  apr,
+  endsOn,
+  onChange,
+}: {
+  apr: string
+  endsOn: string
+  onChange: (next: { apr?: string; endsOn?: string }) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [dateText, setDateText] = useState(promoDateInputValue(endsOn))
+  const parsedEnd = promoEndYearMonth(endsOn)
+  const [cursor, setCursor] = useState(() => new Date())
+
+  useEffect(() => {
+    if (!open) return
+    setDateText(promoDateInputValue(endsOn))
+    const end = promoEndYearMonth(endsOn)
+    setCursor(end ? new Date(end.year, end.month, 1) : new Date())
+  }, [open, endsOn])
+
+  const summary = formatPromoSummary(
+    apr.trim() === '' ? null : parseAmount(apr),
+    parsePromoEndsOn(endsOn),
+  )
+  const year = cursor.getFullYear()
+  const month = cursor.getMonth()
+  const startWeekday = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const selectedDay = parsedEnd?.day ?? null
+  const selectedThisMonth =
+    parsedEnd != null && parsedEnd.year === year && parsedEnd.month === month
+
+  function commitDate(raw: string) {
+    const parsed = parsePromoEndsOn(raw)
+    if (raw.trim() === '') {
+      onChange({ endsOn: '' })
+      setDateText('')
+      return
+    }
+    if (parsed == null) {
+      setDateText(raw)
+      return
+    }
+    onChange({ endsOn: parsed })
+    setDateText(formatPromoEndsOn(parsed, true))
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'flex h-8 w-full items-center px-2.5 text-left text-sm',
+            EDIT_GHOST_BOX,
+            !summary && 'text-muted-foreground',
+          )}
+          aria-label="Promo"
+        >
+          <span className="min-w-0 truncate">{summary || 'Promo'}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-auto p-3"
+        align="start"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <div className="flex gap-3">
+          <div className="flex flex-col gap-2">
+            <label className="text-muted-foreground text-xs">Rate</label>
+            <div
+              className={cn(
+                'flex h-8 w-24 items-center justify-end border px-2',
+                'rounded-lg',
+              )}
+            >
+              <input
+                className="h-full min-w-0 w-full bg-transparent text-right text-sm tabular-nums outline-none"
+                value={apr}
+                onChange={(event) => onChange({ apr: event.target.value })}
+                placeholder="0"
+                inputMode="decimal"
+                aria-label="Promo rate"
+                autoFocus
+              />
+              <span className="text-neutral-400 shrink-0 pl-0.5 text-sm">%</span>
+            </div>
+            <label className="text-muted-foreground text-xs">Ends</label>
+            <input
+              className="h-8 w-28 rounded-lg border bg-transparent px-2 text-sm outline-none"
+              value={dateText}
+              onChange={(event) => setDateText(event.target.value)}
+              onBlur={() => commitDate(dateText)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  commitDate(dateText)
+                }
+              }}
+              placeholder="12/26"
+              aria-label="Promo end date"
+            />
+          </div>
+          <div className="w-[15.5rem]">
+            <div className="mb-2 flex items-center justify-between">
+              <button
+                type="button"
+                className="hover-fill flex size-7 items-center justify-center rounded-md"
+                aria-label="Previous month"
+                onClick={() => setCursor(new Date(year, month - 1, 1))}
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <p className="text-sm font-medium">
+                {cursor.toLocaleDateString('en-US', {
+                  month: 'short',
+                  year: 'numeric',
+                })}
+              </p>
+              <button
+                type="button"
+                className="hover-fill flex size-7 items-center justify-center rounded-md"
+                aria-label="Next month"
+                onClick={() => setCursor(new Date(year, month + 1, 1))}
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-7 gap-y-1 text-center">
+              {WEEKDAYS.map((day) => (
+                <span
+                  key={day}
+                  className="text-muted-foreground text-[0.65rem] font-medium"
+                >
+                  {day}
+                </span>
+              ))}
+              {Array.from({ length: startWeekday }, (_, index) => (
+                <span key={`e-${index}`} />
+              ))}
+              {Array.from({ length: daysInMonth }, (_, index) => {
+                const day = index + 1
+                const selected = selectedThisMonth && selectedDay === day
+                const monthSelected = selectedThisMonth && selectedDay == null
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    className={cn(
+                      'hover-fill mx-auto flex size-7 items-center justify-center rounded-md text-sm tabular-nums',
+                      selected && 'bg-foreground text-background hover:bg-foreground',
+                      monthSelected && 'bg-[#f0f0f0]',
+                    )}
+                    onClick={() => {
+                      const next = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                      onChange({ endsOn: next })
+                      setDateText(formatPromoEndsOn(next, true))
+                    }}
+                  >
+                    {day}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -3038,10 +3228,12 @@ type DebtDraft = {
   chargeAccountId: string
   balance: string
   apr: string
+  promoApr: string
+  promoEndsOn: string
 }
 
 const DEBT_ROW =
-  'grid-cols-[minmax(4rem,6.5rem)_7rem_minmax(6rem,9rem)_4.5rem_1px_5.75rem_5.75rem_5.75rem_7rem_1px_7rem_7rem_28px]'
+  'grid-cols-[minmax(4rem,6.5rem)_7rem_minmax(6rem,9rem)_7rem_4.5rem_1px_5.75rem_5.75rem_5.75rem_7rem_1px_7rem_7rem_28px]'
 
 type DebtSortKey = 'balance' | 'apr' | 'minimum' | 'total'
 type DebtSortDir = 'asc' | 'desc'
@@ -3064,6 +3256,8 @@ function debtSnapshot(drafts: DebtDraft[]) {
       paidFromAccountId: draft.paidFromAccountId,
       balance: draft.balance.trim(),
       apr: draft.apr.trim(),
+      promoApr: draft.promoApr.trim(),
+      promoEndsOn: draft.promoEndsOn,
     })),
   )
 }
@@ -3079,6 +3273,8 @@ function emptyDebtDraft(id: string): DebtDraft {
     chargeAccountId: '',
     balance: '',
     apr: '',
+    promoApr: '',
+    promoEndsOn: '',
   }
 }
 
@@ -3089,6 +3285,13 @@ function moneyField(value: string) {
 
 function aprField(value: string) {
   if (value.trim() === '') return 0
+  const parsed = parseAmount(value)
+  if (parsed == null || parsed < 0) return null
+  return parsed
+}
+
+function promoAprField(value: string) {
+  if (value.trim() === '') return null
   const parsed = parseAmount(value)
   if (parsed == null || parsed < 0) return null
   return parsed
@@ -3114,6 +3317,8 @@ function draftToDebt(
     chargeAccountId: previous?.chargeAccountId ?? draft.chargeAccountId,
     type: draft.type,
     apr,
+    promoApr: promoAprField(draft.promoApr),
+    promoEndsOn: parsePromoEndsOn(draft.promoEndsOn),
     balance,
   }
 }
@@ -3150,6 +3355,8 @@ export function EditDebtsDialog({
       chargeAccountId: debt.chargeAccountId,
       balance: String(debt.balance),
       apr: String(debt.apr),
+      promoApr: debt.promoApr == null ? '' : String(debt.promoApr),
+      promoEndsOn: debt.promoEndsOn ?? '',
     }))
     setDrafts(loaded)
     setBaseline(debtSnapshot(loaded))
@@ -3283,27 +3490,7 @@ export function EditDebtsDialog({
     if (!canSubmit) return
     const previous = new Map(debts.map((debt) => [debt.id, debt]))
     const kept = filled
-      .map((draft) => {
-        const minimum = moneyField(draft.minimum)
-        const balance = moneyField(draft.balance)
-        const apr = aprField(draft.apr)
-        const extraPayment = moneyField(draft.extraPayment)
-        if (minimum == null || extraPayment == null || balance == null || apr == null)
-          return null
-        const current = previous.get(draft.id)
-        return {
-          id: draft.id,
-          lender: draft.lender.trim(),
-          dueDay: current?.dueDay ?? null,
-          minimum: ceilCents(minimum),
-          extraPayment,
-          paidFromAccountId: draft.paidFromAccountId,
-          chargeAccountId: current?.chargeAccountId ?? draft.chargeAccountId,
-          type: draft.type,
-          apr,
-          balance,
-        } satisfies Debt
-      })
+      .map((draft) => draftToDebt(draft, previous.get(draft.id)))
       .filter((item): item is Debt => item != null)
     replaceDebts(kept)
     closeClean()
@@ -3429,6 +3616,7 @@ export function EditDebtsDialog({
               <span className={DEBT_LABEL_LEFT}>Lender</span>
               <span className={DEBT_LABEL_LEFT}>Type</span>
               <span className={DEBT_LABEL_LEFT}>Paid from</span>
+              <span className={DEBT_LABEL_LEFT}>Promos</span>
               <span className={DEBT_LABEL_APR}>APR</span>
               <DebtColRule />
               <span className={DEBT_LABEL_RIGHT}>Minimum</span>
@@ -3476,6 +3664,16 @@ export function EditDebtsDialog({
                   quiet
                   ariaLabel="Paid from"
                   placeholder="Paid from"
+                />
+                <PromoField
+                  apr={draft.promoApr}
+                  endsOn={draft.promoEndsOn}
+                  onChange={(next) =>
+                    updateDraft(draft.id, {
+                      ...(next.apr != null ? { promoApr: next.apr } : {}),
+                      ...(next.endsOn != null ? { promoEndsOn: next.endsOn } : {}),
+                    })
+                  }
                 />
                 <AprInput
                   value={draft.apr}

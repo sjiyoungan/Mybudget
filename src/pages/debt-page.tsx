@@ -195,7 +195,14 @@ function PlannerCard({
 
   function chooseStrategy(strategy: PayoffStrategy) {
     if (strategy === 'custom') {
-      setCustomOpen(true)
+      const customOrder =
+        plan.customOrder.length > 0
+          ? resolveCustomOrder(
+              debts.map((debt) => debt.id),
+              plan.customOrder,
+            )
+          : strategyDebtOrder(debts, plan).map((debt) => debt.id)
+      onPlanChange({ ...plan, strategy, customOrder })
       return
     }
     onPlanChange({ ...plan, strategy })
@@ -214,6 +221,15 @@ function PlannerCard({
             />
           </div>
           <div className="flex items-center gap-1">
+            {plan.strategy === 'custom' ? (
+              <button
+                type="button"
+                className="hover-fill rounded-lg px-3 py-1.5 text-sm"
+                onClick={() => setCustomOpen(true)}
+              >
+                Edit
+              </button>
+            ) : null}
             <StrategyMenu
               strategy={plan.strategy}
               onChoose={chooseStrategy}

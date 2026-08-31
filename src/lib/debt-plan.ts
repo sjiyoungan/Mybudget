@@ -1,4 +1,6 @@
 import {
+  effectiveApr,
+  monthsUntilPromoEnd,
   paymentWithoutCharges,
   totalPaymentForDebt,
   type Debt,
@@ -215,13 +217,19 @@ export function resolveCustomOrder(debtIds: string[], order: string[]) {
 }
 
 /** Stable 1st-to-last extra-payment order. Highest interest is re-ranked each month. */
-export function strategyDebtOrder(debts: Debt[], plan: DebtPlanState) {
+export function strategyDebtOrder(
+  debts: Debt[],
+  plan: DebtPlanState,
+  now = new Date(),
+) {
   if (plan.strategy === 'highest-interest') return [...debts]
   const startBalances = new Map(debts.map((debt) => [debt.id, debt.balance]))
+  const year = now.getFullYear()
+  const month = now.getMonth()
   const interestById = new Map(
     debts.map((debt) => [
       debt.id,
-      roundCents((debt.balance * (debt.apr / 100)) / 12),
+      roundCents((debt.balance * (effectiveApr(debt, year, month) / 100)) / 12),
     ]),
   )
   return extraPaymentOrder(debts, plan, startBalances, interestById)
@@ -320,6 +328,51 @@ function extraPaidOnLine(paid: number, minimum: number, balanceBeforePay: number
   return roundCents(Math.max(0, paid - minDue))
 }
 
+function remainingAfterPayments(
+  dueThisMonth: number,
+  monthlyRate: number,
+  months: number,
+  payment: number,
+  monthlyCharge: number,
+) {
+  let balance = Math.max(0, roundCents(dueThisMonth - payment))
+  for (let step = 1; step < months; step++) {
+    balance = roundCents(balance * (1 + monthlyRate) + monthlyCharge)
+    balance = Math.max(0, roundCents(balance - payment))
+  }
+  return balance
+}
+
+/** Constant monthly payment that clears `dueThisMonth` by month K (inclusive). */
+function paymentToClear(
+  dueThisMonth: number,
+  monthlyRate: number,
+  months: number,
+  monthlyCharge: number,
+) {
+  if (dueThisMonth <= 0.005) return 0
+  if (months <= 1) return roundCents(dueThisMonth)
+  let lo = 0
+  let hi = dueThisMonth + monthlyCharge * months + 1
+  for (let step = 0; step < 48; step++) {
+    const mid = (lo + hi) / 2
+    if (
+      remainingAfterPayments(
+        dueThisMonth,
+        monthlyRate,
+        months,
+        mid,
+        monthlyCharge,
+      ) > 0.005
+    ) {
+      lo = mid
+    } else {
+      hi = mid
+    }
+  }
+  return roundCents(hi)
+}
+
 function scheduledPayment(debt: Debt, expenses: RecurringExpense[]) {
   return totalPaymentForDebt(expenses, debt)
 }
@@ -416,7 +469,9 @@ export function projectDebtPlan(
         continue
       }
       const charged = chargedForDebt(plan, debt.id, year, month)
-      const interest = roundCents(start * (debt.apr / 100) / 12)
+      const interest = roundCents(
+        (start * (effectiveApr(debt, year, month) / 100)) / 12,
+      )
       totalInterest += interest
       afterInterest.set(debt.id, roundCents(start + interest + charged))
       lines.push({
@@ -456,6 +511,29 @@ export function projectDebtPlan(
     )
     const owingIds = new Set(owing.map((debt) => debt.id))
     const unlocked = owing.filter((debt) => !locked.has(debt.id))
+    const promoQueue = unlocked
+      .filter((debt) => monthsUntilPromoEnd(debt, year, month) != null)
+      .sort((a, b) => {
+        const left = monthsUntilPromoEnd(a, year, month) ?? 0
+        const right = monthsUntilPromoEnd(b, year, month) ?? 0
+        if (left !== right) return left - right
+        return (afterInterest.get(a.id) ?? 0) - (afterInterest.get(b.id) ?? 0)
+      })
+    for (const debt of promoQueue) {
+      if (leftover <= 0) break
+      const due = afterInterest.get(debt.id) ?? 0
+      const already = payments.get(debt.id) ?? 0
+      const monthsLeft = monthsUntilPromoEnd(debt, year, month) ?? 1
+      const rate = effectiveApr(debt, year, month) / 100 / 12
+      const charge = plan.recurringCharges[debt.id] ?? 0
+      const need = paymentToClear(due, rate, monthsLeft, charge)
+      const add = roundCents(
+        Math.min(leftover, Math.max(0, need - already), Math.max(0, due - already)),
+      )
+      if (add <= 0) continue
+      payments.set(debt.id, roundCents(already + add))
+      leftover = roundCents(leftover - add)
+    }
     const waterfall =
       plan.strategy === 'highest-interest'
         ? extraPaymentOrder(

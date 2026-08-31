@@ -18,6 +18,8 @@ export const seededAmazonDebt = {
   chargeAccountId: '',
   type: 'credit-card' as const,
   apr: 24.49,
+  promoApr: null as number | null,
+  promoEndsOn: null as string | null,
   balance: 10856.51,
 }
 

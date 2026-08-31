@@ -59,6 +59,10 @@ export type Debt = {
   chargeAccountId: string
   type: DebtType
   apr: number
+  /** Promotional APR while `promoEndsOn` is in the future. */
+  promoApr: number | null
+  /** `YYYY-MM` or `YYYY-MM-DD`. Pay off before this month/day. */
+  promoEndsOn: string | null
   balance: number
 }
 
@@ -278,6 +282,8 @@ function sheetDebts(): Debt[] {
     chargeAccountId: '',
     type: guessDebtType(lender),
     apr,
+    promoApr: null,
+    promoEndsOn: null,
     balance: 0,
   })
 
@@ -376,6 +382,169 @@ export function debtTypeLabel(type: DebtType) {
 
 export function isCreditCardDebt(debt: Pick<Debt, 'type' | 'lender'>) {
   return normalizeDebtType(debt.type, debt.lender) === 'credit-card'
+}
+
+export function normalizePromoApr(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return null
+  }
+  return value
+}
+
+export function normalizePromoEndsOn(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  return parsePromoEndsOn(value)
+}
+
+const MONTH_NAMES = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+]
+
+function expandYear(year: number) {
+  if (year < 100) return year >= 70 ? 1900 + year : 2000 + year
+  return year
+}
+
+/** Accepts `YYYY-MM`, `YYYY-MM-DD`, `12/26`, `12/2026`, `12/15/26`. */
+export function parsePromoEndsOn(raw: string): string | null {
+  const text = raw.trim()
+  if (!text) return null
+  if (/^\d{4}-\d{2}$/.test(text)) {
+    const [, month] = text.split('-').map(Number)
+    if (month >= 1 && month <= 12) return text
+    return null
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const [year, month, day] = text.split('-').map(Number)
+    const last = new Date(year, month, 0).getDate()
+    if (month >= 1 && month <= 12 && day >= 1 && day <= last) return text
+    return null
+  }
+  const named = text.match(
+    /^([A-Za-z]+)\s+(\d{1,2})(?:,)?\s+(\d{2,4})$|^([A-Za-z]+)\s+(\d{2,4})$/,
+  )
+  if (named) {
+    const monthName = (named[1] ?? named[4]).toLowerCase()
+    const month = MONTH_NAMES.findIndex((item) => item.startsWith(monthName))
+    if (month >= 0) {
+      if (named[1] && named[2] && named[3]) {
+        const day = Number(named[2])
+        const year = expandYear(Number(named[3]))
+        const last = new Date(year, month + 1, 0).getDate()
+        if (day >= 1 && day <= last) {
+          return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        }
+        return null
+      }
+      const year = expandYear(Number(named[5]))
+      return `${year}-${String(month + 1).padStart(2, '0')}`
+    }
+  }
+  const parts = text.split(/[/\-.]/).map((part) => part.trim()).filter(Boolean)
+  const nums = parts.map(Number)
+  if (nums.some((n) => !Number.isFinite(n))) return null
+  if (parts.length === 2) {
+    const month = nums[0]
+    const year = expandYear(nums[1])
+    if (month >= 1 && month <= 12 && year >= 1900) {
+      return `${year}-${String(month).padStart(2, '0')}`
+    }
+    return null
+  }
+  if (parts.length === 3) {
+    const month = nums[0]
+    const day = nums[1]
+    const year = expandYear(nums[2])
+    const last = new Date(year, month, 0).getDate()
+    if (month >= 1 && month <= 12 && day >= 1 && day <= last && year >= 1900) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+  return null
+}
+
+export function promoEndYearMonth(endsOn: string | null): {
+  year: number
+  month: number
+  day: number | null
+} | null {
+  const parsed = endsOn ? parsePromoEndsOn(endsOn) : null
+  if (!parsed) return null
+  const [year, month, day] = parsed.split('-').map(Number)
+  return {
+    year,
+    month: month - 1,
+    day: parsed.length > 7 ? day : null,
+  }
+}
+
+export function formatPromoEndsOn(endsOn: string | null, short = false): string {
+  const end = promoEndYearMonth(endsOn)
+  if (!end) return ''
+  const date = new Date(end.year, end.month, end.day ?? 1)
+  if (end.day != null) {
+    return date.toLocaleDateString('en-US', {
+      month: short ? 'numeric' : 'short',
+      day: 'numeric',
+      year: short ? '2-digit' : 'numeric',
+    })
+  }
+  return date.toLocaleDateString('en-US', {
+    month: short ? 'numeric' : 'short',
+    year: short ? '2-digit' : 'numeric',
+  })
+}
+
+export function formatPromoSummary(apr: number | null, endsOn: string | null) {
+  const rate = apr == null ? '' : `${apr}%`
+  const date = formatPromoEndsOn(endsOn, true)
+  return [rate, date].filter(Boolean).join(' ')
+}
+
+/** Promo still applies in this calendar month (inclusive of the expiry month). */
+export function promoCoversMonth(
+  debt: Pick<Debt, 'promoApr' | 'promoEndsOn'>,
+  year: number,
+  month: number,
+) {
+  const end = promoEndYearMonth(debt.promoEndsOn)
+  if (end) return year * 12 + month <= end.year * 12 + end.month
+  return debt.promoApr != null
+}
+
+export function effectiveApr(
+  debt: Pick<Debt, 'apr' | 'promoApr' | 'promoEndsOn'>,
+  year: number,
+  month: number,
+) {
+  if (promoCoversMonth(debt, year, month) && debt.promoApr != null) {
+    return debt.promoApr
+  }
+  return debt.apr
+}
+
+/** Months left to pay off before the promo ends, including this month. */
+export function monthsUntilPromoEnd(
+  debt: Pick<Debt, 'promoEndsOn'>,
+  year: number,
+  month: number,
+) {
+  const end = promoEndYearMonth(debt.promoEndsOn)
+  if (!end) return null
+  const left = end.year * 12 + end.month - (year * 12 + month) + 1
+  if (left <= 0) return null
+  return left
 }
 
 export function monthlyInterest(balance: number, apr: number) {
@@ -529,6 +698,8 @@ function normalizeDebt(value: unknown): Debt | null {
     chargeAccountId,
     type,
     apr,
+    promoApr: normalizePromoApr(item.promoApr),
+    promoEndsOn: normalizePromoEndsOn(item.promoEndsOn),
     balance: item.balance,
   }
 }
@@ -901,6 +1072,8 @@ export function debtFromExpense(
       chargeAccountId: '',
       type: guessDebtType(expense.name),
       apr: 0,
+      promoApr: null,
+      promoEndsOn: null,
       balance: 0,
     }
   }
