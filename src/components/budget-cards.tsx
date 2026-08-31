@@ -70,7 +70,6 @@ import {
   MORTGAGE_CATEGORY_ID,
   VARIABLE_CATEGORY_ID,
   isCreditCardDebt,
-  estimatedCardMinimum,
   normalizeDebtType,
   ceilCents,
   ceilDollars,
@@ -3036,14 +3035,6 @@ function aprField(value: string) {
   return parsed
 }
 
-function calculatedCardMinimum(draft: Pick<DebtDraft, 'type' | 'balance' | 'apr'>) {
-  if (draft.type !== 'credit-card') return null
-  const balance = moneyField(draft.balance)
-  const apr = aprField(draft.apr)
-  if (balance == null || balance <= 0.005 || apr == null) return null
-  return estimatedCardMinimum(balance, apr)
-}
-
 function draftToDebt(
   draft: DebtDraft,
   previous: Debt | undefined,
@@ -3101,12 +3092,8 @@ export function EditDebtsDialog({
       balance: String(debt.balance),
       apr: String(debt.apr),
     }))
-    const next = loaded.map((draft) => {
-      const minimum = calculatedCardMinimum(draft)
-      return minimum == null ? draft : { ...draft, minimum: String(minimum) }
-    })
-    setDrafts(next)
-    setBaseline(debtSnapshot(next))
+    setDrafts(loaded)
+    setBaseline(debtSnapshot(loaded))
     setConfirmOpen(false)
     setRemoveId(null)
     setFocusId(null)
@@ -3167,19 +3154,7 @@ export function EditDebtsDialog({
 
   function updateDraft(id: string, patch: Partial<DebtDraft>) {
     setDrafts((current) =>
-      current.map((draft) => {
-        if (draft.id !== id) return draft
-        const next = { ...draft, ...patch }
-        if (
-          next.type === 'credit-card' &&
-          patch.minimum == null &&
-          (patch.balance != null || patch.apr != null || patch.type != null)
-        ) {
-          const minimum = calculatedCardMinimum(next)
-          if (minimum != null) next.minimum = String(minimum)
-        }
-        return next
-      }),
+      current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
     )
   }
 
@@ -3466,11 +3441,6 @@ export function EditDebtsDialog({
                   onChange={(minimum) => updateDraft(draft.id, { minimum })}
                   ariaLabel="Minimum payment"
                   roundUp
-                  title={
-                    draft.type === 'credit-card'
-                      ? '1% of remaining balance plus this month interest, rounded up'
-                      : undefined
-                  }
                 />
                 <DebtMoneyInput
                   value={draft.extraPayment}
