@@ -1,7 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Check, ChevronsUpDown, Pencil, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronsUpDown, Pencil, Plus, Trash2, X } from 'lucide-react'
 
+import { CardGearButton } from '@/components/budget-cards'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -219,6 +229,7 @@ export function AffirmCard({
   const [canDrag, setCanDrag] = useState(false)
   const [drawerLoanId, setDrawerLoanId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const drag = useRef({
     active: false,
     moved: false,
@@ -330,7 +341,13 @@ export function AffirmCard({
     <Card className="min-w-0 overflow-visible pb-0">
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
-          <CardTitle>Affirm</CardTitle>
+          <div className="flex items-center gap-0.5">
+            <CardTitle>Affirm</CardTitle>
+            <CardGearButton
+              label="Edit Affirm loans"
+              onClick={() => setEditOpen(true)}
+            />
+          </div>
           <div className="flex items-center gap-1">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -588,7 +605,421 @@ export function AffirmCard({
         }}
         onSave={saveLoan}
       />
+      <EditAffirmDialog
+        open={editOpen}
+        loans={loans}
+        now={now}
+        onOpenChange={setEditOpen}
+        onSave={onLoansChange}
+      />
     </Card>
+  )
+}
+
+const AFFIRM_EDIT_GHOST =
+  'edit-ghost-field border-transparent bg-transparent shadow-none transition-colors hover:bg-transparent focus-visible:ring-0 focus-visible:ring-transparent dark:bg-transparent dark:hover:bg-transparent'
+const AFFIRM_EDIT_BOX =
+  'edit-ghost-box rounded-lg border border-transparent transition-colors'
+const AFFIRM_EDIT_ROW =
+  'grid-cols-[7rem_6.75rem_9rem_7.25rem_6.5rem_6.5rem_7rem_28px]'
+
+type AffirmEditDraft = {
+  id: string
+  name: string
+  loanId: string
+  startDate: string
+  startMonth: string
+  startingBalance: string
+  monthly: string
+}
+
+function draftFromStored(loan: AffirmLoan): AffirmEditDraft {
+  return {
+    id: loan.id,
+    name: loan.name,
+    loanId: loan.loanId,
+    startDate: loan.startDate ?? '',
+    startMonth: loan.startMonth,
+    startingBalance: loan.startingBalance.toFixed(2),
+    monthly: loan.monthly.toFixed(2),
+  }
+}
+
+function emptyAffirmDraft(now: Date): AffirmEditDraft {
+  return {
+    id: `affirm-${crypto.randomUUID()}`,
+    name: '',
+    loanId: '',
+    startDate: dateKey(now),
+    startMonth: '',
+    startingBalance: '',
+    monthly: '',
+  }
+}
+
+function previewAffirmDraft(draft: AffirmEditDraft, now: Date) {
+  const startingBalance = parseUsdInput(draft.startingBalance)
+  const monthly = parseUsdInput(draft.monthly)
+  if (startingBalance == null || monthly == null) return null
+  if (!draft.startDate && !draft.startMonth) return null
+  return completeAffirmLoan(
+    {
+      id: draft.id,
+      name: draft.name,
+      loanId: draft.loanId,
+      startDate: draft.startDate || undefined,
+      startMonth: draft.startMonth || undefined,
+      startingBalance,
+      monthly,
+    },
+    now,
+  )
+}
+
+function isBlankAffirmDraft(draft: AffirmEditDraft) {
+  return (
+    draft.name.trim() === '' &&
+    draft.loanId.trim() === '' &&
+    draft.startingBalance.trim() === '' &&
+    draft.monthly.trim() === ''
+  )
+}
+
+function EditAffirmDialog({
+  open,
+  loans,
+  now,
+  onOpenChange,
+  onSave,
+}: {
+  open: boolean
+  loans: AffirmLoan[]
+  now: Date
+  onOpenChange: (open: boolean) => void
+  onSave: (loans: AffirmLoan[]) => void
+}) {
+  const [drafts, setDrafts] = useState<AffirmEditDraft[]>([])
+  const [baseline, setBaseline] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [removeId, setRemoveId] = useState<string | null>(null)
+  const [focusId, setFocusId] = useState<string | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const loaded = loans.map(draftFromStored)
+    setDrafts(loaded)
+    setBaseline(JSON.stringify(loaded))
+    setConfirmOpen(false)
+    setRemoveId(null)
+    setFocusId(null)
+  }, [open, loans])
+
+  const dirty = JSON.stringify(drafts) !== baseline
+  const existingIds = useMemo(() => new Set(loans.map((loan) => loan.id)), [loans])
+  const filled = drafts.filter(
+    (draft) => existingIds.has(draft.id) || !isBlankAffirmDraft(draft),
+  )
+  const canSubmit =
+    dirty &&
+    filled.every((draft) => {
+      const startingBalance = parseUsdInput(draft.startingBalance)
+      const monthly = parseUsdInput(draft.monthly)
+      return (
+        startingBalance != null &&
+        monthly != null &&
+        (draft.startDate !== '' || draft.startMonth !== '')
+      )
+    })
+  const removeTarget = removeId
+    ? drafts.find((draft) => draft.id === removeId)
+    : undefined
+
+  function updateDraft(id: string, patch: Partial<AffirmEditDraft>) {
+    setDrafts((current) =>
+      current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
+    )
+  }
+
+  function closeClean() {
+    setConfirmOpen(false)
+    setRemoveId(null)
+    onOpenChange(false)
+  }
+
+  function requestClose() {
+    if (confirmOpen || removeId) return
+    if (dirty) {
+      setConfirmOpen(true)
+      return
+    }
+    closeClean()
+  }
+
+  function requestRemove(id: string) {
+    const draft = drafts.find((item) => item.id === id)
+    if (!draft) return
+    if (existingIds.has(id) || !isBlankAffirmDraft(draft)) {
+      setRemoveId(id)
+      return
+    }
+    setDrafts((current) => current.filter((item) => item.id !== id))
+  }
+
+  function handleSave() {
+    if (!canSubmit) return
+    const next = filled
+      .map((draft) => previewAffirmDraft(draft, now))
+      .filter((item): item is AffirmLoan => item != null)
+    onSave(sortAffirmLoans(next))
+    closeClean()
+  }
+
+  function addRow() {
+    const row = emptyAffirmDraft(now)
+    setFocusId(row.id)
+    setDrafts((current) => [...current, row])
+  }
+
+  return (
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) onOpenChange(true)
+        }}
+      >
+        <DialogContent
+          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-3.5 sm:max-w-none"
+          showCloseButton={false}
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onPointerDownOutside={(event) => {
+            event.preventDefault()
+            if (confirmOpen || removeId) return
+            requestClose()
+          }}
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault()
+            if (removeId) {
+              setRemoveId(null)
+              return
+            }
+            if (confirmOpen) {
+              setConfirmOpen(false)
+              return
+            }
+            requestClose()
+          }}
+        >
+          <div className="-ml-3.5 -mr-4 border-b pr-4 pb-4 pl-3.5">
+            <div className="flex items-center justify-between gap-3">
+              <DialogHeader>
+                <DialogTitle className="pl-2.5 text-2xl tracking-tight">
+                  Edit Affirm
+                </DialogTitle>
+              </DialogHeader>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="bg-white gap-1"
+                onClick={addRow}
+              >
+                <Plus className="size-3.5" />
+                Add loan
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-5 max-h-[min(70vh,40rem)] overflow-x-auto overflow-y-auto">
+            <div
+              className={cn(
+                'grid items-center gap-3 py-1 text-xs font-medium text-muted-foreground',
+                AFFIRM_EDIT_ROW,
+              )}
+            >
+              <span className="pl-2.5">Name</span>
+              <span className="pl-2.5">Loan ID</span>
+              <span className="pl-2.5">Starting date</span>
+              <span className="pr-2.5 text-right">Starting balance</span>
+              <span className="pr-2.5 text-right">Monthly</span>
+              <span className="pr-2.5 text-right">Last payment</span>
+              <span className="pr-2.5 text-right">Current balance</span>
+              <span />
+            </div>
+            {drafts.map((draft) => {
+              const preview = previewAffirmDraft(draft, now)
+              return (
+                <div
+                  key={draft.id}
+                  className={cn('grid items-center gap-3 py-1', AFFIRM_EDIT_ROW)}
+                >
+                  <Input
+                    className={cn('h-8', AFFIRM_EDIT_GHOST)}
+                    value={draft.name}
+                    onChange={(event) =>
+                      updateDraft(draft.id, { name: event.target.value })
+                    }
+                    placeholder="Name"
+                    aria-label="Name"
+                    autoFocus={focusId === draft.id}
+                  />
+                  <Input
+                    className={cn('h-8', AFFIRM_EDIT_GHOST)}
+                    value={draft.loanId}
+                    onChange={(event) =>
+                      updateDraft(draft.id, { loanId: event.target.value })
+                    }
+                    placeholder="Loan ID"
+                    aria-label="Loan ID"
+                  />
+                  <Input
+                    type="date"
+                    className={cn('h-8', AFFIRM_EDIT_GHOST)}
+                    value={draft.startDate}
+                    onChange={(event) =>
+                      updateDraft(draft.id, { startDate: event.target.value })
+                    }
+                    aria-label="Starting date"
+                  />
+                  <AffirmGhostMoney
+                    value={draft.startingBalance}
+                    onChange={(startingBalance) =>
+                      updateDraft(draft.id, { startingBalance })
+                    }
+                    ariaLabel="Starting balance"
+                  />
+                  <AffirmGhostMoney
+                    value={draft.monthly}
+                    onChange={(monthly) => updateDraft(draft.id, { monthly })}
+                    ariaLabel="Monthly payment"
+                  />
+                  <p className="pr-2.5 text-right text-sm tabular-nums">
+                    {preview?.lastPayment ? formatYm(preview.lastPayment) : '—'}
+                  </p>
+                  <p className="pr-2.5 text-right text-sm tabular-nums">
+                    {preview ? formatUsd(preview.remaining) : '—'}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground justify-self-end hover:bg-transparent"
+                    onClick={() => requestRemove(draft.id)}
+                    title="Remove loan"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              )
+            })}
+          </div>
+
+          <DialogFooter className="-ml-3.5 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={requestClose}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={!canSubmit} onClick={handleSave}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogDescription>
+              You have unsaved edits. If you cancel, that information will be
+              lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+            >
+              Keep editing
+            </Button>
+            <Button type="button" variant="destructive" onClick={closeClean}>
+              Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!removeId}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setRemoveId(null)
+        }}
+      >
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Remove loan?</DialogTitle>
+            <DialogDescription>
+              {removeTarget?.name || removeTarget?.loanId
+                ? `Removing “${removeTarget.name || removeTarget.loanId}” will delete it from this list.`
+                : 'Removing this loan will delete it from this list.'}{' '}
+              This can&apos;t be undone from here.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRemoveId(null)}
+            >
+              Keep loan
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (!removeId) return
+                setDrafts((current) =>
+                  current.filter((item) => item.id !== removeId),
+                )
+                setRemoveId(null)
+              }}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function AffirmGhostMoney({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: string
+  onChange: (value: string) => void
+  ariaLabel: string
+}) {
+  return (
+    <div className={cn('flex h-8 items-center justify-end px-2.5', AFFIRM_EDIT_BOX)}>
+      <span className="shrink-0 pr-0.5 text-sm text-neutral-400">$</span>
+      <input
+        className="placeholder:text-muted-foreground h-full w-full min-w-0 bg-transparent text-right text-sm tabular-nums outline-none"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="0.00"
+        inputMode="decimal"
+        aria-label={ariaLabel}
+      />
+    </div>
   )
 }
 
