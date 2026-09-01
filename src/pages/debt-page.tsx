@@ -47,6 +47,7 @@ import {
   applyPlannerMonthValue,
   monthWithLineValue,
   type PlannerValueField,
+  chargeOverride,
   interestOverride,
   monthKey,
   paymentOverride,
@@ -170,7 +171,6 @@ export function DebtPage() {
           interestPaid={interestPaid}
           history={history}
           upcoming={upcoming}
-          now={now}
           onPlanChange={setPlan}
         />
 
@@ -219,7 +219,6 @@ function PlannerCard({
   interestPaid,
   history,
   upcoming,
-  now,
   onPlanChange,
 }: {
   debts: Debt[]
@@ -228,7 +227,6 @@ function PlannerCard({
   interestPaid: number
   history: PlannerMonth[]
   upcoming: PlannerMonth[]
-  now: Date
   onPlanChange: (plan: DebtPlanState) => void
 }) {
   const [view, setView] = useState<PlannerView>('planner')
