@@ -12,7 +12,7 @@ import {
 import { totalMonthlyExpenses } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
 import { formatUsdWhole, formatUsdWholeUp } from '@/lib/format'
-import { currentMonthNet } from '@/lib/income'
+import { averageMonthlyNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
 
 export function DashboardPage() {
@@ -20,7 +20,7 @@ export function DashboardPage() {
   const { expenses } = useBudget()
 
   const income = useMemo(
-    () => Math.round(currentMonthNet(paystubs)),
+    () => Math.round(averageMonthlyNet(paystubs, new Date().getFullYear())),
     [paystubs],
   )
   const expenseTotal = useMemo(
