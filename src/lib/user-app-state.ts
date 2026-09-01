@@ -4,6 +4,7 @@ import {
   parseBudgetState,
   saveBudget,
   type BudgetState,
+  type Debt,
 } from '@/lib/budget'
 import {
   loadDebtPlan,
@@ -189,16 +190,113 @@ function applyLocal(state: UserAppState) {
   cache = state
 }
 
+function monthMapFilled(month: Record<string, number> | undefined) {
+  if (!month) return 0
+  return Object.values(month).filter((value) => Math.abs(value) > 0.005).length
+}
+
+function mergeMonthMaps(
+  left: Record<string, Record<string, number>>,
+  right: Record<string, Record<string, number>>,
+) {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)])
+  const merged: Record<string, Record<string, number>> = {}
+  for (const key of keys) {
+    const a = left[key]
+    const b = right[key]
+    if (!a) merged[key] = b
+    else if (!b) merged[key] = a
+    else merged[key] = monthMapFilled(b) >= monthMapFilled(a) ? b : a
+  }
+  return merged
+}
+
+function mergeDebts(remote: Debt[], local: Debt[]) {
+  const byId = new Map<string, Debt>()
+  for (const debt of remote) byId.set(debt.id, debt)
+  for (const debt of local) {
+    const existing = byId.get(debt.id)
+    if (!existing) {
+      byId.set(debt.id, debt)
+      continue
+    }
+    if (existing.balance <= 0.005 && debt.balance > 0.005) {
+      byId.set(debt.id, debt)
+    }
+  }
+  return [...byId.values()]
+}
+
+function mergeBudgets(remote: BudgetState, local: BudgetState): BudgetState {
+  const remoteExpenses = remote.expenses.length
+  const localExpenses = local.expenses.length
+  return {
+    accounts:
+      remote.accounts.length >= local.accounts.length
+        ? remote.accounts
+        : local.accounts,
+    expenses: remoteExpenses >= localExpenses ? remote.expenses : local.expenses,
+    debts: mergeDebts(remote.debts, local.debts),
+    categories:
+      remote.categories.length >= local.categories.length
+        ? remote.categories
+        : local.categories,
+  }
+}
+
+function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPlanState {
+  const loggedMonths = [
+    ...new Set([...(remote.loggedMonths ?? []), ...(local.loggedMonths ?? [])]),
+  ].sort()
+  const history = { ...(remote.loggedHistory ?? {}) }
+  for (const [key, snapshot] of Object.entries(local.loggedHistory ?? {})) {
+    if (!history[key]) history[key] = snapshot
+  }
+  return {
+    ...remote,
+    customOrder:
+      remote.customOrder.length > 0 ? remote.customOrder : local.customOrder,
+    affirmLoans:
+      remote.affirmLoans.length >= local.affirmLoans.length
+        ? remote.affirmLoans
+        : local.affirmLoans,
+    loggedMonths,
+    loggedHistory: history,
+    paymentsByMonth: mergeMonthMaps(
+      remote.paymentsByMonth,
+      local.paymentsByMonth,
+    ),
+    chargesByMonth: mergeMonthMaps(remote.chargesByMonth, local.chargesByMonth),
+    interestByMonth: mergeMonthMaps(
+      remote.interestByMonth,
+      local.interestByMonth,
+    ),
+    recurringCharges:
+      Object.keys(remote.recurringCharges).length >=
+      Object.keys(local.recurringCharges).length
+        ? remote.recurringCharges
+        : local.recurringCharges,
+  }
+}
+
+function mergeAppState(remote: UserAppState, local: UserAppState): UserAppState {
+  return {
+    budget: mergeBudgets(remote.budget, local.budget),
+    plan: mergePlans(remote.plan, local.plan),
+  }
+}
+
 export function syncUserAppStateFromCloud() {
   if (!inflight) {
     inflight = (async () => {
+      const local = localAppState()
       const remote = await fetchUserAppState()
       if (remote) {
-        applyLocal(remote)
-        await upsertPaystubAppState(remote)
-        return remote
+        const merged = mergeAppState(remote, local)
+        applyLocal(merged)
+        await upsertUserAppState(merged)
+        return merged
       }
-      const local = localAppState()
       applyLocal(local)
       await upsertUserAppState(local)
       return local
