@@ -105,6 +105,7 @@ import {
 } from '@/lib/budget'
 import { useDebtPlan } from '@/lib/debt-plan-context'
 import {
+  AFFIRM_DEBT_ID,
   payoffMonth,
   plannedCurrentBalances,
   projectDebtPlan,
@@ -474,6 +475,28 @@ function DebtMoneyInput({
         inputMode={whole ? 'numeric' : 'decimal'}
         aria-label={ariaLabel}
       />
+    </div>
+  )
+}
+
+function DebtLockedText({
+  children,
+  ariaLabel,
+  align = 'left',
+}: {
+  children: ReactNode
+  ariaLabel: string
+  align?: 'left' | 'right'
+}) {
+  return (
+    <div
+      className={cn(
+        'flex h-8 cursor-default items-center px-2.5 text-sm',
+        align === 'right' && 'justify-end tabular-nums',
+      )}
+      aria-label={ariaLabel}
+    >
+      {children}
     </div>
   )
 }
@@ -3663,6 +3686,7 @@ export function EditDebtsDialog({
   }, [open, drafts, previousById, expenses, monthlyNet, now, plan])
 
   function updateDraft(id: string, patch: Partial<DebtDraft>) {
+    if (id === AFFIRM_DEBT_ID) return
     setDrafts((current) =>
       current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
     )
@@ -3706,6 +3730,7 @@ export function EditDebtsDialog({
   }
 
   function requestRemove(id: string) {
+    if (id === AFFIRM_DEBT_ID) return
     const draft = drafts.find((item) => item.id === id)
     if (!draft) return
     if (
@@ -3727,6 +3752,7 @@ export function EditDebtsDialog({
     if (!canSubmit) return
     const previous = new Map(debts.map((debt) => [debt.id, debt]))
     const kept = filled
+      .filter((draft) => draft.id !== AFFIRM_DEBT_ID)
       .map((draft) => draftToDebt(draft, previous.get(draft.id)))
       .filter((item): item is Debt => item != null)
     replaceDebts(kept)
@@ -3871,106 +3897,175 @@ export function EditDebtsDialog({
               </span>
               <span />
             </div>
-            {listedDrafts.map((draft) => (
+            {listedDrafts.map((draft) => {
+              const locked = draft.id === AFFIRM_DEBT_ID
+              const paidFromName =
+                accounts.find((account) => account.id === draft.paidFromAccountId)
+                  ?.name ?? '—'
+              return (
               <div
                 key={draft.id}
                 className={cn('grid items-center gap-3 py-1', DEBT_ROW)}
+                title={
+                  locked
+                    ? 'Affirm is set from the Affirm loans chart'
+                    : undefined
+                }
               >
-                <Input
-                  className={cn('h-8', EDIT_GHOST_FIELD)}
-                  value={draft.lender}
-                  onChange={(event) =>
-                    updateDraft(draft.id, { lender: event.target.value })
-                  }
-                  placeholder="Lender"
-                  aria-label="Lender"
-                  autoFocus={focusId === draft.id}
-                />
-                <DebtTypeSelect
-                  value={draft.type}
-                  onChange={(type) => updateDraft(draft.id, { type })}
-                  quiet
-                />
-                <BankSelect
-                  accounts={accounts}
-                  value={draft.paidFromAccountId}
-                  onChange={(id) =>
-                    updateDraft(draft.id, { paidFromAccountId: id })
-                  }
-                  includeCards={false}
-                  quiet
-                  hideLastFour
-                  ariaLabel="Paid from"
-                  placeholder="Paid from"
-                />
-                <PromoField
-                  apr={draft.promoApr}
-                  endsOn={draft.promoEndsOn}
-                  onChange={(next) =>
-                    updateDraft(draft.id, {
-                      ...(next.apr != null ? { promoApr: next.apr } : {}),
-                      ...(next.endsOn != null ? { promoEndsOn: next.endsOn } : {}),
-                    })
-                  }
-                />
-                <AprInput
-                  value={draft.apr}
-                  onChange={(apr) => updateDraft(draft.id, { apr })}
-                />
+                {locked ? (
+                  <DebtLockedText ariaLabel="Lender">{draft.lender}</DebtLockedText>
+                ) : (
+                  <Input
+                    className={cn('h-8', EDIT_GHOST_FIELD)}
+                    value={draft.lender}
+                    onChange={(event) =>
+                      updateDraft(draft.id, { lender: event.target.value })
+                    }
+                    placeholder="Lender"
+                    aria-label="Lender"
+                    autoFocus={focusId === draft.id}
+                  />
+                )}
+                {locked ? (
+                  <DebtLockedText ariaLabel="Debt type">
+                    {draft.type === 'loan' ? 'Loan' : 'Credit card'}
+                  </DebtLockedText>
+                ) : (
+                  <DebtTypeSelect
+                    value={draft.type}
+                    onChange={(type) => updateDraft(draft.id, { type })}
+                    quiet
+                  />
+                )}
+                {locked ? (
+                  <DebtLockedText ariaLabel="Paid from">{paidFromName}</DebtLockedText>
+                ) : (
+                  <BankSelect
+                    accounts={accounts}
+                    value={draft.paidFromAccountId}
+                    onChange={(id) =>
+                      updateDraft(draft.id, { paidFromAccountId: id })
+                    }
+                    includeCards={false}
+                    quiet
+                    hideLastFour
+                    ariaLabel="Paid from"
+                    placeholder="Paid from"
+                  />
+                )}
+                {locked ? (
+                  <DebtLockedText ariaLabel="Promos">—</DebtLockedText>
+                ) : (
+                  <PromoField
+                    apr={draft.promoApr}
+                    endsOn={draft.promoEndsOn}
+                    onChange={(next) =>
+                      updateDraft(draft.id, {
+                        ...(next.apr != null ? { promoApr: next.apr } : {}),
+                        ...(next.endsOn != null ? { promoEndsOn: next.endsOn } : {}),
+                      })
+                    }
+                  />
+                )}
+                {locked ? (
+                  <DebtLockedText ariaLabel="APR" align="right">
+                    {draft.apr || '0'}%
+                  </DebtLockedText>
+                ) : (
+                  <AprInput
+                    value={draft.apr}
+                    onChange={(apr) => updateDraft(draft.id, { apr })}
+                  />
+                )}
                 <DebtColRule />
-                <DebtMoneyInput
-                  value={draft.minimum}
-                  onChange={(minimum) => updateDraft(draft.id, { minimum })}
-                  ariaLabel="Minimum payment"
-                  roundUp
-                />
-                <DebtMoneyInput
-                  value={draft.extraPayment}
-                  onChange={(extraPayment) =>
-                    updateDraft(draft.id, { extraPayment })
-                  }
-                  ariaLabel="Extra payment"
-                />
+                {locked ? (
+                  <DebtMoneyDisplay
+                    amount={moneyField(draft.minimum) ?? 0}
+                    ariaLabel="Minimum payment"
+                    whole
+                  />
+                ) : (
+                  <DebtMoneyInput
+                    value={draft.minimum}
+                    onChange={(minimum) => updateDraft(draft.id, { minimum })}
+                    ariaLabel="Minimum payment"
+                    roundUp
+                  />
+                )}
+                {locked ? (
+                  <DebtMoneyDisplay
+                    amount={moneyField(draft.extraPayment) ?? 0}
+                    ariaLabel="Extra payment"
+                  />
+                ) : (
+                  <DebtMoneyInput
+                    value={draft.extraPayment}
+                    onChange={(extraPayment) =>
+                      updateDraft(draft.id, { extraPayment })
+                    }
+                    ariaLabel="Extra payment"
+                  />
+                )}
                 <ChargesBreakdown
                   amount={chargesAmount(draft)}
                   items={chargeExpensesForDebt(expenses, { id: draft.id })}
                   hiddenItems={hiddenChargeExpensesForDebt(expenses, { id: draft.id })}
                 />
-                <DebtMoneyInput
-                  value={
-                    totalFocusId === draft.id
-                      ? totalText
-                      : String(computedTotal(draft))
-                  }
-                  onChange={(value) => handleTotalChange(draft, value)}
-                  ariaLabel="Total payments"
-                  roundUp
-                  whole
-                />
+                {locked ? (
+                  <DebtMoneyDisplay
+                    amount={computedTotal(draft)}
+                    ariaLabel="Total payments"
+                    whole
+                  />
+                ) : (
+                  <DebtMoneyInput
+                    value={
+                      totalFocusId === draft.id
+                        ? totalText
+                        : String(computedTotal(draft))
+                    }
+                    onChange={(value) => handleTotalChange(draft, value)}
+                    ariaLabel="Total payments"
+                    roundUp
+                    whole
+                  />
+                )}
                 <DebtColRule />
-                <DebtMoneyInput
-                  value={draft.balance}
-                  onChange={(balance) => updateDraft(draft.id, { balance })}
-                  ariaLabel="Starting balance"
-                />
+                {locked ? (
+                  <DebtMoneyDisplay
+                    amount={moneyField(draft.balance) ?? 0}
+                    ariaLabel="Starting balance"
+                  />
+                ) : (
+                  <DebtMoneyInput
+                    value={draft.balance}
+                    onChange={(balance) => updateDraft(draft.id, { balance })}
+                    ariaLabel="Starting balance"
+                  />
+                )}
                 <DebtMoneyDisplay
                   amount={
                     currentById.get(draft.id) ?? moneyField(draft.balance) ?? 0
                   }
                   ariaLabel="Current balance"
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-muted-foreground justify-self-end hover:bg-transparent"
-                  onClick={() => requestRemove(draft.id)}
-                  title="Remove debt"
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
+                {locked ? (
+                  <span />
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground justify-self-end hover:bg-transparent"
+                    onClick={() => requestRemove(draft.id)}
+                    title="Remove debt"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                )}
               </div>
-            ))}
+              )
+            })}
           </div>
 
           <DialogFooter className="-ml-3.5 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">

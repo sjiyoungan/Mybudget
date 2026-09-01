@@ -24,7 +24,7 @@ import {
   type ExpenseCategoryGroup,
   type RecurringExpense,
 } from '@/lib/budget'
-import { debtsWithAffirmPlan, loadDebtPlan } from '@/lib/debt-plan'
+import { AFFIRM_DEBT_ID, debtsWithAffirmPlan, loadDebtPlan } from '@/lib/debt-plan'
 import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
 import {
@@ -245,6 +245,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         )
       },
       removeDebt(id) {
+        if (id === AFFIRM_DEBT_ID) return
         setState((current) =>
           withLinkedDebts(
             current,
@@ -253,7 +254,16 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         )
       },
       replaceDebts(debts) {
-        setState((current) => withLinkedDebts(current, debts))
+        setState((current) => {
+          const storedAffirm = current.debts.find(
+            (item) => item.id === AFFIRM_DEBT_ID,
+          )
+          const next = debts.filter((item) => item.id !== AFFIRM_DEBT_ID)
+          return withLinkedDebts(
+            current,
+            storedAffirm ? [...next, storedAffirm] : next,
+          )
+        })
       },
     }),
     [state],
