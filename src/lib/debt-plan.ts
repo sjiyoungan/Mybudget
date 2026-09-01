@@ -540,20 +540,30 @@ export function resolveCustomOrder(debtIds: string[], order: string[]) {
   return [...kept, ...missing]
 }
 
-/** Stable 1st-to-last extra-payment order. Highest interest is re-ranked each month. */
+/** Extra-payment order. Snowball uses the balances you pass (this month's remaining). */
 export function strategyDebtOrder(
   debts: Debt[],
   plan: DebtPlanState,
   now = new Date(),
+  currentBalances?: Map<string, number>,
 ) {
   if (plan.strategy === 'highest-interest') return [...debts]
-  const startBalances = new Map(debts.map((debt) => [debt.id, debt.balance]))
+  const startBalances = new Map(
+    debts.map((debt) => [
+      debt.id,
+      currentBalances?.get(debt.id) ?? debt.balance,
+    ]),
+  )
   const year = now.getFullYear()
   const month = now.getMonth()
   const interestById = new Map(
     debts.map((debt) => [
       debt.id,
-      roundCents((debt.balance * (effectiveApr(debt, year, month) / 100)) / 12),
+      roundCents(
+        ((startBalances.get(debt.id) ?? 0) *
+          (effectiveApr(debt, year, month) / 100)) /
+          12,
+      ),
     ]),
   )
   return extraPaymentOrder(debts, plan, startBalances, interestById)
@@ -756,6 +766,7 @@ export function applyPlannerMonthValue(
   field: PlannerValueField,
   amount: number | null,
 ): DebtPlanState {
+  if (debtId === AFFIRM_DEBT_ID) return plan
   let next = plan
   if (field === 'interest') {
     next = setMonthInterest(next, year, month, debtId, amount)
@@ -896,6 +907,7 @@ function rebaseLoggedHistory(
     )
   }
   const opening = new Map(debts.map((debt) => [debt.id, debt.balance]))
+  opening.delete(AFFIRM_DEBT_ID)
   const startKey = plan.planStartMonth || FRESH_PLAN_START
   const running = new Map(opening)
   return Object.values(plan.loggedHistory ?? {})
@@ -909,6 +921,26 @@ function rebaseLoggedHistory(
     })
 }
 
+function affirmStartForMonth(
+  loans: AffirmLoan[],
+  year: number,
+  month: number,
+  now: Date,
+) {
+  const live = affirmOpenRemaining(loans, now)
+  const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
+  const idx = ymIndex(year, month)
+  if (idx >= nowIdx) return live
+  let start = live
+  for (let step = idx; step < nowIdx; step += 1) {
+    start += affirmMonthTotal(
+      loans,
+      monthKey(Math.floor(step / 12), step % 12),
+    )
+  }
+  return roundCents(start)
+}
+
 function applyLoggedHistoryToBalances(
   plan: DebtPlanState,
   debts: Debt[],
@@ -917,7 +949,10 @@ function applyLoggedHistoryToBalances(
 ) {
   for (const row of rebaseLoggedHistory(plan, debts)) {
     if (ymIndex(row.year, row.month) >= beforeIdx) break
-    for (const line of row.lines) balances.set(line.debtId, line.balance)
+    for (const line of row.lines) {
+      if (line.debtId === AFFIRM_DEBT_ID) continue
+      balances.set(line.debtId, line.balance)
+    }
   }
 }
 
@@ -1063,7 +1098,6 @@ export function projectDebtPlan(
     return month
   })
   const balances = new Map(debts.map((debt) => [debt.id, debt.balance]))
-  const ranked = strategyDebtOrder(debts, plan)
   const projected: PlannerMonth[] = []
   const startAt = firstUnloggedPlannerMonth(plan, now)
   const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
@@ -1084,7 +1118,10 @@ export function projectDebtPlan(
     let totalInterest = 0
 
     for (const debt of debts) {
-      const start = balances.get(debt.id) ?? 0
+      let start = balances.get(debt.id) ?? 0
+      if (debt.id === AFFIRM_DEBT_ID && monthIdx <= nowIdx) {
+        start = affirmStartForMonth(plan.affirmLoans, year, month, now)
+      }
       if (start <= 0.005) {
         balances.set(debt.id, 0)
         afterInterest.set(debt.id, 0)
@@ -1142,7 +1179,6 @@ export function projectDebtPlan(
 
     const applyExtra = monthIdx >= nowIdx && locked.size === 0
     let leftover = applyExtra ? extraPool(plan, debts, payments, locked) : 0
-    const owingIds = new Set(owing.map((debt) => debt.id))
     const unlocked = owing.filter(
       (debt) => !locked.has(debt.id) && debt.id !== AFFIRM_DEBT_ID,
     )
@@ -1169,20 +1205,12 @@ export function projectDebtPlan(
       payments.set(debt.id, roundCents(already + add))
       leftover = roundCents(leftover - add)
     }
-    const waterfall =
-      plan.strategy === 'highest-interest'
-        ? extraPaymentOrder(
-            unlocked,
-            plan,
-            balances,
-            new Map(lines.map((line) => [line.debtId, line.interest])),
-          )
-        : ranked.filter(
-            (debt) =>
-              owingIds.has(debt.id) &&
-              !locked.has(debt.id) &&
-              debt.id !== AFFIRM_DEBT_ID,
-          )
+    const waterfall = extraPaymentOrder(
+      unlocked,
+      plan,
+      balances,
+      new Map(lines.map((line) => [line.debtId, line.interest])),
+    )
     for (const debt of waterfall) {
       if (leftover <= 0) break
       const due = afterInterest.get(debt.id) ?? 0

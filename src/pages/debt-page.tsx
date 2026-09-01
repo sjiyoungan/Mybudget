@@ -49,6 +49,7 @@ import { useDebtPlan } from '@/lib/debt-plan-context'
 import {
   PAYOFF_STRATEGIES,
   debtFreeLabel,
+  AFFIRM_DEBT_ID,
   debtsWithAffirmPlan,
   debtsWithHistoryAccounts,
   historyRows,
@@ -323,7 +324,14 @@ function PlannerCard({
   const [undoStack, setUndoStack] = useState<DebtPlanState[]>([])
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const discardPaidCommit = useRef(false)
-  const ordered = useMemo(() => strategyDebtOrder(debts, plan), [debts, plan])
+  const ordered = useMemo(() => {
+    const current = new Map<string, number>()
+    const first = upcoming[0]
+    if (first) {
+      for (const line of first.lines) current.set(line.debtId, line.start)
+    }
+    return strategyDebtOrder(debts, plan, now, current)
+  }, [debts, now, plan, upcoming])
   const columns = useMemo(
     () =>
       view === 'planner'
@@ -1400,6 +1408,59 @@ function MonthBlock({
     return (line?.paid ?? 0) > 0.005 && (line?.balance ?? 0) <= 0.005
   }
 
+  function editField(
+    debt: { id: string },
+    field: 'interest' | 'charged' | 'paid',
+    extras?: { muted?: boolean },
+  ) {
+    const line = paidById.get(debt.id)
+    const value =
+      field === 'interest'
+        ? (line?.interest ?? 0)
+        : field === 'charged'
+          ? (line?.charged ?? 0)
+          : (line?.paid ?? 0)
+    if (debt.id === AFFIRM_DEBT_ID) {
+      return (
+        <AmountCell
+          key={`${debt.id}-${field}`}
+          value={value}
+          detailKey={`${row.year}-${row.month}-${debt.id}`}
+          detail={line}
+          muted={extras?.muted}
+          faint
+        />
+      )
+    }
+    return (
+      <PaidCell
+        key={`${debt.id}-${field}`}
+        debtId={debt.id}
+        field={field}
+        value={value}
+        detailKey={`${row.year}-${row.month}-${debt.id}`}
+        detail={line}
+        overridden={
+          field === 'interest'
+            ? interestOverride(plan, debt.id, row.year, row.month) != null
+            : field === 'charged'
+              ? chargeOverride(plan, debt.id, row.year, row.month) != null
+              : paymentOverride(plan, debt.id, row.year, row.month) != null
+        }
+        muted={extras?.muted}
+        onCommit={(next) => {
+          if (field === 'interest') {
+            onInterestChange(row.year, row.month, debt.id, next)
+          } else if (field === 'charged') {
+            onChargeChange(row.year, row.month, debt.id, next)
+          } else {
+            onPaidChange(row.year, row.month, debt.id, next)
+          }
+        }}
+      />
+    )
+  }
+
   return (
     <>
       {showStart ? (
@@ -1445,25 +1506,7 @@ function MonthBlock({
         {editing ? (
           <>
             <LabelCell>Interest</LabelCell>
-            {debts.map((debt) => {
-              const line = paidById.get(debt.id)
-              return (
-                <PaidCell
-                  key={`${debt.id}-interest`}
-                  debtId={debt.id}
-                  field="interest"
-                  value={line?.interest ?? 0}
-                  detailKey={`${row.year}-${row.month}-${debt.id}`}
-                  detail={line}
-                  overridden={
-                    interestOverride(plan, debt.id, row.year, row.month) != null
-                  }
-                  onCommit={(next) => {
-                    onInterestChange(row.year, row.month, debt.id, next)
-                  }}
-                />
-              )
-            })}
+            {debts.map((debt) => editField(debt, 'interest'))}
             <td className="total-rule py-1.5 pr-4 pl-4 text-right tabular-nums">
               {plannerUsd(row.totalInterest)}
             </td>
@@ -1495,26 +1538,7 @@ function MonthBlock({
         <>
           <tr className="month-edit-row">
             <LabelCell>Charged</LabelCell>
-            {debts.map((debt) => {
-              const line = paidById.get(debt.id)
-              return (
-                <PaidCell
-                  key={`${debt.id}-charged`}
-                  debtId={debt.id}
-                  field="charged"
-                  value={line?.charged ?? 0}
-                  detailKey={`${row.year}-${row.month}-${debt.id}`}
-                  detail={line}
-                  overridden={
-                    chargeOverride(plan, debt.id, row.year, row.month) != null
-                  }
-                  muted
-                  onCommit={(next) => {
-                    onChargeChange(row.year, row.month, debt.id, next)
-                  }}
-                />
-              )
-            })}
+            {debts.map((debt) => editField(debt, 'charged', { muted: true }))}
             <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
               {plannerUsd(
                 row.lines.reduce((sum, line) => sum + line.charged, 0),
@@ -1523,25 +1547,7 @@ function MonthBlock({
           </tr>
           <tr className="month-edit-row">
             <LabelCell>Paid</LabelCell>
-            {debts.map((debt) => {
-              const line = paidById.get(debt.id)
-              return (
-                <PaidCell
-                  key={`${debt.id}-paid`}
-                  debtId={debt.id}
-                  field="paid"
-                  value={line?.paid ?? 0}
-                  detailKey={`${row.year}-${row.month}-${debt.id}`}
-                  detail={line}
-                  overridden={
-                    paymentOverride(plan, debt.id, row.year, row.month) != null
-                  }
-                  onCommit={(next) => {
-                    onPaidChange(row.year, row.month, debt.id, next)
-                  }}
-                />
-              )
-            })}
+            {debts.map((debt) => editField(debt, 'paid'))}
             <td className="total-rule py-1.5 pr-4 pl-4 text-right tabular-nums">
               {plannerUsd(row.totalPaid)}
             </td>
@@ -1915,7 +1921,8 @@ function applyFocusedPaidInput(plan: DebtPlanState, row: PlannerMonth) {
   if (
     !(focused instanceof HTMLInputElement) ||
     !focused.classList.contains('paid-input') ||
-    !focused.dataset.debtId
+    !focused.dataset.debtId ||
+    focused.dataset.debtId === AFFIRM_DEBT_ID
   ) {
     return { plan, row }
   }
