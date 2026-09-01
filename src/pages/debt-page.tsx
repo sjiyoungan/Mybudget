@@ -169,11 +169,11 @@ export function DebtPage() {
     [allDebts, expenses, planForMath, now],
   )
   const upcoming = plannerRows(months, plan, now)
-  const history = historyRows(months, plan, now)
+  const history = historyRows(months, plan, now, allDebts)
   const freeOn = debtFreeLabel(months)
   const metricMonths = useMemo(
-    () => actualDebtMetricMonths(months, plan, now),
-    [months, plan, now],
+    () => actualDebtMetricMonths(months, plan, now, allDebts),
+    [allDebts, months, plan, now],
   )
   const years = useMemo(
     () => plannerMetricYears(metricMonths, now),
@@ -187,10 +187,10 @@ export function DebtPage() {
   const yearStats = useMemo(
     () =>
       yearDebtSummary(
-        debtMetricMonths(months, plan, selectedYear, now),
+        debtMetricMonths(months, plan, selectedYear, now, allDebts),
         selectedYear,
       ),
-    [months, now, plan, selectedYear],
+    [allDebts, months, now, plan, selectedYear],
   )
 
   return (

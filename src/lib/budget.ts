@@ -73,6 +73,8 @@ export type BudgetState = {
   categories: ExpenseCategoryGroup[]
   expenses: RecurringExpense[]
   debts: Debt[]
+  /** Set when the user saves budget edits. Cloud merge prefers the newer copy. */
+  updatedAt?: string
 }
 
 type SheetBankAccount = {
@@ -739,6 +741,10 @@ export function parseBudgetState(value: unknown): BudgetState | null {
   const expenses = parsed.expenses
     .map(normalizeExpense)
     .filter((item): item is RecurringExpense => item != null)
+  const updatedAt =
+    typeof parsed.updatedAt === 'string' && parsed.updatedAt
+      ? parsed.updatedAt
+      : undefined
   return {
     accounts: (parsed.accounts.length > 0 ? parsed.accounts : defaultAccounts)
       .map(normalizeAccount)
@@ -750,7 +756,12 @@ export function parseBudgetState(value: unknown): BudgetState | null {
         .filter((item): item is Debt => item != null),
     ),
     categories: normalizeCategories(parsed.categories, expenses),
+    ...(updatedAt ? { updatedAt } : {}),
   }
+}
+
+export function withBudgetEdit(state: BudgetState): BudgetState {
+  return { ...state, updatedAt: new Date().toISOString() }
 }
 
 export function markBudgetSeedsApplied() {

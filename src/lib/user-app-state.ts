@@ -18,6 +18,7 @@ import {
   fetchPaystubDataByDate,
   upsertPaystubRecord,
 } from '@/lib/paystub'
+import { seededDebtBalances } from '@/lib/debt-plan-seed'
 import { supabase } from '@/lib/supabase'
 
 export type UserAppState = {
@@ -212,23 +213,77 @@ function mergeMonthMaps(
   return merged
 }
 
-function mergeDebts(remote: Debt[], local: Debt[]) {
-  const byId = new Map<string, Debt>()
-  for (const debt of remote) byId.set(debt.id, debt)
-  for (const debt of local) {
-    const existing = byId.get(debt.id)
-    if (!existing) {
-      byId.set(debt.id, debt)
-      continue
-    }
-    if (existing.balance <= 0.005 && debt.balance > 0.005) {
-      byId.set(debt.id, debt)
+function almostEqual(left: number, right: number) {
+  return Math.abs(left - right) <= 0.005
+}
+
+function isSeedBalance(debt: Debt) {
+  const seed = seededDebtBalances[debt.id]
+  return typeof seed === 'number' && almostEqual(debt.balance, seed)
+}
+
+function mergeDebtPair(
+  remote: Debt,
+  local: Debt,
+  prefer: 'local' | 'remote',
+): Debt {
+  if (remote.balance <= 0.005 && local.balance > 0.005) return local
+  if (local.balance <= 0.005 && remote.balance > 0.005) {
+    return prefer === 'local' ? { ...local, balance: remote.balance } : remote
+  }
+  if (prefer === 'local') {
+    if (isSeedBalance(local) && !isSeedBalance(remote)) return remote
+    return local
+  }
+  if (isSeedBalance(remote) && !isSeedBalance(local)) return local
+  return remote
+}
+
+function mergeDebts(
+  remote: Debt[],
+  local: Debt[],
+  prefer: 'local' | 'remote',
+) {
+  const remoteById = new Map(remote.map((debt) => [debt.id, debt]))
+  const localById = new Map(local.map((debt) => [debt.id, debt]))
+  const ordered = prefer === 'local' ? [...local, ...remote] : [...remote, ...local]
+  const seen = new Set<string>()
+  const merged: Debt[] = []
+  for (const debt of ordered) {
+    if (seen.has(debt.id)) continue
+    seen.add(debt.id)
+    const fromRemote = remoteById.get(debt.id)
+    const fromLocal = localById.get(debt.id)
+    if (fromRemote && fromLocal) {
+      merged.push(mergeDebtPair(fromRemote, fromLocal, prefer))
+    } else {
+      merged.push(fromRemote ?? fromLocal ?? debt)
     }
   }
-  return [...byId.values()]
+  return merged
+}
+
+function stampTime(value: string | undefined) {
+  if (!value) return 0
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 export function mergeBudgets(remote: BudgetState, local: BudgetState): BudgetState {
+  const remoteAt = stampTime(remote.updatedAt)
+  const localAt = stampTime(local.updatedAt)
+  if (localAt > remoteAt) {
+    return {
+      ...local,
+      debts: mergeDebts(remote.debts, local.debts, 'local'),
+    }
+  }
+  if (remoteAt > localAt) {
+    return {
+      ...remote,
+      debts: mergeDebts(remote.debts, local.debts, 'remote'),
+    }
+  }
   const remoteExpenses = remote.expenses.length
   const localExpenses = local.expenses.length
   return {
@@ -237,11 +292,12 @@ export function mergeBudgets(remote: BudgetState, local: BudgetState): BudgetSta
         ? remote.accounts
         : local.accounts,
     expenses: remoteExpenses >= localExpenses ? remote.expenses : local.expenses,
-    debts: mergeDebts(remote.debts, local.debts),
+    debts: mergeDebts(remote.debts, local.debts, 'local'),
     categories:
       remote.categories.length >= local.categories.length
         ? remote.categories
         : local.categories,
+    updatedAt: local.updatedAt ?? remote.updatedAt,
   }
 }
 

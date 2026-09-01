@@ -852,6 +852,75 @@ function extraPaidOnLine(paid: number, minimum: number, balanceBeforePay: number
   return roundCents(Math.max(0, paid - minDue))
 }
 
+function withLineTotals(row: PlannerMonth, lines: PlannerLine[]): PlannerMonth {
+  return {
+    ...row,
+    lines,
+    totalInterest: roundCents(lines.reduce((sum, line) => sum + line.interest, 0)),
+    totalPaid: roundCents(lines.reduce((sum, line) => sum + line.paid, 0)),
+    extraPaid: roundCents(lines.reduce((sum, line) => sum + line.extra, 0)),
+    remainingTotal: roundCents(lines.reduce((sum, line) => sum + line.balance, 0)),
+  }
+}
+
+/** Plan-start month always opens from the saved starting balances. */
+function rebaseLoggedMonth(
+  row: PlannerMonth,
+  starts: Map<string, number>,
+): PlannerMonth {
+  const lines = row.lines.map((line) => {
+    const start = starts.has(line.debtId)
+      ? (starts.get(line.debtId) ?? 0)
+      : line.start
+    const due = roundCents(start + line.interest + line.charged)
+    const paid = roundCents(Math.min(Math.max(0, line.paid), Math.max(0, due)))
+    const scheduled = Math.max(0, roundCents(line.paid - line.extra))
+    return {
+      ...line,
+      start,
+      paid,
+      extra: extraPaidOnLine(paid, scheduled, due),
+      balance: roundCents(Math.max(0, due - paid)),
+    }
+  })
+  return withLineTotals(row, lines)
+}
+
+function rebaseLoggedHistory(
+  plan: DebtPlanState,
+  debts: { id: string; balance: number }[],
+) {
+  if (debts.length === 0) {
+    return Object.values(plan.loggedHistory ?? {}).sort(
+      (a, b) => ymIndex(a.year, a.month) - ymIndex(b.year, b.month),
+    )
+  }
+  const opening = new Map(debts.map((debt) => [debt.id, debt.balance]))
+  const startKey = plan.planStartMonth || FRESH_PLAN_START
+  const running = new Map(opening)
+  return Object.values(plan.loggedHistory ?? {})
+    .sort((a, b) => ymIndex(a.year, a.month) - ymIndex(b.year, b.month))
+    .map((row) => {
+      const key = monthKey(row.year, row.month)
+      const starts = key === startKey ? opening : new Map(running)
+      const next = rebaseLoggedMonth(row, starts)
+      for (const line of next.lines) running.set(line.debtId, line.balance)
+      return next
+    })
+}
+
+function applyLoggedHistoryToBalances(
+  plan: DebtPlanState,
+  debts: Debt[],
+  balances: Map<string, number>,
+  beforeIdx: number,
+) {
+  for (const row of rebaseLoggedHistory(plan, debts)) {
+    if (ymIndex(row.year, row.month) >= beforeIdx) break
+    for (const line of row.lines) balances.set(line.debtId, line.balance)
+  }
+}
+
 /** Leftover paycheck plus any unused scheduled payments, including Affirm. */
 function extraPool(
   plan: DebtPlanState,
@@ -998,6 +1067,12 @@ export function projectDebtPlan(
   const projected: PlannerMonth[] = []
   const startAt = firstUnloggedPlannerMonth(plan, now)
   const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
+  applyLoggedHistoryToBalances(
+    plan,
+    debts,
+    balances,
+    ymIndex(startAt.year, startAt.month),
+  )
   let year = startAt.year
   let month = startAt.month
 
@@ -1210,7 +1285,14 @@ export function plannedCurrentBalances(
   expenses: RecurringExpense[],
   now = new Date(),
 ) {
-  const months = projectDebtPlan(debts, plan, expenses, 1, now)
+  const startAt = firstUnloggedPlannerMonth(plan, now)
+  const ahead = Math.max(
+    1,
+    ymIndex(now.getFullYear(), now.getMonth()) -
+      ymIndex(startAt.year, startAt.month) +
+      1,
+  )
+  const months = projectDebtPlan(debts, plan, expenses, ahead, now)
   const row =
     months.find(
       (item) =>
@@ -1329,11 +1411,10 @@ export function historyRows(
   months: PlannerMonth[],
   plan: DebtPlanState,
   _now?: Date,
+  debts: { id: string; balance: number }[] = [],
 ) {
   const seeded = months.filter((row) => row.source === 'history')
-  const logged = Object.values(plan.loggedHistory ?? {}).sort(
-    (a, b) => ymIndex(a.year, a.month) - ymIndex(b.year, b.month),
-  )
+  const logged = rebaseLoggedHistory(plan, debts)
   return [...seeded, ...logged]
 }
 
@@ -1346,9 +1427,10 @@ export function actualDebtMetricMonths(
   months: PlannerMonth[],
   plan: DebtPlanState,
   now = new Date(),
+  debts: { id: string; balance: number }[] = [],
 ) {
   const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
-  return historyRows(months, plan, now).filter(
+  return historyRows(months, plan, now, debts).filter(
     (row) => ymIndex(row.year, row.month) <= nowIdx,
   )
 }
@@ -1359,10 +1441,13 @@ export function debtMetricMonths(
   plan: DebtPlanState,
   year: DebtMetricYear,
   now = new Date(),
+  debts: { id: string; balance: number }[] = [],
 ) {
-  if (year === ALL_DEBT_YEARS) return actualDebtMetricMonths(months, plan, now)
+  if (year === ALL_DEBT_YEARS) {
+    return actualDebtMetricMonths(months, plan, now, debts)
+  }
   const byKey = new Map<string, PlannerMonth>()
-  for (const row of historyRows(months, plan, now)) {
+  for (const row of historyRows(months, plan, now, debts)) {
     if (row.year === year) byKey.set(monthKey(row.year, row.month), row)
   }
   for (const row of months) {

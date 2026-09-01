@@ -15,6 +15,7 @@ import {
   isLiveExpense,
   loadBudget,
   saveBudget,
+  withBudgetEdit,
   type AccountKind,
   type AccountRole,
   type BankAccount,
@@ -36,19 +37,19 @@ import {
 } from '@/lib/user-app-state'
 
 function withLinkedExpenses(current: BudgetState, expenses: RecurringExpense[]) {
-  return {
+  return withBudgetEdit({
     ...current,
     expenses,
     debts: applyExpensesToDebts(expenses, current.debts),
-  }
+  })
 }
 
 function withLinkedDebts(current: BudgetState, debts: Debt[]) {
-  return {
+  return withBudgetEdit({
     ...current,
     debts,
     expenses: applyDebtsToExpenses(current.expenses, debts),
-  }
+  })
 }
 
 type BudgetContextValue = {
@@ -143,36 +144,42 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
             role: 'other',
             balance: 0,
           }
-          return {
+          return withBudgetEdit({
             ...current,
             accounts: withExclusiveRole(
               [...current.accounts, next],
               next.id,
               role,
             ),
-          }
+          })
         })
         return id
       },
       updateAccountBalance(id, balance) {
-        setState((current) => ({
-          ...current,
-          accounts: current.accounts.map((account) =>
-            account.id === id ? { ...account, balance } : account,
-          ),
-        }))
+        setState((current) =>
+          withBudgetEdit({
+            ...current,
+            accounts: current.accounts.map((account) =>
+              account.id === id ? { ...account, balance } : account,
+            ),
+          }),
+        )
       },
       setAccountRole(id, role) {
-        setState((current) => ({
-          ...current,
-          accounts: withExclusiveRole(current.accounts, id, role),
-        }))
+        setState((current) =>
+          withBudgetEdit({
+            ...current,
+            accounts: withExclusiveRole(current.accounts, id, role),
+          }),
+        )
       },
       removeAccount(id) {
-        setState((current) => ({
-          ...current,
-          accounts: current.accounts.filter((account) => account.id !== id),
-        }))
+        setState((current) =>
+          withBudgetEdit({
+            ...current,
+            accounts: current.accounts.filter((account) => account.id !== id),
+          }),
+        )
       },
       addExpense(input) {
         setState((current) =>
@@ -224,16 +231,10 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         })
       },
       replaceCategories(categories) {
-        setState((current) => ({
-          ...current,
-          categories,
-        }))
+        setState((current) => withBudgetEdit({ ...current, categories }))
       },
       replaceAccounts(accounts) {
-        setState((current) => ({
-          ...current,
-          accounts,
-        }))
+        setState((current) => withBudgetEdit({ ...current, accounts }))
       },
       addDebt(input) {
         setState((current) =>
