@@ -61,6 +61,8 @@ import {
   interestOverride,
   monthKey,
   paymentOverride,
+  ALL_DEBT_YEARS,
+  actualDebtMetricMonths,
   plannerMetricYears,
   plannerRows,
   plannerVisibleDebts,
@@ -73,6 +75,7 @@ import {
   withLiveMonthlyBudget,
   yearDebtSummary,
   ymIndex,
+  type DebtMetricYear,
   type DebtPlanState,
   type PayoffStrategy,
   type PlannerLine,
@@ -172,12 +175,22 @@ export function DebtPage() {
   const upcoming = plannerRows(months, plan, now)
   const history = historyRows(months, plan, now)
   const freeOn = debtFreeLabel(months)
-  const years = useMemo(() => plannerMetricYears(months, now), [months, now])
-  const [year, setYear] = useState(() => now.getFullYear())
-  const selectedYear = years.includes(year) ? year : (years[0] ?? now.getFullYear())
+  const metricMonths = useMemo(
+    () => actualDebtMetricMonths(months, plan, now),
+    [months, plan, now],
+  )
+  const years = useMemo(
+    () => plannerMetricYears(metricMonths, now),
+    [metricMonths, now],
+  )
+  const [year, setYear] = useState<DebtMetricYear>(() => now.getFullYear())
+  const selectedYear: DebtMetricYear =
+    year === ALL_DEBT_YEARS || years.includes(year)
+      ? year
+      : (years[0] ?? now.getFullYear())
   const yearStats = useMemo(
-    () => yearDebtSummary(months, selectedYear),
-    [months, selectedYear],
+    () => yearDebtSummary(metricMonths, selectedYear),
+    [metricMonths, selectedYear],
   )
 
   return (
@@ -188,7 +201,9 @@ export function DebtPage() {
         </h1>
         <Select
           value={String(selectedYear)}
-          onValueChange={(value) => setYear(Number(value))}
+          onValueChange={(value) =>
+            setYear(value === ALL_DEBT_YEARS ? ALL_DEBT_YEARS : Number(value))
+          }
         >
           <SelectTrigger
             aria-label="Debt year"
@@ -204,6 +219,9 @@ export function DebtPage() {
             sideOffset={4}
             className="w-(--radix-select-trigger-width) min-w-(--radix-select-trigger-width) rounded-md"
           >
+            <SelectItem value={ALL_DEBT_YEARS} className="text-base">
+              All
+            </SelectItem>
             {years.map((option) => (
               <SelectItem
                 key={option}

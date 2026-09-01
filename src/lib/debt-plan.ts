@@ -1317,9 +1317,28 @@ export function historyRows(
   return [...seeded, ...logged]
 }
 
+export const ALL_DEBT_YEARS = 'all'
+
+export type DebtMetricYear = number | typeof ALL_DEBT_YEARS
+
+/** Seeded and logged months through the current month — no planner projections. */
+export function actualDebtMetricMonths(
+  months: PlannerMonth[],
+  plan: DebtPlanState,
+  now = new Date(),
+) {
+  const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
+  return historyRows(months, plan, now).filter(
+    (row) => ymIndex(row.year, row.month) <= nowIdx,
+  )
+}
+
 export function plannerMetricYears(months: PlannerMonth[], now = new Date()) {
-  const years = new Set<number>([now.getFullYear()])
-  for (const row of months) years.add(row.year)
+  const cap = now.getFullYear()
+  const years = new Set<number>([cap])
+  for (const row of months) {
+    if (row.year <= cap) years.add(row.year)
+  }
   return [...years].sort((left, right) => right - left)
 }
 
@@ -1333,11 +1352,11 @@ export type YearDebtSummary = {
 
 export function yearDebtSummary(
   months: PlannerMonth[],
-  year: number,
+  year: DebtMetricYear,
 ): YearDebtSummary {
   const rows = months
-    .filter((row) => row.year === year)
-    .sort((a, b) => a.month - b.month)
+    .filter((row) => (year === ALL_DEBT_YEARS ? true : row.year === year))
+    .sort((a, b) => ymIndex(a.year, a.month) - ymIndex(b.year, b.month))
   const first = rows[0]
   const last = rows[rows.length - 1]
   const startTotal = first
