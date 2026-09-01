@@ -962,10 +962,13 @@ export function projectDebtPlan(
   const ranked = strategyDebtOrder(debts, plan)
   const projected: PlannerMonth[] = []
   const startAt = firstUnloggedPlannerMonth(plan, now)
+  const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
   let year = startAt.year
   let month = startAt.month
 
   for (let step = 0; step < monthsAhead; step++) {
+    const monthIdx = ymIndex(year, month)
+    const applyExtra = monthIdx > nowIdx
     const lines: PlannerLine[] = []
     const owing = debts.filter((debt) => (balances.get(debt.id) ?? 0) > 0.005)
     const afterInterest = new Map<string, number>()
@@ -1028,7 +1031,7 @@ export function projectDebtPlan(
       allocated += minPay
     }
 
-    let leftover = extraPool(plan, debts, payments, locked)
+    let leftover = applyExtra ? extraPool(plan, debts, payments, locked) : 0
     const owingIds = new Set(owing.map((debt) => debt.id))
     const unlocked = owing.filter(
       (debt) => !locked.has(debt.id) && debt.id !== AFFIRM_DEBT_ID,
@@ -1105,7 +1108,11 @@ export function projectDebtPlan(
         due,
       )
       line.balance = roundCents(Math.max(0, due - paid))
-      balances.set(line.debtId, line.balance)
+      // Unlogged past months are editable sheets. They must not rewrite
+      // this month's live balances or the months that follow.
+      if (monthIdx >= nowIdx) {
+        balances.set(line.debtId, line.balance)
+      }
     }
 
     projected.push({
