@@ -1,4 +1,4 @@
-import { applyDebtBalanceSnapshot, DEBT_BALANCE_SEED } from '@/lib/debt-plan'
+import { applyDebtBalanceSnapshot, DEBT_BALANCE_SEED, restoreLostSeededDebts } from '@/lib/debt-plan'
 
 const STORAGE_KEY = 'mybudget.budget.v1'
 
@@ -732,9 +732,11 @@ export function parseBudgetState(value: unknown): BudgetState | null {
       .map(normalizeAccount)
       .filter((item): item is BankAccount => item != null),
     expenses,
-    debts: parsed.debts
-      .map(normalizeDebt)
-      .filter((item): item is Debt => item != null),
+    debts: restoreLostSeededDebts(
+      parsed.debts
+        .map(normalizeDebt)
+        .filter((item): item is Debt => item != null),
+    ),
     categories: normalizeCategories(parsed.categories, expenses),
   }
 }

@@ -81,6 +81,16 @@ function roundCents(value: number) {
   return Math.round(value * 100) / 100
 }
 
+function withAmazonDebt(debts: Debt[]): Debt[] {
+  if (debts.some((debt) => debt.id === seededAmazonDebt.id)) return debts
+  const amazon: Debt = { ...seededAmazonDebt }
+  const ikeaAt = debts.findIndex((debt) => debt.id === 'debt-ikea')
+  if (ikeaAt >= 0) {
+    return [...debts.slice(0, ikeaAt + 1), amazon, ...debts.slice(ikeaAt + 1)]
+  }
+  return [...debts, amazon]
+}
+
 export function applyDebtBalanceSnapshot(debts: Debt[]): Debt[] {
   const next = debts.map((debt) => {
     const balance = seededDebtBalances[debt.id]
@@ -95,13 +105,19 @@ export function applyDebtBalanceSnapshot(debts: Debt[]): Debt[] {
     }
     return debt
   })
-  if (next.some((debt) => debt.id === seededAmazonDebt.id)) return next
-  const ikeaAt = next.findIndex((debt) => debt.id === 'debt-ikea')
-  const amazon: Debt = { ...seededAmazonDebt }
-  if (ikeaAt >= 0) {
-    return [...next.slice(0, ikeaAt + 1), amazon, ...next.slice(ikeaAt + 1)]
-  }
-  return [...next, amazon]
+  return withAmazonDebt(next)
+}
+
+/** Cloud sync once stored sheet debts at $0 and dropped Amazon. Restore that wipe. */
+export function restoreLostSeededDebts(debts: Debt[]): Debt[] {
+  const byId = new Map(debts.map((debt) => [debt.id, debt]))
+  const amazonMissing = !byId.has(seededAmazonDebt.id)
+  const seededWiped = Object.keys(seededDebtBalances).every((id) => {
+    const debt = byId.get(id)
+    return !debt || debt.balance <= 0.005
+  })
+  if (!amazonMissing || !seededWiped) return debts
+  return applyDebtBalanceSnapshot(debts)
 }
 
 export function debtsWithHistoryAccounts(debts: Debt[]): Debt[] {
