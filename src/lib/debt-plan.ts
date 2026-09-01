@@ -22,6 +22,7 @@ export const DEBT_BALANCE_SEED = 'mybudget.debt-balances-2026-08.v1'
 export const AFFIRM_DEBT_ID = 'debt-affirm'
 const PLAN_KEY = 'mybudget.debt-plan.v1'
 const PLAN_HISTORY_RESET = 'mybudget.planner-history-reset.v1'
+const UNLOG_AUGUST_2026 = 'mybudget.unlog-2026-08.v1'
 
 export type AffirmLoan = SeededAffirmLoan
 
@@ -319,6 +320,14 @@ export function loadDebtPlan(): DebtPlanState {
       loaded.chargesByMonth = {}
       loaded.interestByMonth = {}
       saveDebtPlan(loaded)
+    }
+    if (!localStorage.getItem(UNLOG_AUGUST_2026)) {
+      localStorage.setItem(UNLOG_AUGUST_2026, '1')
+      const next = unlogPlannerMonth(loaded, 2026, 7)
+      if (next !== loaded) {
+        saveDebtPlan(next)
+        return next
+      }
     }
     return loaded
   } catch {
@@ -622,6 +631,19 @@ export function logPlannerMonth(
     loggedMonths,
     loggedHistory: { ...(next.loggedHistory ?? {}), [key]: snapshot },
   }
+}
+
+export function unlogPlannerMonth(
+  plan: DebtPlanState,
+  year: number,
+  month: number,
+): DebtPlanState {
+  const key = monthKey(year, month)
+  const loggedMonths = (plan.loggedMonths ?? []).filter((item) => item !== key)
+  if (loggedMonths.length === (plan.loggedMonths ?? []).length) return plan
+  const loggedHistory = { ...(plan.loggedHistory ?? {}) }
+  delete loggedHistory[key]
+  return { ...plan, loggedMonths, loggedHistory }
 }
 
 function snapshotLoggedMonth(
