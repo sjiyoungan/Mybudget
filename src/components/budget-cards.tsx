@@ -3378,9 +3378,9 @@ export function DebtsCard() {
           </CardHeader>
           <div className="relative z-10 pointer-events-none px-(--card-spacing) pt-4 pb-4">
             <MetricStrip className="metric-grid-row">
-              <DebtMetric label="Total balance" amount={totalBalance} />
+              <DebtMetric label="Total balance" amount={totalBalance} wholeUp />
               <DebtMetric label="Total payments" amount={totalPayment} wholeUp />
-              <DebtMetric label="Extra this month" amount={extraThisMonth} />
+              <DebtMetric label="Extra this month" amount={extraThisMonth} wholeUp />
               <DebtMetric
                 label="Total towards debt"
                 amount={totalPayment + extraThisMonth}
