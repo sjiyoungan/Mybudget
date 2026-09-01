@@ -22,11 +22,7 @@ npm run preview  # preview the production build
 
 Open the Income card to upload an ADP earnings statement PDF. The app reads pay date, regular pay, gross pay, this-period deductions, and net pay. Pick Your Perk, year-to-date totals, and employer-paid “other benefits” are omitted.
 
-The PDF itself is not stored. Paystub numbers, budget, debts, and the planner are saved to your Supabase account after you sign in, so every computer shows the same data. Use the same email on every device.
-
-### Supabase table for app data
-
-In the Supabase SQL editor, run `supabase/migrations/20260901180000_user_app_state.sql` once. Paystubs already use the `paystubs` table.
+The PDF itself is never stored. The browser reads pay date, earnings, deductions, and net pay, then saves those numbers to your account after you sign in. Budget, debts, and the planner sync the same way, so every computer shows the same data. Use the same email on every device.
 
 ## Project layout
 

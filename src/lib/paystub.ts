@@ -205,6 +205,35 @@ export function parseAdpPaystub(items: PdfTextItem[]): Omit<
 
 const STORAGE_KEY = 'mybudget.paystubs.v1'
 
+/** Hidden paystubs row that stores budget + planner for cloud sync. */
+export const APP_STATE_PAY_DATE = '1970-01-01'
+
+export function isAppStatePayDate(payDate: string) {
+  return payDate === APP_STATE_PAY_DATE
+}
+
+export function isAppStateRecord(value: unknown) {
+  if (value == null || typeof value !== 'object') return false
+  const row = value as { payDate?: string; appState?: unknown; fileName?: string }
+  return (
+    row.appState === true ||
+    row.payDate === APP_STATE_PAY_DATE ||
+    row.fileName === '__app_state__'
+  )
+}
+
+function isPaystubLike(value: unknown): value is Paystub {
+  if (value == null || typeof value !== 'object') return false
+  const row = value as Partial<Paystub>
+  return typeof row.payDate === 'string' && Array.isArray(row.earnings)
+}
+
+function incomePaystubs(values: unknown[]) {
+  return values
+    .filter((row): row is Paystub => isPaystubLike(row) && !isAppStateRecord(row))
+    .map(stripPerk)
+}
+
 function stripPerk(paystub: Paystub): Paystub {
   const perkTotal = paystub.earnings
     .filter((line) => isPerkLabel(line.name))
@@ -224,7 +253,7 @@ export function loadPaystubs(): Paystub[] {
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    const paystubs = (parsed as Paystub[]).map(stripPerk)
+    const paystubs = incomePaystubs(parsed)
     savePaystubs(paystubs)
     return paystubs
   } catch {
@@ -233,11 +262,14 @@ export function loadPaystubs(): Paystub[] {
 }
 
 export function savePaystubs(paystubs: Paystub[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(paystubs))
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(paystubs.filter((row) => !isAppStateRecord(row))),
+  )
 }
 
 type PaystubRow = {
-  data: Paystub
+  data: unknown
 }
 
 async function currentUserId() {
@@ -255,11 +287,11 @@ export async function fetchRemotePaystubs(): Promise<Paystub[] | null> {
     console.error(error.message)
     return null
   }
-  return ((data ?? []) as PaystubRow[]).map((row) => stripPerk(row.data))
+  return incomePaystubs(((data ?? []) as PaystubRow[]).map((row) => row.data))
 }
 
 export async function upsertRemotePaystub(paystub: Paystub) {
-  if (!supabase) return
+  if (!supabase || isAppStateRecord(paystub)) return
   const userId = await currentUserId()
   if (!userId) return
   const { error } = await supabase.from('paystubs').upsert(

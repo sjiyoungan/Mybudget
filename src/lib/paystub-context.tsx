@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth-context'
 import {
   deleteRemotePaystub,
   fetchRemotePaystubs,
+  isAppStatePayDate,
   loadPaystubs,
   savePaystubs,
   upsertRemotePaystub,
@@ -27,9 +28,13 @@ const PaystubContext = createContext<PaystubContextValue | null>(null)
 
 function mergePaystubs(remote: Paystub[], local: Paystub[]) {
   const byDate = new Map<string, Paystub>()
-  for (const stub of remote) byDate.set(stub.payDate, stub)
+  for (const stub of remote) {
+    if (isAppStatePayDate(stub.payDate)) continue
+    byDate.set(stub.payDate, stub)
+  }
   const extra: Paystub[] = []
   for (const stub of local) {
+    if (isAppStatePayDate(stub.payDate)) continue
     const existing = byDate.get(stub.payDate)
     if (!existing) {
       byDate.set(stub.payDate, stub)
@@ -77,6 +82,7 @@ export function PaystubProvider({ children }: { children: ReactNode }) {
     () => ({
       paystubs,
       upsertPaystub(paystub) {
+        if (isAppStatePayDate(paystub.payDate)) return
         setPaystubs((current) => {
           const next = [
             paystub,
