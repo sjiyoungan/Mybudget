@@ -11,7 +11,7 @@ import {
   type PointerEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, Menu, Pencil } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, Menu, Pencil } from 'lucide-react'
 
 import { AffirmCard } from '@/components/affirm-card'
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
@@ -211,22 +211,15 @@ export function DebtPage() {
         </Select>
       </div>
 
-      <MetricStrip className="mt-8" columns={3}>
-        <PairStat
-          label="Starting / ending debt"
-          from={formatUsdWhole(yearStats.startTotal)}
-          to={formatUsdWhole(yearStats.endTotal)}
-          detail={`${debtCountLabel(yearStats.startAccounts)} → ${debtCountLabel(yearStats.endAccounts)}`}
-        />
+      <MetricStrip className="mt-8">
+        <YearStat label="Starting balance" amount={yearStats.startTotal} />
         <YearStat
-          label="Interest this year"
-          value={formatUsdWhole(yearStats.interest)}
+          label="Ending balance"
+          amount={yearStats.endTotal}
+          delta={yearStats.reduced}
         />
-        <YearStat
-          label="Paid this year"
-          value={formatUsdWhole(yearStats.paid)}
-          detail={paidYearDetail(yearStats.startTotal, yearStats.reduced)}
-        />
+        <YearStat label="Interest paid" amount={yearStats.interest} />
+        <YearStat label="Total towards debt" amount={yearStats.paid} />
       </MetricStrip>
 
       <div className="mt-8 grid gap-6">
@@ -503,60 +496,31 @@ function HeaderStat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function debtCountLabel(count: number) {
-  return `${count} ${count === 1 ? 'debt' : 'debts'}`
-}
-
-function paidYearDetail(started: number, reduced: number) {
-  const change =
-    reduced >= 0
-      ? `Down ${formatUsdWhole(reduced)}`
-      : `Up ${formatUsdWhole(Math.abs(reduced))}`
-  return `Started ${formatUsdWhole(started)} · ${change}`
-}
-
 function YearStat({
   label,
-  value,
-  detail,
+  amount,
+  delta,
 }: {
   label: string
-  value: string
-  detail?: string
+  amount: number
+  delta?: number
 }) {
   return (
-    <div>
+    <div className="w-full">
       <p className="text-muted-foreground text-sm">{label}</p>
-      <p className="mt-4 text-2xl font-normal tabular-nums">{value}</p>
-      {detail ? (
-        <p className="text-muted-foreground mt-1 text-sm">{detail}</p>
-      ) : null}
-    </div>
-  )
-}
-
-function PairStat({
-  label,
-  from,
-  to,
-  detail,
-}: {
-  label: string
-  from: string
-  to: string
-  detail?: string
-}) {
-  return (
-    <div>
-      <p className="text-muted-foreground text-sm">{label}</p>
-      <p className="mt-4 text-2xl font-normal tabular-nums">
-        {from}
-        <span className="text-muted-foreground font-normal"> → </span>
-        {to}
+      <p className="mt-4 flex items-baseline gap-2 text-2xl font-normal tabular-nums">
+        {formatUsdWhole(amount)}
+        {delta != null ? (
+          <span className="text-muted-foreground inline-flex items-center gap-0.5 text-sm font-normal">
+            {delta >= 0 ? (
+              <ArrowDown className="size-3.5" />
+            ) : (
+              <ArrowUp className="size-3.5" />
+            )}
+            {formatUsdWhole(Math.abs(delta))}
+          </span>
+        ) : null}
       </p>
-      {detail ? (
-        <p className="text-muted-foreground mt-1 text-sm">{detail}</p>
-      ) : null}
     </div>
   )
 }

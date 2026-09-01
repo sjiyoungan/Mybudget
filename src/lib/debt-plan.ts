@@ -1268,8 +1268,6 @@ export function plannerMetricYears(months: PlannerMonth[], now = new Date()) {
 export type YearDebtSummary = {
   startTotal: number
   endTotal: number
-  startAccounts: number
-  endAccounts: number
   interest: number
   paid: number
   reduced: number
@@ -1288,12 +1286,6 @@ export function yearDebtSummary(
     ? roundCents(first.lines.reduce((sum, line) => sum + line.start, 0))
     : 0
   const endTotal = last ? last.remainingTotal : 0
-  const startAccounts = first
-    ? first.lines.filter((line) => line.start > 0.005).length
-    : 0
-  const endAccounts = last
-    ? last.lines.filter((line) => line.balance > 0.005).length
-    : 0
   const interest = roundCents(
     rows.reduce((sum, row) => sum + row.totalInterest, 0),
   )
@@ -1301,8 +1293,6 @@ export function yearDebtSummary(
   return {
     startTotal,
     endTotal,
-    startAccounts,
-    endAccounts,
     interest,
     paid,
     reduced: roundCents(startTotal - endTotal),
