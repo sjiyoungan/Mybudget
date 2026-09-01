@@ -61,6 +61,7 @@ import {
   strategyDebtOrder,
   strategyLabel,
   withLiveMonthlyBudget,
+  ymIndex,
   type DebtPlanState,
   type PayoffStrategy,
   type PlannerLine,
@@ -171,6 +172,7 @@ export function DebtPage() {
           interestPaid={interestPaid}
           history={history}
           upcoming={upcoming}
+          now={now}
           onPlanChange={setPlan}
         />
 
@@ -212,6 +214,10 @@ function paidInputHasDraft(target: EventTarget | null) {
   return Math.round(parsed) !== committed
 }
 
+function isLoggablePlannerMonth(row: PlannerMonth, now: Date) {
+  return ymIndex(row.year, row.month) <= ymIndex(now.getFullYear(), now.getMonth())
+}
+
 function PlannerCard({
   debts,
   plan,
@@ -219,6 +225,7 @@ function PlannerCard({
   interestPaid,
   history,
   upcoming,
+  now,
   onPlanChange,
 }: {
   debts: Debt[]
@@ -227,6 +234,7 @@ function PlannerCard({
   interestPaid: number
   history: PlannerMonth[]
   upcoming: PlannerMonth[]
+  now: Date
   onPlanChange: (plan: DebtPlanState) => void
 }) {
   const [view, setView] = useState<PlannerView>('planner')
@@ -242,6 +250,14 @@ function PlannerCard({
     [ordered, view, upcoming],
   )
   const rows = view === 'planner' ? upcoming : [...history].reverse()
+
+  useEffect(() => {
+    if (view !== 'planner' || !editingKey) return
+    const row = upcoming.find(
+      (item) => monthKey(item.year, item.month) === editingKey,
+    )
+    if (row && !isLoggablePlannerMonth(row, now)) setEditingKey(null)
+  }, [view, editingKey, upcoming, now])
 
   function changePlan(next: DebtPlanState) {
     if (JSON.stringify(next) === JSON.stringify(plan)) return
@@ -352,8 +368,10 @@ function PlannerCard({
           months={rows}
           showStart={view === 'planner'}
           monthAction={view === 'planner' ? 'task' : 'pencil'}
+          now={now}
           editingKey={editingKey}
           onEditMonth={(row) => {
+            if (view === 'planner' && !isLoggablePlannerMonth(row, now)) return
             setEditingKey(monthKey(row.year, row.month))
           }}
           onExitEdit={() => {
@@ -634,6 +652,7 @@ function MonthTable({
   months,
   showStart,
   monthAction,
+  now,
   editingKey,
   onEditMonth,
   onExitEdit,
@@ -647,6 +666,7 @@ function MonthTable({
   months: PlannerMonth[]
   showStart: boolean
   monthAction: 'task' | 'pencil'
+  now: Date
   editingKey: string | null
   onEditMonth: (row: PlannerMonth) => void
   onExitEdit: () => void
@@ -984,6 +1004,7 @@ function MonthTable({
               spaced={groupIndex > 0}
               lastGroup={groupIndex === years.length - 1}
               monthAction={monthAction}
+              now={now}
               editingKey={editingKey}
               onEditMonth={onEditMonth}
               onExitEdit={onExitEdit}
@@ -1017,7 +1038,10 @@ function MonthTable({
         data-scrolled={scrolled ? '' : undefined}
         style={{ left: MONTH_COL + LABEL_COL }}
       />
-      {editActions && editingRow && monthAction === 'task'
+      {editActions &&
+      editingRow &&
+      monthAction === 'task' &&
+      isLoggablePlannerMonth(editingRow, now)
         ? createPortal(
             <div
               data-no-drag
@@ -1095,6 +1119,7 @@ function YearGroupRows({
   spaced,
   lastGroup,
   monthAction,
+  now,
   editingKey,
   onEditMonth,
   onExitEdit,
@@ -1111,6 +1136,7 @@ function YearGroupRows({
   spaced: boolean
   lastGroup: boolean
   monthAction: 'task' | 'pencil'
+  now: Date
   editingKey: string | null
   onEditMonth: (row: PlannerMonth) => void
   onExitEdit: () => void
@@ -1166,6 +1192,7 @@ function YearGroupRows({
           showStart={showStart && index === 0}
           last={lastGroup && index === months.length - 1}
           monthAction={monthAction}
+          now={now}
           editing={editingKey === monthKey(row.year, row.month)}
           onEditMonth={onEditMonth}
           onExitEdit={onExitEdit}
@@ -1187,6 +1214,7 @@ function MonthBlock({
   showStart,
   last,
   monthAction,
+  now,
   editing,
   onEditMonth,
   onExitEdit,
@@ -1202,6 +1230,7 @@ function MonthBlock({
   showStart: boolean
   last: boolean
   monthAction: 'task' | 'pencil'
+  now: Date
   editing: boolean
   onEditMonth: (row: PlannerMonth) => void
   onExitEdit: () => void
@@ -1272,7 +1301,11 @@ function MonthBlock({
         <MonthCell
           label={label}
           rowSpan={editing ? 4 : 2}
-          action={monthAction}
+          action={
+            monthAction === 'task' && !isLoggablePlannerMonth(row, now)
+              ? null
+              : monthAction
+          }
           editing={editing}
           onEdit={() => onEditMonth(row)}
           onExit={onExitEdit}
@@ -1484,7 +1517,7 @@ function MonthCell({
 }: {
   label: string
   rowSpan: number
-  action: 'task' | 'pencil'
+  action: 'task' | 'pencil' | null
   editing?: boolean
   onEdit?: () => void
   onExit?: () => void
@@ -1499,30 +1532,32 @@ function MonthCell({
     >
       <div className="flex flex-col items-start gap-1">
         <span>{label}</span>
-        <button
-          type="button"
-          data-no-drag
-          className="text-muted-foreground hover:text-foreground flex size-5 items-center justify-center"
-          aria-label={
-            action === 'pencil'
-              ? `Edit ${label}`
-              : editing
-                ? `Done editing ${label}`
-                : `Edit ${label}`
-          }
-          aria-pressed={editing}
-          onClick={(event) => {
-            event.stopPropagation()
-            if (editing) onExit?.()
-            else onEdit?.()
-          }}
-        >
-          {action === 'pencil' ? (
-            <Pencil className="size-3.5" />
-          ) : (
-            <TaskAltIcon className="size-4" />
-          )}
-        </button>
+        {action ? (
+          <button
+            type="button"
+            data-no-drag
+            className="text-muted-foreground hover:text-foreground flex size-5 items-center justify-center"
+            aria-label={
+              action === 'pencil'
+                ? `Edit ${label}`
+                : editing
+                  ? `Done editing ${label}`
+                  : `Edit ${label}`
+            }
+            aria-pressed={editing}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (editing) onExit?.()
+              else onEdit?.()
+            }}
+          >
+            {action === 'pencil' ? (
+              <Pencil className="size-3.5" />
+            ) : (
+              <TaskAltIcon className="size-4" />
+            )}
+          </button>
+        ) : null}
       </div>
     </td>
   )
