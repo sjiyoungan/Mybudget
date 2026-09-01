@@ -108,7 +108,7 @@ export function defaultDebtPlan(): DebtPlanState {
     loggedMonths: [],
     loggedHistory: {},
     affirmLoans: pruneExpiredAffirmLoans(
-      seededAffirmLoans.map((loan) => ({ ...loan })),
+      seededAffirmLoans.map((loan) => normalizeAffirmLoan({ ...loan })),
     ),
   }
 }
@@ -309,6 +309,9 @@ export function loadDebtPlan(): DebtPlanState {
   }
 }
 
+/** Affirm rolls a leftover of this size into the previous payment. */
+const AFFIRM_LEFTOVER_FOLD = 0.1
+
 export function saveDebtPlan(state: DebtPlanState) {
   const next = {
     ...state,
@@ -322,11 +325,26 @@ function normalizeAffirmLoan(loan: AffirmLoan): AffirmLoan {
     typeof loan.startDate === 'string' && parseYmd(loan.startDate)
       ? loan.startDate
       : undefined
+  const startMonth = loan.startMonth || (startDate ? startDate.slice(0, 7) : '')
+  const months = affirmPaymentMonths(startMonth, loan.startingBalance, loan.monthly)
+  const leftover = roundCents(
+    loan.startingBalance - loan.monthly * Math.max(0, months.length),
+  )
+  const folded = leftover > 0 && leftover <= AFFIRM_LEFTOVER_FOLD
+  const lastPayment = folded
+    ? (months[months.length - 1] ?? loan.lastPayment)
+    : loan.lastPayment
+  const remaining =
+    folded && loan.remaining > 0.005 && loan.remaining <= AFFIRM_LEFTOVER_FOLD
+      ? 0
+      : loan.remaining
   return {
     ...loan,
     name: loan.name.trim() || 'Amazon',
     startDate,
-    startMonth: loan.startMonth || (startDate ? startDate.slice(0, 7) : ''),
+    startMonth,
+    lastPayment,
+    remaining,
   }
 }
 
@@ -1050,16 +1068,26 @@ export function monthsBetweenYm(start: string, end: string) {
   return months
 }
 
+function affirmScheduleCount(startingBalance: number, monthly: number) {
+  if (monthly <= 0.005) return 1
+  const count = Math.max(
+    1,
+    Math.ceil((roundCents(startingBalance) - 0.005) / monthly),
+  )
+  const leftover = roundCents(startingBalance - monthly * (count - 1))
+  if (count > 1 && leftover > 0 && leftover <= AFFIRM_LEFTOVER_FOLD) {
+    return count - 1
+  }
+  return count
+}
+
 export function affirmPaymentMonths(
   startMonth: string,
   startingBalance: number,
   monthly: number,
 ) {
   if (monthly <= 0.005) return startMonth ? [startMonth] : []
-  const count = Math.max(
-    1,
-    Math.ceil((roundCents(startingBalance) - 0.005) / monthly),
-  )
+  const count = affirmScheduleCount(startingBalance, monthly)
   const start = parseYm(startMonth)
   if (!start) return []
   const first = ymIndex(start.year, start.month)
@@ -1100,8 +1128,12 @@ export function completeAffirmLoan(
       }
     }
     if (through && through >= startMonth) {
-      const paidMonths = monthsBetweenYm(startMonth, through).length
-      remaining = roundCents(Math.max(0, startingBalance - monthly * paidMonths))
+      if (through >= lastPayment) {
+        remaining = 0
+      } else {
+        const paidMonths = monthsBetweenYm(startMonth, through).length
+        remaining = roundCents(Math.max(0, startingBalance - monthly * paidMonths))
+      }
     }
   }
   return {

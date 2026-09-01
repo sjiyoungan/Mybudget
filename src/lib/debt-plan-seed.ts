@@ -604,7 +604,7 @@ export const seededAffirmLoans: SeededAffirmLoan[] = [
     "lastPayment": "2026-08",
     "startingBalance": 64.31,
     "monthly": 16.07,
-    "remaining": 0.03
+    "remaining": 0
   },
   {
     "id": "affirm-ZCRY-SKFG",
