@@ -807,6 +807,35 @@ function extraPaidOnLine(paid: number, minimum: number, balanceBeforePay: number
   return roundCents(Math.max(0, paid - minDue))
 }
 
+/** Leftover paycheck plus unused card mins — not Affirm’s month-to-month swing. */
+function extraPool(
+  plan: DebtPlanState,
+  debts: Debt[],
+  payments: Map<string, number>,
+  locked: Map<string, number>,
+) {
+  const budgetedMins = roundCents(
+    debts.reduce((sum, debt) => sum + paymentWithoutCharges(debt), 0),
+  )
+  const leftoverPaycheck = roundCents(
+    Math.max(0, plan.monthlyBudget - budgetedMins),
+  )
+  const budgetedCards = roundCents(
+    debts
+      .filter((debt) => debt.id !== AFFIRM_DEBT_ID)
+      .reduce((sum, debt) => sum + paymentWithoutCharges(debt), 0),
+  )
+  let cardsNeeded = 0
+  for (const debt of debts) {
+    if (debt.id === AFFIRM_DEBT_ID) continue
+    cardsNeeded += locked.get(debt.id) ?? payments.get(debt.id) ?? 0
+  }
+  const unusedCardMins = roundCents(
+    Math.max(0, budgetedCards - roundCents(cardsNeeded)),
+  )
+  return roundCents(leftoverPaycheck + unusedCardMins)
+}
+
 function remainingAfterPayments(
   dueThisMonth: number,
   monthlyRate: number,
@@ -994,9 +1023,7 @@ export function projectDebtPlan(
       allocated += minPay
     }
 
-    let leftover = roundCents(
-      Math.max(0, plan.monthlyBudget - allocated - lockedTotal),
-    )
+    let leftover = extraPool(plan, debts, payments, locked)
     const owingIds = new Set(owing.map((debt) => debt.id))
     const unlocked = owing.filter(
       (debt) => !locked.has(debt.id) && debt.id !== AFFIRM_DEBT_ID,
@@ -1033,7 +1060,10 @@ export function projectDebtPlan(
             new Map(lines.map((line) => [line.debtId, line.interest])),
           )
         : ranked.filter(
-            (debt) => owingIds.has(debt.id) && !locked.has(debt.id),
+            (debt) =>
+              owingIds.has(debt.id) &&
+              !locked.has(debt.id) &&
+              debt.id !== AFFIRM_DEBT_ID,
           )
     for (const debt of waterfall) {
       if (leftover <= 0) break
@@ -1042,6 +1072,18 @@ export function projectDebtPlan(
       const add = roundCents(Math.min(leftover, Math.max(0, due - already)))
       payments.set(debt.id, roundCents(already + add))
       leftover = roundCents(leftover - add)
+    }
+    const affirm = owing.find(
+      (debt) => debt.id === AFFIRM_DEBT_ID && !locked.has(debt.id),
+    )
+    if (affirm && leftover > 0) {
+      const due = afterInterest.get(affirm.id) ?? 0
+      const already = payments.get(affirm.id) ?? 0
+      const add = roundCents(Math.min(leftover, Math.max(0, due - already)))
+      if (add > 0) {
+        payments.set(affirm.id, roundCents(already + add))
+        leftover = roundCents(leftover - add)
+      }
     }
 
     for (const line of lines) {

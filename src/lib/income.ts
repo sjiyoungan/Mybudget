@@ -75,6 +75,26 @@ export function currentMonthNet(paystubs: Paystub[], now = new Date()) {
   )
 }
 
+export function previousMonthNet(paystubs: Paystub[], now = new Date()) {
+  const month = now.getMonth() - 1
+  const year = month < 0 ? now.getFullYear() - 1 : now.getFullYear()
+  return stubsForMonth(
+    paystubs,
+    year,
+    month < 0 ? 11 : month,
+  ).reduce((sum, stub) => sum + stub.netPay, 0)
+}
+
+/** Typical pay for projections — never shrink extra to a partial current month. */
+export function plannerMonthlyNet(paystubs: Paystub[], now = new Date()) {
+  const current = currentMonthNet(paystubs, now)
+  const previous = previousMonthNet(paystubs, now)
+  const average =
+    averageMonthlyNet(paystubs, now.getFullYear()) ||
+    averageMonthlyNet(paystubs, now.getFullYear() - 1)
+  return Math.max(current, previous, average)
+}
+
 export function visibleMonthRows(
   paystubs: Paystub[],
   year: number,

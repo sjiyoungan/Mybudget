@@ -66,7 +66,7 @@ import {
   type PlannerMonth,
 } from '@/lib/debt-plan'
 import { formatUsdWhole } from '@/lib/format'
-import { currentMonthNet } from '@/lib/income'
+import { plannerMonthlyNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
 import { cn } from '@/lib/utils'
 
@@ -132,8 +132,8 @@ export function DebtPage() {
   const [plan, setPlan] = useState<DebtPlanState>(() => loadDebtPlan())
   const now = useMemo(() => new Date(), [])
   const monthlyNet = useMemo(
-    () => Math.round(currentMonthNet(paystubs)),
-    [paystubs],
+    () => Math.round(plannerMonthlyNet(paystubs, now)),
+    [paystubs, now],
   )
   const plannerDebts = useMemo(
     () => debtsWithAffirmPlan(debts, plan.affirmLoans, now),
