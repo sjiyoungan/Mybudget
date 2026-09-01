@@ -272,39 +272,156 @@ type PaystubRow = {
   data: unknown
 }
 
+let paystubsUserIdColumn: 'unknown' | 'yes' | 'no' = 'unknown'
+
+function isMissingUserIdColumn(error: { code?: string; message: string }) {
+  return (
+    error.code === 'PGRST204' ||
+    error.code === '42703' ||
+    (/user_id/i.test(error.message) &&
+      /does not exist|schema cache/i.test(error.message))
+  )
+}
+
 async function currentUserId() {
   if (!supabase) return null
   const { data } = await supabase.auth.getUser()
   return data.user?.id ?? null
 }
 
+export async function fetchPaystubDataByDate(
+  payDate: string,
+): Promise<unknown | null> {
+  if (!supabase) return null
+  const userId = await currentUserId()
+  if (!userId) return null
+
+  if (paystubsUserIdColumn === 'yes') {
+    const { data, error } = await supabase
+      .from('paystubs')
+      .select('data')
+      .eq('user_id', userId)
+      .eq('pay_date', payDate)
+      .maybeSingle()
+    if (error) {
+      console.error(error.message)
+      return null
+    }
+    return (data as PaystubRow | null)?.data ?? null
+  }
+
+  const { data, error } = await supabase
+    .from('paystubs')
+    .select('data')
+    .eq('pay_date', payDate)
+    .maybeSingle()
+  if (!error) {
+    paystubsUserIdColumn = 'no'
+    return (data as PaystubRow | null)?.data ?? null
+  }
+  if (!isMissingUserIdColumn(error) && paystubsUserIdColumn === 'no') {
+    console.error(error.message)
+    return null
+  }
+
+  const scoped = await supabase
+    .from('paystubs')
+    .select('data')
+    .eq('user_id', userId)
+    .eq('pay_date', payDate)
+    .maybeSingle()
+  if (scoped.error) {
+    console.error(scoped.error.message)
+    return null
+  }
+  paystubsUserIdColumn = 'yes'
+  return (scoped.data as PaystubRow | null)?.data ?? null
+}
+
+export async function upsertPaystubRecord(
+  id: string,
+  payDate: string,
+  data: unknown,
+) {
+  if (!supabase) return
+  const userId = await currentUserId()
+  if (!userId) return
+  const row = {
+    id,
+    pay_date: payDate,
+    data,
+    updated_at: new Date().toISOString(),
+  }
+
+  if (paystubsUserIdColumn !== 'yes') {
+    const { error } = await supabase
+      .from('paystubs')
+      .upsert(row, { onConflict: 'pay_date' })
+    if (!error) {
+      paystubsUserIdColumn = 'no'
+      return
+    }
+    if (paystubsUserIdColumn === 'no' || isMissingUserIdColumn(error)) {
+      console.error(error.message)
+      return
+    }
+  }
+
+  const { error } = await supabase.from('paystubs').upsert(
+    { ...row, user_id: userId },
+    { onConflict: 'user_id,pay_date' },
+  )
+  if (error) {
+    console.error(error.message)
+    return
+  }
+  paystubsUserIdColumn = 'yes'
+}
+
 export async function fetchRemotePaystubs(): Promise<Paystub[] | null> {
   if (!supabase) return null
   const userId = await currentUserId()
   if (!userId) return null
+
+  if (paystubsUserIdColumn === 'yes') {
+    const { data, error } = await supabase
+      .from('paystubs')
+      .select('data')
+      .eq('user_id', userId)
+    if (error) {
+      console.error(error.message)
+      return null
+    }
+    return incomePaystubs(((data ?? []) as PaystubRow[]).map((row) => row.data))
+  }
+
   const { data, error } = await supabase.from('paystubs').select('data')
-  if (error) {
+  if (!error) {
+    paystubsUserIdColumn = 'no'
+    return incomePaystubs(((data ?? []) as PaystubRow[]).map((row) => row.data))
+  }
+  if (!isMissingUserIdColumn(error) && paystubsUserIdColumn === 'no') {
     console.error(error.message)
     return null
   }
-  return incomePaystubs(((data ?? []) as PaystubRow[]).map((row) => row.data))
+
+  const scoped = await supabase
+    .from('paystubs')
+    .select('data')
+    .eq('user_id', userId)
+  if (scoped.error) {
+    console.error(scoped.error.message)
+    return null
+  }
+  paystubsUserIdColumn = 'yes'
+  return incomePaystubs(
+    ((scoped.data ?? []) as PaystubRow[]).map((row) => row.data),
+  )
 }
 
 export async function upsertRemotePaystub(paystub: Paystub) {
   if (!supabase || isAppStateRecord(paystub)) return
-  const userId = await currentUserId()
-  if (!userId) return
-  const { error } = await supabase.from('paystubs').upsert(
-    {
-      id: paystub.id,
-      user_id: userId,
-      pay_date: paystub.payDate,
-      data: paystub,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id,pay_date' },
-  )
-  if (error) console.error(error.message)
+  await upsertPaystubRecord(paystub.id, paystub.payDate, paystub)
 }
 
 export async function deleteRemotePaystub(id: string) {

@@ -12,7 +12,11 @@ import {
   saveDebtPlan,
   type DebtPlanState,
 } from '@/lib/debt-plan'
-import { APP_STATE_PAY_DATE } from '@/lib/paystub'
+import {
+  APP_STATE_PAY_DATE,
+  fetchPaystubDataByDate,
+  upsertPaystubRecord,
+} from '@/lib/paystub'
 import { supabase } from '@/lib/supabase'
 
 export type UserAppState = {
@@ -98,36 +102,29 @@ function isMissingTable(error: { code?: string; message: string }) {
 
 async function fetchDedicatedAppState(): Promise<UserAppState | null> {
   if (!supabase) return null
-  const userId = await currentUserId()
-  if (!userId) return null
-  const { data, error } = await supabase
-    .from('user_app_state')
-    .select('budget, plan')
-    .eq('user_id', userId)
-    .maybeSingle()
-  if (error) {
-    if (!isMissingTable(error)) console.error(error.message)
+  try {
+    const userId = await currentUserId()
+    if (!userId) return null
+    const { data, error } = await supabase
+      .from('user_app_state')
+      .select('budget, plan')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (error) {
+      if (!isMissingTable(error)) console.error(error.message)
+      return null
+    }
+    return parseRemoteAppState(data as RemoteRow | null)
+  } catch {
     return null
   }
-  return parseRemoteAppState(data as RemoteRow | null)
 }
 
 async function fetchPaystubAppState(): Promise<UserAppState | null> {
-  if (!supabase) return null
-  const userId = await currentUserId()
-  if (!userId) return null
-  const { data, error } = await supabase
-    .from('paystubs')
-    .select('data')
-    .eq('user_id', userId)
-    .eq('pay_date', APP_STATE_PAY_DATE)
-    .maybeSingle()
-  if (error) {
-    console.error(error.message)
-    return null
-  }
-  const row = data as { data?: AppStatePaystubData } | null
-  return parseRemoteAppState(row?.data ?? null)
+  const payload = (await fetchPaystubDataByDate(APP_STATE_PAY_DATE)) as
+    | AppStatePaystubData
+    | null
+  return parseRemoteAppState(payload)
 }
 
 async function fetchUserAppState(): Promise<UserAppState | null> {
@@ -138,55 +135,45 @@ async function fetchUserAppState(): Promise<UserAppState | null> {
 
 async function upsertDedicatedAppState(state: UserAppState) {
   if (!supabase) return
-  const userId = await currentUserId()
-  if (!userId) return
-  const { error } = await supabase.from('user_app_state').upsert(
-    {
-      user_id: userId,
-      budget: state.budget,
-      plan: state.plan,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id' },
-  )
-  if (error && !isMissingTable(error)) console.error(error.message)
+  try {
+    const userId = await currentUserId()
+    if (!userId) return
+    const { error } = await supabase.from('user_app_state').upsert(
+      {
+        user_id: userId,
+        budget: state.budget,
+        plan: state.plan,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    )
+    if (error && !isMissingTable(error)) console.error(error.message)
+  } catch {
+    // Table is optional; paystubs row is the working store.
+  }
 }
 
 async function upsertPaystubAppState(state: UserAppState) {
-  if (!supabase) return
-  const userId = await currentUserId()
-  if (!userId) return
-  const { data: existing } = await supabase
-    .from('paystubs')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('pay_date', APP_STATE_PAY_DATE)
-    .maybeSingle()
+  const existing = (await fetchPaystubDataByDate(APP_STATE_PAY_DATE)) as
+    | AppStatePaystubData
+    | null
   const id =
-    (existing as { id?: string } | null)?.id ?? crypto.randomUUID()
-  const { error } = await supabase.from('paystubs').upsert(
-    {
-      id,
-      user_id: userId,
-      pay_date: APP_STATE_PAY_DATE,
-      data: {
-        id,
-        fileName: '__app_state__',
-        uploadedAt: new Date().toISOString(),
-        payDate: APP_STATE_PAY_DATE,
-        earnings: [],
-        deductions: [],
-        grossPay: 0,
-        netPay: 0,
-        appState: true,
-        budget: state.budget,
-        plan: state.plan,
-      },
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id,pay_date' },
-  )
-  if (error) console.error(error.message)
+    typeof existing?.id === 'string' && existing.id
+      ? existing.id
+      : crypto.randomUUID()
+  await upsertPaystubRecord(id, APP_STATE_PAY_DATE, {
+    id,
+    fileName: '__app_state__',
+    uploadedAt: new Date().toISOString(),
+    payDate: APP_STATE_PAY_DATE,
+    earnings: [],
+    deductions: [],
+    grossPay: 0,
+    netPay: 0,
+    appState: true,
+    budget: state.budget,
+    plan: state.plan,
+  })
 }
 
 async function upsertUserAppState(state: UserAppState) {
