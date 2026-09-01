@@ -11,7 +11,7 @@ import {
   type PointerEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, Menu, Pencil, Undo2 } from 'lucide-react'
+import { Check, ChevronDown, Menu, Pencil } from 'lucide-react'
 
 import { AffirmCard } from '@/components/affirm-card'
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
@@ -318,16 +318,6 @@ function PlannerCard({
             />
           </div>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="hover-fill flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm disabled:pointer-events-none disabled:opacity-40"
-              disabled={undoStack.length === 0}
-              aria-keyshortcuts="Control+Z Meta+Z"
-              onClick={undoPlan}
-            >
-              <Undo2 className="size-3.5" />
-              Undo
-            </button>
             {plan.strategy === 'custom' ? (
               <button
                 type="button"
