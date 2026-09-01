@@ -807,33 +807,20 @@ function extraPaidOnLine(paid: number, minimum: number, balanceBeforePay: number
   return roundCents(Math.max(0, paid - minDue))
 }
 
-/** Leftover paycheck plus unused card mins — not Affirm’s month-to-month swing. */
+/** Fill leftover paycheck plus any unused scheduled payments, including Affirm. */
 function extraPool(
   plan: DebtPlanState,
   debts: Debt[],
   payments: Map<string, number>,
   locked: Map<string, number>,
+  monthCharges: number,
 ) {
-  const budgetedMins = roundCents(
-    debts.reduce((sum, debt) => sum + paymentWithoutCharges(debt), 0),
-  )
-  const leftoverPaycheck = roundCents(
-    Math.max(0, plan.monthlyBudget - budgetedMins),
-  )
-  const budgetedCards = roundCents(
-    debts
-      .filter((debt) => debt.id !== AFFIRM_DEBT_ID)
-      .reduce((sum, debt) => sum + paymentWithoutCharges(debt), 0),
-  )
-  let cardsNeeded = 0
+  const target = roundCents(plan.monthlyBudget + Math.max(0, monthCharges))
+  let needed = 0
   for (const debt of debts) {
-    if (debt.id === AFFIRM_DEBT_ID) continue
-    cardsNeeded += locked.get(debt.id) ?? payments.get(debt.id) ?? 0
+    needed += locked.get(debt.id) ?? payments.get(debt.id) ?? 0
   }
-  const unusedCardMins = roundCents(
-    Math.max(0, budgetedCards - roundCents(cardsNeeded)),
-  )
-  return roundCents(leftoverPaycheck + unusedCardMins)
+  return roundCents(Math.max(0, target - roundCents(needed)))
 }
 
 function remainingAfterPayments(
@@ -1031,7 +1018,12 @@ export function projectDebtPlan(
     }
 
     const applyExtra = monthIdx >= nowIdx && locked.size === 0
-    let leftover = applyExtra ? extraPool(plan, debts, payments, locked) : 0
+    const monthCharges = roundCents(
+      lines.reduce((sum, line) => sum + line.charged, 0),
+    )
+    let leftover = applyExtra
+      ? extraPool(plan, debts, payments, locked, monthCharges)
+      : 0
     const owingIds = new Set(owing.map((debt) => debt.id))
     const unlocked = owing.filter(
       (debt) => !locked.has(debt.id) && debt.id !== AFFIRM_DEBT_ID,
