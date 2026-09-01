@@ -397,7 +397,7 @@ function PlannerCard({
             <HeaderStat label="Debt-free" value={freeOn} />
           </div>
           <div className="flex items-center gap-1">
-            {plan.strategy === 'custom' ? (
+            {view === 'planner' && plan.strategy === 'custom' ? (
               <button
                 type="button"
                 className="hover-fill rounded-lg px-3 py-1.5 text-sm"
@@ -406,10 +406,12 @@ function PlannerCard({
                 Edit
               </button>
             ) : null}
-            <StrategyMenu
-              strategy={plan.strategy}
-              onChoose={chooseStrategy}
-            />
+            {view === 'planner' ? (
+              <StrategyMenu
+                strategy={plan.strategy}
+                onChoose={chooseStrategy}
+              />
+            ) : null}
             <ViewTab
               label="Planner"
               active={view === 'planner'}

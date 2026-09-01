@@ -1379,32 +1379,55 @@ export function plannerVisibleDebts<T extends { id: string }>(
   )
 }
 
-export function historyVisibleDebts<T extends { id: string }>(
+function lastHistoryBalance(months: PlannerMonth[], debtId: string) {
+  for (let index = months.length - 1; index >= 0; index -= 1) {
+    const line = months[index]?.lines.find((item) => item.debtId === debtId)
+    if (line) return line.balance
+  }
+  return 0
+}
+
+function historyDebtStillOpen<T extends { id: string; balance?: number }>(
+  debt: T,
+  months: PlannerMonth[],
+) {
+  if (lastHistoryBalance(months, debt.id) > 0.005) return true
+  return typeof debt.balance === 'number' && debt.balance > 0.005
+}
+
+function appearsInHistoryMonths<T extends { id: string }>(
+  debt: T,
+  months: PlannerMonth[],
+) {
+  return months.some((row) => {
+    const line = row.lines.find((item) => item.debtId === debt.id)
+    if (!line) return false
+    return (
+      line.paid > 0.005 ||
+      line.start > 0.005 ||
+      line.balance > 0.005 ||
+      line.interest > 0.005 ||
+      Math.abs(line.charged) > 0.005
+    )
+  })
+}
+
+export function historyVisibleDebts<T extends { id: string; balance?: number }>(
   debts: T[],
   months: PlannerMonth[],
 ) {
-  const byId = new Map(debts.map((debt) => [debt.id, debt]))
-  const ordered: T[] = []
-  for (const meta of seededHistoryDebts) {
-    const debt = byId.get(meta.id)
-    if (debt) ordered.push(debt)
-  }
-  for (const debt of debts) {
-    if (!ordered.some((item) => item.id === debt.id)) ordered.push(debt)
-  }
-  return ordered.filter((debt) =>
-    months.some((row) => {
-      const line = row.lines.find((item) => item.debtId === debt.id)
-      if (!line) return false
-      return (
-        line.paid > 0.005 ||
-        line.start > 0.005 ||
-        line.balance > 0.005 ||
-        line.interest > 0.005 ||
-        Math.abs(line.charged) > 0.005
-      )
-    }),
+  const visible = debts.filter((debt) => appearsInHistoryMonths(debt, months))
+  const open = visible.filter((debt) => historyDebtStillOpen(debt, months))
+  const closed = visible.filter((debt) => !historyDebtStillOpen(debt, months))
+  const seedRank = new Map<string, number>(
+    seededHistoryDebts.map((meta, index) => [meta.id, index]),
   )
+  closed.sort(
+    (left, right) =>
+      (seedRank.get(left.id) ?? Number.POSITIVE_INFINITY) -
+      (seedRank.get(right.id) ?? Number.POSITIVE_INFINITY),
+  )
+  return [...open, ...closed]
 }
 
 export function historyRows(
