@@ -3321,8 +3321,8 @@ export function DebtsCard() {
   const [open, setOpen] = useState(false)
   const now = useMemo(() => new Date(), [])
   const monthlyNet = useMemo(
-    () => Math.round(currentMonthNet(paystubs)),
-    [paystubs],
+    () => Math.round(averageMonthlyNet(paystubs, now.getFullYear())),
+    [paystubs, now],
   )
   const months = useMemo(() => {
     const plan = withLiveMonthlyBudget(
@@ -3347,8 +3347,8 @@ export function DebtsCard() {
     months.find(
       (row) =>
         row.source === 'plan' &&
-        row.year === now.getFullYear() &&
-        row.month === now.getMonth(),
+        (row.year > now.getFullYear() ||
+          (row.year === now.getFullYear() && row.month > now.getMonth())),
     )?.extraPaid ?? 0
 
   return (
