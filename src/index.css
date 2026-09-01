@@ -257,7 +257,8 @@
   background-color: #f6f6f6 !important;
 }
 .planner-scroll table tr:has(.month-editing) > td,
-.planner-scroll table tr:has(.month-editing) + tr > td {
+.planner-scroll table tr:has(.month-editing) + tr > td,
+.planner-scroll table tr.month-edit-row > td {
   background-color: #fff !important;
 }
 .month-edit-frame {

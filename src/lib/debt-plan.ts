@@ -492,24 +492,38 @@ export function paymentOverride(
   return undefined
 }
 
+export function chargeOverride(
+  plan: DebtPlanState,
+  debtId: string,
+  year: number,
+  month: number,
+) {
+  const value = plan.chargesByMonth[monthKey(year, month)]?.[debtId]
+  if (typeof value === 'number' && Number.isFinite(value)) return roundCents(value)
+  return undefined
+}
+
 export function setMonthCharge(
   plan: DebtPlanState,
   year: number,
   month: number,
   debtId: string,
-  amount: number,
+  amount: number | null,
 ): DebtPlanState {
   const key = monthKey(year, month)
-  return {
-    ...plan,
-    chargesByMonth: {
-      ...plan.chargesByMonth,
-      [key]: {
-        ...plan.chargesByMonth[key],
-        [debtId]: roundCents(amount),
-      },
-    },
+  const monthCharges = { ...plan.chargesByMonth[key] }
+  if (amount == null) {
+    delete monthCharges[debtId]
+  } else {
+    monthCharges[debtId] = roundCents(Math.max(0, amount))
   }
+  const chargesByMonth = { ...plan.chargesByMonth }
+  if (Object.keys(monthCharges).length === 0) {
+    delete chargesByMonth[key]
+  } else {
+    chargesByMonth[key] = monthCharges
+  }
+  return { ...plan, chargesByMonth }
 }
 
 export function setMonthPayment(

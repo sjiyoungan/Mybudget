@@ -44,6 +44,7 @@ import {
   loadDebtPlan,
   historyRows,
   logPlannerMonth,
+  chargeOverride,
   monthKey,
   paymentOverride,
   plannedInterest,
@@ -52,6 +53,7 @@ import {
   projectDebtPlan,
   resolveCustomOrder,
   saveDebtPlan,
+  setMonthCharge,
   setMonthPayment,
   strategyDebtOrder,
   strategyLabel,
@@ -361,24 +363,34 @@ function PlannerCard({
           }}
           onSaveMonth={(row) => {
             const focused = document.activeElement
-            const overrides: Record<string, number | null> = {}
+            let next = plan
             if (
               focused instanceof HTMLInputElement &&
               focused.classList.contains('paid-input') &&
               focused.dataset.debtId
             ) {
               const raw = focused.value.trim()
-              overrides[focused.dataset.debtId] =
-                raw === '' ? null : parseUsdInput(raw)
+              const amount = raw === '' ? null : parseUsdInput(raw)
+              if (focused.dataset.field === 'charged') {
+                next = setMonthCharge(
+                  next,
+                  row.year,
+                  row.month,
+                  focused.dataset.debtId,
+                  amount,
+                )
+              } else {
+                next = setMonthPayment(
+                  next,
+                  row.year,
+                  row.month,
+                  focused.dataset.debtId,
+                  amount,
+                )
+              }
               focused.blur()
             }
-            changePlan(
-              logPlannerMonth(
-                plan,
-                row,
-                Object.keys(overrides).length > 0 ? overrides : undefined,
-              ),
-            )
+            changePlan(logPlannerMonth(next, row))
             editBackupRef.current = null
             setEditingKey(null)
           }}
@@ -398,6 +410,10 @@ function PlannerCard({
           onPaidChange={(year, month, debtId, amount) => {
             if (discardPaidCommit.current) return
             changePlan(setMonthPayment(plan, year, month, debtId, amount))
+          }}
+          onChargeChange={(year, month, debtId, amount) => {
+            if (discardPaidCommit.current) return
+            changePlan(setMonthCharge(plan, year, month, debtId, amount))
           }}
         />
       </CardContent>
@@ -633,6 +649,7 @@ function MonthTable({
   onSaveMonth,
   onCancelMonth,
   onPaidChange,
+  onChargeChange,
 }: {
   debts: { id: string; lender: string; apr: number }[]
   plan: DebtPlanState
@@ -645,6 +662,12 @@ function MonthTable({
   onSaveMonth: (row: PlannerMonth) => void
   onCancelMonth: () => void
   onPaidChange: (
+    year: number,
+    month: number,
+    debtId: string,
+    amount: number | null,
+  ) => void
+  onChargeChange: (
     year: number,
     month: number,
     debtId: string,
@@ -693,27 +716,28 @@ function MonthTable({
     const planner = plannerRef.current
     const scroller = scrollerRef.current
     if (!wrap || !planner) return
-    const paid = wrap.querySelector('tr:has(.month-editing)')
-    const end = paid?.nextElementSibling
-    if (!(paid instanceof HTMLElement) || !(end instanceof HTMLElement)) return
+    const editRows = [
+      ...wrap.querySelectorAll('tr.month-edit-row'),
+    ].filter((row): row is HTMLElement => row instanceof HTMLElement)
+    const first = editRows[0]
+    const last = editRows[editRows.length - 1]
+    if (!first || !last) return
     const root = wrap
-    const paidRow = paid
-    const endRow = end
     const shell = planner
 
     function measure() {
       const wrapRect = root.getBoundingClientRect()
-      const paidRect = paidRow.getBoundingClientRect()
-      const endRect = endRow.getBoundingClientRect()
+      const firstRect = first.getBoundingClientRect()
+      const lastRect = last.getBoundingClientRect()
       setEditFrame({
-        top: paidRect.top - wrapRect.top,
-        left: paidRect.left - wrapRect.left,
-        width: paidRect.width,
-        height: endRect.bottom - paidRect.top,
+        top: firstRect.top - wrapRect.top,
+        left: firstRect.left - wrapRect.left,
+        width: firstRect.width,
+        height: lastRect.bottom - firstRect.top,
       })
       const plannerRect = shell.getBoundingClientRect()
       setEditActions({
-        top: endRect.bottom + 4,
+        top: lastRect.bottom + 4,
         right: window.innerWidth - plannerRect.right + 8,
       })
     }
@@ -721,8 +745,8 @@ function MonthTable({
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(root)
-    observer.observe(paidRow)
-    observer.observe(endRow)
+    observer.observe(first)
+    observer.observe(last)
     observer.observe(shell)
     scroller?.addEventListener('scroll', measure)
     window.addEventListener('resize', measure)
@@ -936,6 +960,7 @@ function MonthTable({
               editingKey={editingKey}
               onEditMonth={onEditMonth}
               onPaidChange={onPaidChange}
+              onChargeChange={onChargeChange}
             />
           ))}
         </tbody>
@@ -1051,6 +1076,7 @@ function YearGroupRows({
   editingKey,
   onEditMonth,
   onPaidChange,
+  onChargeChange,
 }: {
   year: number
   months: PlannerMonth[]
@@ -1065,6 +1091,12 @@ function YearGroupRows({
   editingKey: string | null
   onEditMonth: (row: PlannerMonth) => void
   onPaidChange: (
+    year: number,
+    month: number,
+    debtId: string,
+    amount: number | null,
+  ) => void
+  onChargeChange: (
     year: number,
     month: number,
     debtId: string,
@@ -1108,6 +1140,7 @@ function YearGroupRows({
           editing={editingKey === monthKey(row.year, row.month)}
           onEditMonth={onEditMonth}
           onPaidChange={onPaidChange}
+          onChargeChange={onChargeChange}
         />
       ))}
     </>
@@ -1127,6 +1160,7 @@ function MonthBlock({
   editing,
   onEditMonth,
   onPaidChange,
+  onChargeChange,
 }: {
   year: number
   debts: { id: string; lender: string }[]
@@ -1140,6 +1174,12 @@ function MonthBlock({
   editing: boolean
   onEditMonth: (row: PlannerMonth) => void
   onPaidChange: (
+    year: number,
+    month: number,
+    debtId: string,
+    amount: number | null,
+  ) => void
+  onChargeChange: (
     year: number,
     month: number,
     debtId: string,
@@ -1190,57 +1230,119 @@ function MonthBlock({
           />
         </>
       ) : null}
-      <tr>
+      <tr className={cn(editing && 'month-edit-row')}>
         <MonthCell
           label={label}
-          rowSpan={2}
+          rowSpan={editing ? 4 : 2}
           showLog={
             showLog && ymIndex(row.year, row.month) <= nowIdx
           }
           editing={editing}
           onEdit={() => onEditMonth(row)}
         />
-        <LabelCell>Paid</LabelCell>
-        {debts.map((debt) => {
-          const line = paidById.get(debt.id)
-          const amount = line?.paid ?? 0
-          if (editing) {
-            return (
-              <PaidCell
-                key={`${debt.id}-paid`}
-                debtId={debt.id}
-                value={amount}
-                detailKey={`${row.year}-${row.month}-${debt.id}`}
-                detail={line}
-                overridden={
-                  paymentOverride(plan, debt.id, row.year, row.month) != null
-                }
-                muted={extraOn(debt.id)}
-                faint={!extraOn(debt.id)}
-                highlighted={extraOn(debt.id)}
-                onCommit={(next) => {
-                  onPaidChange(row.year, row.month, debt.id, next)
-                }}
-              />
-            )
-          }
-          return (
-            <AmountCell
-              key={`${debt.id}-paid`}
-              value={amount}
-              detailKey={`${row.year}-${row.month}-${debt.id}`}
-              detail={line}
-              muted={extraOn(debt.id)}
-              faint={!extraOn(debt.id)}
-              highlighted={extraOn(debt.id)}
-            />
-          )
-        })}
-        <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
-          {plannerUsd(row.totalPaid)}
-        </td>
+        {editing ? (
+          <>
+            <LabelCell>Interest</LabelCell>
+            {debts.map((debt) => {
+              const line = paidById.get(debt.id)
+              return (
+                <AmountCell
+                  key={`${debt.id}-interest`}
+                  value={line?.interest ?? 0}
+                  detailKey={`${row.year}-${row.month}-${debt.id}`}
+                  detail={line}
+                  highlighted={extraOn(debt.id)}
+                />
+              )
+            })}
+            <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
+              {plannerUsd(row.totalInterest)}
+            </td>
+          </>
+        ) : (
+          <>
+            <LabelCell>Paid</LabelCell>
+            {debts.map((debt) => {
+              const line = paidById.get(debt.id)
+              return (
+                <AmountCell
+                  key={`${debt.id}-paid`}
+                  value={line?.paid ?? 0}
+                  detailKey={`${row.year}-${row.month}-${debt.id}`}
+                  detail={line}
+                  muted={extraOn(debt.id)}
+                  faint={!extraOn(debt.id)}
+                  highlighted={extraOn(debt.id)}
+                />
+              )
+            })}
+            <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
+              {plannerUsd(row.totalPaid)}
+            </td>
+          </>
+        )}
       </tr>
-      <tr>
+      {editing ? (
+        <>
+          <tr className="month-edit-row">
+            <LabelCell>Charged</LabelCell>
+            {debts.map((debt) => {
+              const line = paidById.get(debt.id)
+              return (
+                <PaidCell
+                  key={`${debt.id}-charged`}
+                  debtId={debt.id}
+                  field="charged"
+                  value={line?.charged ?? 0}
+                  detailKey={`${row.year}-${row.month}-${debt.id}`}
+                  detail={line}
+                  overridden={
+                    chargeOverride(plan, debt.id, row.year, row.month) != null
+                  }
+                  highlighted={extraOn(debt.id)}
+                  onCommit={(next) => {
+                    onChargeChange(row.year, row.month, debt.id, next)
+                  }}
+                />
+              )
+            })}
+            <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
+              {plannerUsd(
+                row.lines.reduce((sum, line) => sum + line.charged, 0),
+              )}
+            </td>
+          </tr>
+          <tr className="month-edit-row">
+            <LabelCell>Paid</LabelCell>
+            {debts.map((debt) => {
+              const line = paidById.get(debt.id)
+              return (
+                <PaidCell
+                  key={`${debt.id}-paid`}
+                  debtId={debt.id}
+                  field="paid"
+                  value={line?.paid ?? 0}
+                  detailKey={`${row.year}-${row.month}-${debt.id}`}
+                  detail={line}
+                  overridden={
+                    paymentOverride(plan, debt.id, row.year, row.month) != null
+                  }
+                  muted={extraOn(debt.id)}
+                  faint={!extraOn(debt.id)}
+                  highlighted={extraOn(debt.id)}
+                  onCommit={(next) => {
+                    onPaidChange(row.year, row.month, debt.id, next)
+                  }}
+                />
+              )
+            })}
+            <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
+              {plannerUsd(row.totalPaid)}
+            </td>
+          </tr>
+        </>
+      ) : null}
+      <tr className={cn(editing && 'month-edit-row')}>
         <LabelCell>End</LabelCell>
         {debts.map((debt) => {
           const line = paidById.get(debt.id)
@@ -1433,6 +1535,7 @@ function AmountCell({
 
 function PaidCell({
   debtId,
+  field = 'paid',
   value,
   overridden,
   muted = false,
@@ -1443,6 +1546,7 @@ function PaidCell({
   onCommit,
 }: {
   debtId: string
+  field?: 'paid' | 'charged'
   value: number
   overridden: boolean
   muted?: boolean
@@ -1488,12 +1592,13 @@ function PaidCell({
         key={`${overridden ? 'o' : 'c'}-${Math.round(value)}`}
         data-no-drag
         data-debt-id={debtId}
+        data-field={field}
         data-committed={Math.round(value)}
         draggable={false}
         size={1}
         className="paid-input paid-input-boxed select-text"
         inputMode="decimal"
-        aria-label="Paid"
+        aria-label={field === 'charged' ? 'Charged' : 'Paid'}
         defaultValue={display}
         onFocus={(event) => {
           tip.hide()
