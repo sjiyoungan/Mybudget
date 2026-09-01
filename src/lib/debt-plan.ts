@@ -21,6 +21,7 @@ import {
 export const DEBT_BALANCE_SEED = 'mybudget.debt-balances-2026-08.v1'
 export const AFFIRM_DEBT_ID = 'debt-affirm'
 const PLAN_KEY = 'mybudget.debt-plan.v1'
+const PLAN_HISTORY_RESET = 'mybudget.planner-history-reset.v1'
 
 export type AffirmLoan = SeededAffirmLoan
 
@@ -40,6 +41,7 @@ export type DebtPlanState = {
   customOrder: string[]
   recurringCharges: Record<string, number>
   chargesByMonth: Record<string, Record<string, number>>
+  interestByMonth: Record<string, Record<string, number>>
   paymentsByMonth: Record<string, Record<string, number>>
   /** Month keys (`YYYY-MM`) whose paid amounts were saved. */
   loggedMonths: string[]
@@ -104,6 +106,7 @@ export function defaultDebtPlan(): DebtPlanState {
     customOrder: [],
     recurringCharges: {},
     chargesByMonth: {},
+    interestByMonth: {},
     paymentsByMonth: {},
     loggedMonths: [],
     loggedHistory: {},
@@ -261,7 +264,10 @@ export function loadDebtPlan(): DebtPlanState {
   const fallback = defaultDebtPlan()
   try {
     const raw = localStorage.getItem(PLAN_KEY)
-    if (!raw) return fallback
+    if (!raw) {
+      localStorage.setItem(PLAN_HISTORY_RESET, '1')
+      return fallback
+    }
     const parsed: unknown = JSON.parse(raw)
     if (parsed == null || typeof parsed !== 'object') return fallback
     const item = parsed as Partial<DebtPlanState>
@@ -271,7 +277,7 @@ export function loadDebtPlan(): DebtPlanState {
         : fallback.snowballDebtId
     const customOrder = normalizeIdList(item.customOrder)
     const hasLogging = Array.isArray(item.loggedMonths)
-    return {
+    const loaded: DebtPlanState = {
       monthlyBudget:
         typeof item.monthlyBudget === 'number' && Number.isFinite(item.monthlyBudget)
           ? item.monthlyBudget
@@ -289,6 +295,7 @@ export function loadDebtPlan(): DebtPlanState {
           ? { ...item.recurringCharges }
           : {},
       chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
+      interestByMonth: normalizeChargesByMonth(item.interestByMonth),
       paymentsByMonth: hasLogging
         ? normalizeChargesByMonth(item.paymentsByMonth)
         : {},
@@ -304,6 +311,16 @@ export function loadDebtPlan(): DebtPlanState {
           : fallback.affirmLoans,
       ),
     }
+    if (!localStorage.getItem(PLAN_HISTORY_RESET)) {
+      localStorage.setItem(PLAN_HISTORY_RESET, '1')
+      loaded.loggedMonths = []
+      loaded.loggedHistory = {}
+      loaded.paymentsByMonth = {}
+      loaded.chargesByMonth = {}
+      loaded.interestByMonth = {}
+      saveDebtPlan(loaded)
+    }
+    return loaded
   } catch {
     return fallback
   }
@@ -503,6 +520,17 @@ export function chargeOverride(
   return undefined
 }
 
+export function interestOverride(
+  plan: DebtPlanState,
+  debtId: string,
+  year: number,
+  month: number,
+) {
+  const value = plan.interestByMonth?.[monthKey(year, month)]?.[debtId]
+  if (typeof value === 'number' && Number.isFinite(value)) return roundCents(value)
+  return undefined
+}
+
 export function setMonthCharge(
   plan: DebtPlanState,
   year: number,
@@ -524,6 +552,29 @@ export function setMonthCharge(
     chargesByMonth[key] = monthCharges
   }
   return { ...plan, chargesByMonth }
+}
+
+export function setMonthInterest(
+  plan: DebtPlanState,
+  year: number,
+  month: number,
+  debtId: string,
+  amount: number | null,
+): DebtPlanState {
+  const key = monthKey(year, month)
+  const monthInterest = { ...plan.interestByMonth?.[key] }
+  if (amount == null) {
+    delete monthInterest[debtId]
+  } else {
+    monthInterest[debtId] = roundCents(Math.max(0, amount))
+  }
+  const interestByMonth = { ...plan.interestByMonth }
+  if (Object.keys(monthInterest).length === 0) {
+    delete interestByMonth[key]
+  } else {
+    interestByMonth[key] = monthInterest
+  }
+  return { ...plan, interestByMonth }
 }
 
 export function setMonthPayment(
@@ -798,9 +849,9 @@ export function projectDebtPlan(
         continue
       }
       const charged = chargedForDebt(plan, debt.id, year, month, expenses)
-      const interest = roundCents(
-        (start * (effectiveApr(debt, year, month) / 100)) / 12,
-      )
+      const interest =
+        interestOverride(plan, debt.id, year, month) ??
+        roundCents((start * (effectiveApr(debt, year, month) / 100)) / 12)
       totalInterest += interest
       afterInterest.set(debt.id, roundCents(start + interest + charged))
       lines.push({

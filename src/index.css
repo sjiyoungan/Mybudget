@@ -293,10 +293,11 @@
 }
 .paid-input-boxed {
   min-height: 1.75rem;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: 6px;
   padding: 0 6px;
 }
+.paid-input-boxed:hover,
 .paid-input-boxed:focus {
   border-color: var(--ring);
 }
