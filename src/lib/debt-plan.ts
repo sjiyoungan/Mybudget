@@ -1259,6 +1259,56 @@ export function historyRows(
   return [...seeded, ...logged]
 }
 
+export function plannerMetricYears(months: PlannerMonth[], now = new Date()) {
+  const years = new Set<number>([now.getFullYear()])
+  for (const row of months) years.add(row.year)
+  return [...years].sort((left, right) => right - left)
+}
+
+export type YearDebtSummary = {
+  startTotal: number
+  endTotal: number
+  startAccounts: number
+  endAccounts: number
+  interest: number
+  paid: number
+  reduced: number
+}
+
+export function yearDebtSummary(
+  months: PlannerMonth[],
+  year: number,
+): YearDebtSummary {
+  const rows = months
+    .filter((row) => row.year === year)
+    .sort((a, b) => a.month - b.month)
+  const first = rows[0]
+  const last = rows[rows.length - 1]
+  const startTotal = first
+    ? roundCents(first.lines.reduce((sum, line) => sum + line.start, 0))
+    : 0
+  const endTotal = last ? last.remainingTotal : 0
+  const startAccounts = first
+    ? first.lines.filter((line) => line.start > 0.005).length
+    : 0
+  const endAccounts = last
+    ? last.lines.filter((line) => line.balance > 0.005).length
+    : 0
+  const interest = roundCents(
+    rows.reduce((sum, row) => sum + row.totalInterest, 0),
+  )
+  const paid = roundCents(rows.reduce((sum, row) => sum + row.totalPaid, 0))
+  return {
+    startTotal,
+    endTotal,
+    startAccounts,
+    endAccounts,
+    interest,
+    paid,
+    reduced: roundCents(startTotal - endTotal),
+  }
+}
+
 export function plannedInterest(months: PlannerMonth[]) {
   return roundCents(
     months.reduce((sum, row) => sum + row.totalInterest, 0),

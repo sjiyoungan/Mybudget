@@ -15,6 +15,7 @@ import { Check, ChevronDown, Menu, Pencil } from 'lucide-react'
 
 import { AffirmCard } from '@/components/affirm-card'
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
+import { MetricStrip } from '@/components/metric-strip'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -35,6 +36,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { paymentWithoutCharges, type Debt } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
 import {
@@ -51,7 +59,7 @@ import {
   interestOverride,
   monthKey,
   paymentOverride,
-  plannedInterest,
+  plannerMetricYears,
   plannerRows,
   plannerVisibleDebts,
   pruneExpiredAffirmLoans,
@@ -61,6 +69,7 @@ import {
   strategyDebtOrder,
   strategyLabel,
   withLiveMonthlyBudget,
+  yearDebtSummary,
   ymIndex,
   type DebtPlanState,
   type PayoffStrategy,
@@ -157,19 +166,74 @@ export function DebtPage() {
   const upcoming = plannerRows(months, plan, now)
   const history = historyRows(months, plan, now)
   const freeOn = debtFreeLabel(months)
-  const interestPaid = plannedInterest(upcoming)
+  const years = useMemo(() => plannerMetricYears(months, now), [months, now])
+  const [year, setYear] = useState(() => now.getFullYear())
+  const selectedYear = years.includes(year) ? year : (years[0] ?? now.getFullYear())
+  const yearStats = useMemo(
+    () => yearDebtSummary(months, selectedYear),
+    [months, selectedYear],
+  )
 
   return (
-    <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
-      <h1 className="font-heading text-3xl font-medium">
-        Debt payoff planner
-      </h1>
+    <main className="mx-auto grid max-w-5xl px-6 pb-8">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="font-heading text-3xl font-medium">
+          Debt payoff planner
+        </h1>
+        <Select
+          value={String(selectedYear)}
+          onValueChange={(value) => setYear(Number(value))}
+        >
+          <SelectTrigger
+            aria-label="Debt year"
+            size="sm"
+            className="h-8 text-base"
+          >
+            <SelectValue placeholder="Year" />
+          </SelectTrigger>
+          <SelectContent
+            position="popper"
+            align="start"
+            side="bottom"
+            sideOffset={4}
+            className="w-(--radix-select-trigger-width) min-w-(--radix-select-trigger-width) rounded-md"
+          >
+            {years.map((option) => (
+              <SelectItem
+                key={option}
+                value={String(option)}
+                className="text-base"
+              >
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
+      <MetricStrip className="mt-8" columns={3}>
+        <PairStat
+          label="Starting / ending debt"
+          from={formatUsdWhole(yearStats.startTotal)}
+          to={formatUsdWhole(yearStats.endTotal)}
+          detail={`${debtCountLabel(yearStats.startAccounts)} → ${debtCountLabel(yearStats.endAccounts)}`}
+        />
+        <YearStat
+          label="Interest this year"
+          value={formatUsdWhole(yearStats.interest)}
+        />
+        <YearStat
+          label="Paid this year"
+          value={formatUsdWhole(yearStats.paid)}
+          detail={paidYearDetail(yearStats.startTotal, yearStats.reduced)}
+        />
+      </MetricStrip>
+
+      <div className="mt-8 grid gap-6">
         <PlannerCard
           debts={plannerDebts}
           plan={plan}
           freeOn={freeOn}
-          interestPaid={interestPaid}
           history={history}
           upcoming={upcoming}
           now={now}
@@ -186,6 +250,7 @@ export function DebtPage() {
             }))
           }}
         />
+      </div>
     </main>
   )
 }
@@ -222,7 +287,6 @@ function PlannerCard({
   debts,
   plan,
   freeOn,
-  interestPaid,
   history,
   upcoming,
   now,
@@ -231,7 +295,6 @@ function PlannerCard({
   debts: Debt[]
   plan: DebtPlanState
   freeOn: string
-  interestPaid: number
   history: PlannerMonth[]
   upcoming: PlannerMonth[]
   now: Date
@@ -312,10 +375,6 @@ function PlannerCard({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-8">
             <HeaderStat label="Debt-free" value={freeOn} />
-            <HeaderStat
-              label="Interest paid"
-              value={formatUsdWhole(interestPaid)}
-            />
           </div>
           <div className="flex items-center gap-1">
             {plan.strategy === 'custom' ? (
@@ -441,6 +500,64 @@ function HeaderStat({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground">{label} · </span>
       <span className="font-medium tabular-nums">{value}</span>
     </p>
+  )
+}
+
+function debtCountLabel(count: number) {
+  return `${count} ${count === 1 ? 'debt' : 'debts'}`
+}
+
+function paidYearDetail(started: number, reduced: number) {
+  const change =
+    reduced >= 0
+      ? `Down ${formatUsdWhole(reduced)}`
+      : `Up ${formatUsdWhole(Math.abs(reduced))}`
+  return `Started ${formatUsdWhole(started)} · ${change}`
+}
+
+function YearStat({
+  label,
+  value,
+  detail,
+}: {
+  label: string
+  value: string
+  detail?: string
+}) {
+  return (
+    <div>
+      <p className="text-muted-foreground text-sm">{label}</p>
+      <p className="mt-4 text-2xl font-normal tabular-nums">{value}</p>
+      {detail ? (
+        <p className="text-muted-foreground mt-1 text-sm">{detail}</p>
+      ) : null}
+    </div>
+  )
+}
+
+function PairStat({
+  label,
+  from,
+  to,
+  detail,
+}: {
+  label: string
+  from: string
+  to: string
+  detail?: string
+}) {
+  return (
+    <div>
+      <p className="text-muted-foreground text-sm">{label}</p>
+      <p className="mt-4 text-2xl font-normal tabular-nums">
+        {from}
+        <span className="text-muted-foreground font-normal"> → </span>
+        {to}
+      </p>
+      {detail ? (
+        <p className="text-muted-foreground mt-1 text-sm">{detail}</p>
+      ) : null}
+    </div>
   )
 }
 
