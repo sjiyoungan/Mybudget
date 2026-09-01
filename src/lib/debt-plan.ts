@@ -23,6 +23,7 @@ export const AFFIRM_DEBT_ID = 'debt-affirm'
 const PLAN_KEY = 'mybudget.debt-plan.v1'
 const PLAN_HISTORY_RESET = 'mybudget.planner-history-reset.v1'
 const UNLOG_AUGUST_2026 = 'mybudget.unlog-2026-08.v1'
+const FRESH_PLAN_START = '2026-08'
 
 export type AffirmLoan = SeededAffirmLoan
 
@@ -48,6 +49,8 @@ export type DebtPlanState = {
   loggedMonths: string[]
   /** Snapshots of logged months, used as history once the month is past. */
   loggedHistory: Record<string, PlannerMonth>
+  /** First planner month after the history wipe (`YYYY-MM`). */
+  planStartMonth: string
   affirmLoans: AffirmLoan[]
 }
 
@@ -111,6 +114,7 @@ export function defaultDebtPlan(): DebtPlanState {
     paymentsByMonth: {},
     loggedMonths: [],
     loggedHistory: {},
+    planStartMonth: FRESH_PLAN_START,
     affirmLoans: pruneExpiredAffirmLoans(
       seededAffirmLoans.map((loan) => normalizeAffirmLoan({ ...loan })),
     ),
@@ -236,7 +240,11 @@ export function firstUnloggedPlannerMonth(plan: DebtPlanState, now: Date) {
   const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
   const logged = new Set(plan.loggedMonths ?? [])
   let idx = lastSeededHistoryIndex() + 1
-  if (!Number.isFinite(idx)) idx = nowIdx
+  if (!Number.isFinite(idx)) {
+    const start = parseYm(plan.planStartMonth || FRESH_PLAN_START)
+    idx = start ? ymIndex(start.year, start.month) : nowIdx
+  }
+  if (idx > nowIdx) idx = nowIdx
   while (idx < nowIdx) {
     const year = Math.floor(idx / 12)
     const month = idx % 12
@@ -304,6 +312,10 @@ export function loadDebtPlan(): DebtPlanState {
       loggedHistory: hasLogging
         ? normalizeLoggedHistory(item.loggedHistory)
         : {},
+      planStartMonth:
+        typeof item.planStartMonth === 'string' && parseYm(item.planStartMonth)
+          ? item.planStartMonth
+          : FRESH_PLAN_START,
       affirmLoans: pruneExpiredAffirmLoans(
         Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
           ? withSeededStartDates(
