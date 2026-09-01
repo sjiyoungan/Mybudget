@@ -704,7 +704,7 @@ function EditAffirmDialog({
     setConfirmOpen(false)
     setRemoveId(null)
     setFocusId(null)
-  }, [open, loans])
+  }, [open, loans, now])
 
   const dirty = JSON.stringify(drafts) !== baseline
   const existingIds = useMemo(() => new Set(loans.map((loan) => loan.id)), [loans])

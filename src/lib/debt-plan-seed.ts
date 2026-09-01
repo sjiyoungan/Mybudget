@@ -415,26 +415,6 @@ export const seededAffirmLoans: SeededAffirmLoan[] = [
     "remaining": 59.63
   },
   {
-    "id": "affirm-macy-s-7",
-    "name": "Macy's",
-    "loanId": "",
-    "startMonth": "2026-05",
-    "lastPayment": "2026-07",
-    "startingBalance": 79.02,
-    "monthly": 34.34,
-    "remaining": 0
-  },
-  {
-    "id": "affirm-UV24-NGB0",
-    "name": "Amazon",
-    "loanId": "UV24-NGB0",
-    "startMonth": "2026-05",
-    "lastPayment": "2026-07",
-    "startingBalance": 31.54,
-    "monthly": 10.51,
-    "remaining": 0
-  },
-  {
     "id": "affirm-ZSUO-T0MW",
     "name": "Amazon",
     "loanId": "ZSUO-T0MW",
@@ -497,16 +477,6 @@ export const seededAffirmLoans: SeededAffirmLoan[] = [
     "startingBalance": 76.28,
     "monthly": 12.71,
     "remaining": 50.86
-  },
-  {
-    "id": "affirm-WPWV-QK5K",
-    "name": "Amazon",
-    "loanId": "WPWV-QK5K",
-    "startMonth": "2026-05",
-    "lastPayment": "2026-07",
-    "startingBalance": 38.68,
-    "monthly": 12.9,
-    "remaining": 0
   },
   {
     "id": "affirm-GFEN-JNIN",
@@ -935,24 +905,4 @@ export const seededAffirmLoans: SeededAffirmLoan[] = [
     "monthly": 87.1,
     "remaining": 261.3
   },
-  {
-    "id": "affirm-B06Y-9CV8",
-    "name": "Amazon",
-    "loanId": "B06Y-9CV8",
-    "startMonth": "2026-05",
-    "lastPayment": "2026-06",
-    "startingBalance": 30.72,
-    "monthly": 15.37,
-    "remaining": 0
-  },
-  {
-    "id": "affirm-lowes-59",
-    "name": "Lowes",
-    "loanId": "",
-    "startMonth": "2026-05",
-    "lastPayment": "2026-05",
-    "startingBalance": 73.13,
-    "monthly": 73.86,
-    "remaining": 0
-  }
 ]

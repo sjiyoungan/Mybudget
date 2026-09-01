@@ -47,6 +47,7 @@ import {
   paymentOverride,
   plannedInterest,
   plannerRows,
+  pruneExpiredAffirmLoans,
   projectDebtPlan,
   resolveCustomOrder,
   saveDebtPlan,
@@ -169,7 +170,10 @@ export function DebtPage() {
           loans={plan.affirmLoans}
           now={now}
           onLoansChange={(affirmLoans) => {
-            setPlan((current) => ({ ...current, affirmLoans }))
+            setPlan((current) => ({
+              ...current,
+              affirmLoans: pruneExpiredAffirmLoans(affirmLoans, now),
+            }))
           }}
         />
     </main>

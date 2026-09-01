@@ -107,7 +107,9 @@ export function defaultDebtPlan(): DebtPlanState {
     paymentsByMonth: {},
     loggedMonths: [],
     loggedHistory: {},
-    affirmLoans: seededAffirmLoans.map((loan) => ({ ...loan })),
+    affirmLoans: pruneExpiredAffirmLoans(
+      seededAffirmLoans.map((loan) => ({ ...loan })),
+    ),
   }
 }
 
@@ -294,11 +296,13 @@ export function loadDebtPlan(): DebtPlanState {
       loggedHistory: hasLogging
         ? normalizeLoggedHistory(item.loggedHistory)
         : {},
-      affirmLoans: Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
-        ? withSeededStartDates(
-            item.affirmLoans.filter(isAffirmLoan).map(normalizeAffirmLoan),
-          )
-        : fallback.affirmLoans,
+      affirmLoans: pruneExpiredAffirmLoans(
+        Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
+          ? withSeededStartDates(
+              item.affirmLoans.filter(isAffirmLoan).map(normalizeAffirmLoan),
+            )
+          : fallback.affirmLoans,
+      ),
     }
   } catch {
     return fallback
@@ -306,7 +310,11 @@ export function loadDebtPlan(): DebtPlanState {
 }
 
 export function saveDebtPlan(state: DebtPlanState) {
-  localStorage.setItem(PLAN_KEY, JSON.stringify(state))
+  const next = {
+    ...state,
+    affirmLoans: pruneExpiredAffirmLoans(state.affirmLoans),
+  }
+  localStorage.setItem(PLAN_KEY, JSON.stringify(next))
 }
 
 function normalizeAffirmLoan(loan: AffirmLoan): AffirmLoan {
@@ -1134,10 +1142,29 @@ export function affirmLoanPayments(loan: AffirmLoan) {
   return payments
 }
 
-/** Loans that still have a payment this month or later. Past payoffs drop off. */
-export function affirmCurrentLoans(loans: AffirmLoan[], now: Date) {
+/** Paid off, and the last-payment month is already over. */
+export function affirmLoanIsPastPayoff(loan: AffirmLoan, now: Date) {
+  if (loan.remaining > 0.005) return false
   const current = monthKey(now.getFullYear(), now.getMonth())
-  return loans.filter((loan) => loan.lastPayment >= current)
+  return loan.lastPayment < current
+}
+
+/** Drop paid-off loans after their last-payment month ends. */
+export function pruneExpiredAffirmLoans(
+  loans: AffirmLoan[],
+  now = new Date(),
+) {
+  return loans.filter((loan) => !affirmLoanIsPastPayoff(loan, now))
+}
+
+/** Still has a payment this month or later. */
+export function affirmLoanIsCurrent(loan: AffirmLoan, now: Date) {
+  const current = monthKey(now.getFullYear(), now.getMonth())
+  return loan.lastPayment >= current
+}
+
+export function affirmCurrentLoans(loans: AffirmLoan[], now: Date) {
+  return loans.filter((loan) => affirmLoanIsCurrent(loan, now))
 }
 
 export function affirmVisibleMonths(loans: AffirmLoan[], now: Date) {
