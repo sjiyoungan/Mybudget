@@ -1333,6 +1333,28 @@ export function actualDebtMetricMonths(
   )
 }
 
+/** All = actuals through this month. A specific year includes that year's plan. */
+export function debtMetricMonths(
+  months: PlannerMonth[],
+  plan: DebtPlanState,
+  year: DebtMetricYear,
+  now = new Date(),
+) {
+  if (year === ALL_DEBT_YEARS) return actualDebtMetricMonths(months, plan, now)
+  const byKey = new Map<string, PlannerMonth>()
+  for (const row of historyRows(months, plan, now)) {
+    if (row.year === year) byKey.set(monthKey(row.year, row.month), row)
+  }
+  for (const row of months) {
+    if (row.year !== year) continue
+    const key = monthKey(row.year, row.month)
+    if (!byKey.has(key)) byKey.set(key, row)
+  }
+  return [...byKey.values()].sort(
+    (a, b) => ymIndex(a.year, a.month) - ymIndex(b.year, b.month),
+  )
+}
+
 export function plannerMetricYears(months: PlannerMonth[], now = new Date()) {
   const cap = now.getFullYear()
   const years = new Set<number>([cap])

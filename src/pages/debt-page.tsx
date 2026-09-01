@@ -63,6 +63,7 @@ import {
   paymentOverride,
   ALL_DEBT_YEARS,
   actualDebtMetricMonths,
+  debtMetricMonths,
   plannerMetricYears,
   plannerRows,
   plannerVisibleDebts,
@@ -189,8 +190,12 @@ export function DebtPage() {
       ? year
       : (years[0] ?? now.getFullYear())
   const yearStats = useMemo(
-    () => yearDebtSummary(metricMonths, selectedYear),
-    [metricMonths, selectedYear],
+    () =>
+      yearDebtSummary(
+        debtMetricMonths(months, plan, selectedYear, now),
+        selectedYear,
+      ),
+    [months, now, plan, selectedYear],
   )
 
   return (
