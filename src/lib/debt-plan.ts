@@ -886,11 +886,13 @@ function scheduledPayment(
   plan: DebtPlanState,
   year: number,
   month: number,
+  charged = 0,
 ) {
-  if (debt.id === AFFIRM_DEBT_ID) {
-    return affirmMonthTotal(plan.affirmLoans, monthKey(year, month))
-  }
-  return paymentWithoutCharges(debt)
+  const base =
+    debt.id === AFFIRM_DEBT_ID
+      ? affirmMonthTotal(plan.affirmLoans, monthKey(year, month))
+      : paymentWithoutCharges(debt)
+  return roundCents(base + Math.max(0, charged))
 }
 
 function historyMonth(
@@ -1018,7 +1020,10 @@ export function projectDebtPlan(
     for (const debt of owing) {
       if (locked.has(debt.id)) continue
       const due = afterInterest.get(debt.id) ?? 0
-      const minPay = roundCents(Math.min(scheduledPayment(debt, plan, year, month), due))
+      const charged = lines.find((line) => line.debtId === debt.id)?.charged ?? 0
+      const minPay = roundCents(
+        Math.min(scheduledPayment(debt, plan, year, month, charged), due),
+      )
       payments.set(debt.id, minPay)
       allocated += minPay
     }
@@ -1096,7 +1101,7 @@ export function projectDebtPlan(
       line.paid = paid
       line.extra = extraPaidOnLine(
         paid,
-        debt ? scheduledPayment(debt, plan, year, month) : 0,
+        debt ? scheduledPayment(debt, plan, year, month, line.charged) : 0,
         due,
       )
       line.balance = roundCents(Math.max(0, due - paid))
