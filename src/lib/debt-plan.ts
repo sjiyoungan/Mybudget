@@ -308,7 +308,7 @@ export function chargedForDebt(
   if (typeof override === 'number' && Number.isFinite(override)) {
     return roundCents(override)
   }
-  return chargesForDebt(expenses, { id: debtId })
+  return chargesForDebt(expenses, { id: debtId }, { year, month })
 }
 
 export function parseDebtPlan(value: unknown): DebtPlanState | null {
@@ -1092,7 +1092,7 @@ export function projectDebtPlan(
       const already = payments.get(debt.id) ?? 0
       const monthsLeft = monthsUntilPromoEnd(debt, year, month) ?? 1
       const rate = effectiveApr(debt, year, month) / 100 / 12
-      const charge = chargesForDebt(expenses, { id: debt.id })
+      const charge = chargesForDebt(expenses, { id: debt.id }, { year, month })
       const need = paymentToClear(due, rate, monthsLeft, charge)
       const add = roundCents(
         Math.min(leftover, Math.max(0, need - already), Math.max(0, due - already)),

@@ -45,6 +45,8 @@ export type RecurringExpense = {
   accountId: string
   category: string
   hidden?: boolean
+  /** First `YYYY-MM` this expense no longer applies. Earlier months keep it. */
+  endsBefore?: string
 }
 
 export type DebtType = 'credit-card' | 'loan'
@@ -635,6 +637,15 @@ function normalizeAccount(value: unknown): BankAccount | null {
   }
 }
 
+function parseEndsBefore(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}$/.test(value)) return undefined
+  return value
+}
+
+function expenseMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
 function normalizeExpense(value: unknown): RecurringExpense | null {
   if (value == null || typeof value !== 'object') return null
   const item = value as Partial<RecurringExpense>
@@ -662,6 +673,7 @@ function normalizeExpense(value: unknown): RecurringExpense | null {
     accountId: item.accountId,
     category: isExpenseCategory(item.category) ? item.category : 'recurring',
     hidden: item.hidden === true,
+    endsBefore: parseEndsBefore(item.endsBefore),
   }
 }
 
@@ -817,12 +829,48 @@ export function isHiddenExpense(expense: Pick<RecurringExpense, 'hidden'>) {
   return expense.hidden === true
 }
 
+export function isEndedExpense(
+  expense: Pick<RecurringExpense, 'endsBefore'>,
+) {
+  return parseEndsBefore(expense.endsBefore) != null
+}
+
+export function isExpenseActiveInMonth(
+  expense: Pick<RecurringExpense, 'endsBefore'>,
+  year: number,
+  month: number,
+) {
+  const endsBefore = parseEndsBefore(expense.endsBefore)
+  if (!endsBefore) return true
+  const [endYear, endMonth] = endsBefore.split('-').map(Number)
+  return year * 12 + month < endYear * 12 + (endMonth - 1)
+}
+
+export function isLiveExpense(
+  expense: Pick<RecurringExpense, 'endsBefore'>,
+  now = new Date(),
+) {
+  return isExpenseActiveInMonth(expense, now.getFullYear(), now.getMonth())
+}
+
+export function endExpenseFromNow(
+  expense: RecurringExpense,
+  now = new Date(),
+): RecurringExpense {
+  if (isEndedExpense(expense)) return expense
+  return { ...expense, endsBefore: expenseMonthKey(now) }
+}
+
+function countsThisMonth(expense: RecurringExpense) {
+  return !isHiddenExpense(expense) && isLiveExpense(expense)
+}
+
 export function monthlyNeedForAccount(
   expenses: RecurringExpense[],
   accountId: string,
 ) {
   return expenses
-    .filter((item) => item.accountId === accountId && !isHiddenExpense(item))
+    .filter((item) => item.accountId === accountId && countsThisMonth(item))
     .reduce((sum, item) => sum + monthlyAmount(item), 0)
 }
 
@@ -843,9 +891,15 @@ function isChargeOnDebt(
 export function chargesForDebt(
   expenses: RecurringExpense[],
   debt: Pick<Debt, 'id'>,
+  when?: { year: number; month: number },
 ) {
   const sum = expenses
     .filter((expense) => isChargeOnDebt(expense, debt))
+    .filter((expense) =>
+      when
+        ? isExpenseActiveInMonth(expense, when.year, when.month)
+        : isLiveExpense(expense),
+    )
     .reduce((total, expense) => total + monthlyAmount(expense), 0)
   return ceilDollars(sum)
 }
@@ -855,7 +909,10 @@ export function chargeExpensesForDebt(
   debt: Pick<Debt, 'id'>,
   includeHidden = false,
 ) {
-  return expenses.filter((expense) => isChargeOnDebt(expense, debt, includeHidden))
+  return expenses.filter(
+    (expense) =>
+      isChargeOnDebt(expense, debt, includeHidden) && isLiveExpense(expense),
+  )
 }
 
 export function hiddenChargeExpensesForDebt(
@@ -918,7 +975,13 @@ export function depositLinesForAccount(
   const lines: DepositLine[] = []
 
   for (const expense of expenses) {
-    if (isHiddenExpense(expense) || expense.accountId !== accountId) continue
+    if (
+      isHiddenExpense(expense) ||
+      !isLiveExpense(expense) ||
+      expense.accountId !== accountId
+    ) {
+      continue
+    }
     const debt = paidFromHere.find((item) => item.id === expense.id)
     listed.add(expense.id)
     if (debt || isDebtExpense(expense)) {
@@ -947,7 +1010,7 @@ export function depositLinesForAccount(
   for (const debt of paidFromHere) {
     if (listed.has(debt.id)) continue
     const linked = expenses.find((expense) => expense.id === debt.id)
-    if (linked && isHiddenExpense(linked)) continue
+    if (linked && (isHiddenExpense(linked) || isEndedExpense(linked))) continue
     lines.push({
       id: debt.id,
       name: debt.lender,
@@ -1044,7 +1107,7 @@ export function totalForCategory(
   category: string,
 ) {
   return expenses
-    .filter((item) => item.category === category && !isHiddenExpense(item))
+    .filter((item) => item.category === category && countsThisMonth(item))
     .reduce((sum, item) => sum + ceiledMonthlyAmount(item), 0)
 }
 
@@ -1058,7 +1121,7 @@ export function totalDebtPayments(debts: Debt[]) {
 
 export function totalMonthlyExpenses(expenses: RecurringExpense[]) {
   return expenses
-    .filter((item) => !isHiddenExpense(item))
+    .filter((item) => countsThisMonth(item))
     .reduce((sum, item) => sum + ceiledMonthlyAmount(item), 0)
 }
 
@@ -1068,7 +1131,7 @@ export function totalMonthlyExpensesExcluding(
 ) {
   const skip = new Set(categoryIds)
   return expenses
-    .filter((item) => !skip.has(item.category) && !isHiddenExpense(item))
+    .filter((item) => !skip.has(item.category) && countsThisMonth(item))
     .reduce((sum, item) => sum + ceiledMonthlyAmount(item), 0)
 }
 
@@ -1094,6 +1157,7 @@ export function expenseFromDebt(
     accountId: debt.paidFromAccountId || existing?.accountId || '',
     category: DEBT_CATEGORY_ID,
     hidden: existing?.hidden,
+    endsBefore: existing?.endsBefore,
   }
 }
 
@@ -1139,6 +1203,11 @@ export function applyDebtsToExpenses(
   const used = new Set<string>()
   const next: RecurringExpense[] = []
   for (const expense of expenses) {
+    if (isEndedExpense(expense)) {
+      next.push(expense)
+      used.add(expense.id)
+      continue
+    }
     if (debtIds.has(expense.id) || isDebtExpense(expense)) {
       const linked = linkedById.get(expense.id)
       if (linked) {
@@ -1164,7 +1233,7 @@ export function applyExpensesToDebts(
   const byId = new Map(debts.map((debt) => [debt.id, debt]))
   const order = new Map(debts.map((debt, index) => [debt.id, index]))
   return expenses
-    .filter(isDebtExpense)
+    .filter((expense) => isDebtExpense(expense) && isLiveExpense(expense))
     .map((expense) => debtFromExpense(expense, byId.get(expense.id)))
     .sort((left, right) => {
       const leftIndex = order.get(left.id)
@@ -1179,7 +1248,10 @@ export function applyExpensesToDebts(
 export function syncLinkedDebts(state: BudgetState): BudgetState {
   const debtIds = new Set(state.debts.map((debt) => debt.id))
   const extra = state.expenses.filter(
-    (expense) => isDebtExpense(expense) && !debtIds.has(expense.id),
+    (expense) =>
+      isDebtExpense(expense) &&
+      isLiveExpense(expense) &&
+      !debtIds.has(expense.id),
   )
   const debts = [
     ...state.debts,

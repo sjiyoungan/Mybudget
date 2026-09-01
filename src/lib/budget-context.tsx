@@ -10,6 +10,9 @@ import {
 import {
   applyDebtsToExpenses,
   applyExpensesToDebts,
+  endExpenseFromNow,
+  isEndedExpense,
+  isLiveExpense,
   loadBudget,
   saveBudget,
   type AccountKind,
@@ -192,12 +195,32 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         setState((current) =>
           withLinkedExpenses(
             current,
-            current.expenses.filter((item) => item.id !== id),
+            current.expenses.map((item) =>
+              item.id === id ? endExpenseFromNow(item) : item,
+            ),
           ),
         )
       },
       replaceExpenses(expenses) {
-        setState((current) => withLinkedExpenses(current, expenses))
+        setState((current) => {
+          const incomingIds = new Set(expenses.map((item) => item.id))
+          const keptEnded = current.expenses.filter(
+            (item) => isEndedExpense(item) && !incomingIds.has(item.id),
+          )
+          const newlyEnded = current.expenses
+            .filter(
+              (item) =>
+                isLiveExpense(item) &&
+                !incomingIds.has(item.id) &&
+                !isEndedExpense(item),
+            )
+            .map((item) => endExpenseFromNow(item))
+          return withLinkedExpenses(current, [
+            ...keptEnded,
+            ...newlyEnded,
+            ...expenses.filter((item) => !isEndedExpense(item)),
+          ])
+        })
       },
       replaceCategories(categories) {
         setState((current) => ({

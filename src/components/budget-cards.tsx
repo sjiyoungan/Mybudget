@@ -96,6 +96,7 @@ import {
   shownMonthlyPayment,
   storedAmountFromShownPayment,
   isDebtExpense,
+  isLiveExpense,
   type AccountKind,
   type Debt,
   type DebtType,
@@ -1216,7 +1217,9 @@ function EditExpensesDialog({
   useLayoutEffect(() => {
     if (!open) return
     const nextCategories = categories.map((item) => ({ ...item }))
-    const nextDrafts = expenses.map((item) =>
+    const nextDrafts = expenses
+      .filter((item) => isLiveExpense(item))
+      .map((item) =>
       expenseToEditorDraft(item, expenses, debts),
     )
     setCategoryDrafts(nextCategories)
@@ -1728,12 +1731,12 @@ function EditExpensesDialog({
             <DialogTitle>Remove expense?</DialogTitle>
             <DialogDescription>
               {removeTarget?.name
-                ? `Removing â€œ${removeTarget.name}â€ will delete it from this list.`
-                : 'Removing this expense will delete it from this list.'}
+                ? `Removing “${removeTarget.name}” takes it off this list from this month on.`
+                : 'Removing this expense takes it off this list from this month on.'}
               {removeId && linkedDebtIds.has(removeId)
-                ? ' It will also be removed from Debt.'
+                ? ' It will also be removed from Debt going forward.'
                 : ''}{' '}
-              This can&apos;t be undone from here.
+              Past months keep the old amount. This can&apos;t be undone from here.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:justify-between">
@@ -2009,12 +2012,12 @@ function EditOneExpenseDialog({
             <DialogTitle>Remove expense?</DialogTitle>
             <DialogDescription>
               {draft?.name
-                ? `Removing â€œ${draft.name}â€ will delete it from this list.`
-                : 'Removing this expense will delete it from this list.'}
+                ? `Removing “${draft.name}” takes it off this list from this month on.`
+                : 'Removing this expense takes it off this list from this month on.'}
               {linkedDebt
-                ? ' It will also be removed from Debt.'
+                ? ' It will also be removed from Debt going forward.'
                 : ''}{' '}
-              This can&apos;t be undone from here.
+              Past months keep the old amount. This can&apos;t be undone from here.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:justify-between">
@@ -2310,7 +2313,10 @@ function CategoryExpensesCard({
       : item.id !== DEBT_CATEGORY_ID,
   )
   const debtItems = expenses.filter(
-    (expense) => expense.category === DEBT_CATEGORY_ID && !expense.hidden,
+    (expense) =>
+      expense.category === DEBT_CATEGORY_ID &&
+      !expense.hidden &&
+      isLiveExpense(expense),
   )
   const total =
     mode === 'debt'
@@ -2362,7 +2368,9 @@ function CategoryExpensesCard({
                 {shownCategories.map((item) => {
                   const details = expenses.filter(
                     (expense) =>
-                      expense.category === item.id && !expense.hidden,
+                      expense.category === item.id &&
+                      !expense.hidden &&
+                      isLiveExpense(expense),
                   )
                   return (
                     <div
