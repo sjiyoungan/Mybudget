@@ -437,6 +437,7 @@ function PlannerCard({
           months={rows}
           lockHeight={view === 'history'}
           showStart={view === 'planner'}
+          showExtra={view === 'planner'}
           monthAction={view === 'planner' ? 'task' : 'pencil'}
           now={now}
           editingKey={editingKey}
@@ -751,6 +752,7 @@ function MonthTable({
   months,
   lockHeight = false,
   showStart,
+  showExtra = true,
   monthAction,
   now,
   editingKey,
@@ -766,6 +768,7 @@ function MonthTable({
   months: PlannerMonth[]
   lockHeight?: boolean
   showStart: boolean
+  showExtra?: boolean
   monthAction: 'task' | 'pencil'
   now: Date
   editingKey: string | null
@@ -1098,7 +1101,7 @@ function MonthTable({
           </tr>
           <HairlineRow
             debts={debts}
-            highlighted={extraFlags(debts, months[0])}
+            highlighted={showExtra ? extraFlags(debts, months[0]) : debts.map(() => false)}
             sticky="sticky left-0 z-20 bg-card p-0"
           />
         </thead>
@@ -1122,6 +1125,7 @@ function MonthTable({
               debts={debts}
               plan={plan}
               showStart={showStart && groupIndex === 0}
+              showExtra={showExtra}
               spaced={groupIndex > 0}
               lastGroup={groupIndex === years.length - 1}
               monthAction={monthAction}
@@ -1237,6 +1241,7 @@ function YearGroupRows({
   debts,
   plan,
   showStart,
+  showExtra = true,
   spaced,
   lastGroup,
   monthAction,
@@ -1254,6 +1259,7 @@ function YearGroupRows({
   debts: { id: string; lender: string }[]
   plan: DebtPlanState
   showStart: boolean
+  showExtra?: boolean
   spaced: boolean
   lastGroup: boolean
   monthAction: 'task' | 'pencil'
@@ -1311,6 +1317,7 @@ function YearGroupRows({
             index + 1 < months.length ? months[index + 1] : nextMonth
           }
           showStart={showStart && index === 0}
+          showExtra={showExtra}
           last={lastGroup && index === months.length - 1}
           monthAction={monthAction}
           now={now}
@@ -1333,6 +1340,7 @@ function MonthBlock({
   row,
   nextRow,
   showStart,
+  showExtra = true,
   last,
   monthAction,
   now,
@@ -1349,6 +1357,7 @@ function MonthBlock({
   row: PlannerMonth
   nextRow?: PlannerMonth
   showStart: boolean
+  showExtra?: boolean
   last: boolean
   monthAction: 'task' | 'pencil'
   now: Date
@@ -1381,7 +1390,7 @@ function MonthBlock({
   )
 
   function extraOn(debtId: string) {
-    return extraFocus(paidById.get(debtId))
+    return showExtra && extraFocus(paidById.get(debtId))
   }
 
   function paidOff(debtId: string) {
@@ -1414,7 +1423,7 @@ function MonthBlock({
           </tr>
           <HairlineRow
             debts={debts}
-            highlighted={extraFlags(debts, row)}
+            highlighted={showExtra ? extraFlags(debts, row) : debts.map(() => false)}
           />
         </>
       ) : null}
@@ -1569,7 +1578,9 @@ function MonthBlock({
       {last ? null : (
         <HairlineRow
           debts={debts}
-          highlighted={extraFlags(debts, row, nextRow)}
+          highlighted={
+            showExtra ? extraFlags(debts, row, nextRow) : debts.map(() => false)
+          }
         />
       )}
     </>

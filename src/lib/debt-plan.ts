@@ -24,7 +24,6 @@ export const DEBT_BALANCE_SEED = 'mybudget.debt-balances-2026-08.v1'
 export const AFFIRM_DEBT_ID = 'debt-affirm'
 const PLAN_KEY = 'mybudget.debt-plan.v1'
 const PLAN_HISTORY_RESET = 'mybudget.planner-history-reset.v1'
-const UNLOG_AUGUST_2026 = 'mybudget.unlog-2026-08.v1'
 const FRESH_PLAN_START = '2026-08'
 
 export type AffirmLoan = SeededAffirmLoan
@@ -321,6 +320,13 @@ export function parseDebtPlan(value: unknown): DebtPlanState | null {
       : fallback.snowballDebtId
   const customOrder = normalizeIdList(item.customOrder)
   const hasLogging = Array.isArray(item.loggedMonths)
+  const loggedHistory = normalizeLoggedHistory(item.loggedHistory)
+  const loggedMonths = [
+    ...new Set([
+      ...(hasLogging ? normalizeLoggedMonths(item.loggedMonths) : []),
+      ...Object.keys(loggedHistory),
+    ]),
+  ].sort()
   return {
     monthlyBudget:
       typeof item.monthlyBudget === 'number' && Number.isFinite(item.monthlyBudget)
@@ -340,13 +346,12 @@ export function parseDebtPlan(value: unknown): DebtPlanState | null {
         : {},
     chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
     interestByMonth: normalizeChargesByMonth(item.interestByMonth),
-    paymentsByMonth: hasLogging
-      ? normalizeChargesByMonth(item.paymentsByMonth)
-      : {},
-    loggedMonths: hasLogging ? normalizeLoggedMonths(item.loggedMonths) : [],
-    loggedHistory: hasLogging
-      ? normalizeLoggedHistory(item.loggedHistory)
-      : {},
+    paymentsByMonth:
+      hasLogging || Object.keys(loggedHistory).length > 0
+        ? normalizeChargesByMonth(item.paymentsByMonth)
+        : {},
+    loggedMonths,
+    loggedHistory,
     planStartMonth:
       typeof item.planStartMonth === 'string' && parseYm(item.planStartMonth)
         ? item.planStartMonth
@@ -363,7 +368,6 @@ export function parseDebtPlan(value: unknown): DebtPlanState | null {
 
 export function markPlanMigrationsApplied() {
   localStorage.setItem(PLAN_HISTORY_RESET, '1')
-  localStorage.setItem(UNLOG_AUGUST_2026, '1')
 }
 
 export function loadDebtPlan(): DebtPlanState {
@@ -376,23 +380,7 @@ export function loadDebtPlan(): DebtPlanState {
     }
     const loaded = parseDebtPlan(JSON.parse(raw))
     if (!loaded) return fallback
-    if (!localStorage.getItem(PLAN_HISTORY_RESET)) {
-      markPlanMigrationsApplied()
-      loaded.loggedMonths = []
-      loaded.loggedHistory = {}
-      loaded.paymentsByMonth = {}
-      loaded.chargesByMonth = {}
-      loaded.interestByMonth = {}
-      saveDebtPlan(loaded)
-    }
-    if (!localStorage.getItem(UNLOG_AUGUST_2026)) {
-      localStorage.setItem(UNLOG_AUGUST_2026, '1')
-      const next = unlogPlannerMonth(loaded, 2026, 7)
-      if (next !== loaded) {
-        saveDebtPlan(next)
-        return next
-      }
-    }
+    markPlanMigrationsApplied()
     return loaded
   } catch {
     return fallback
@@ -686,6 +674,11 @@ export function logPlannerMonth(
     }
   }
   const snapshot = snapshotLoggedMonth(row, paidOverrides)
+  for (const line of snapshot.lines) {
+    next = setMonthPayment(next, row.year, row.month, line.debtId, line.paid)
+    next = setMonthCharge(next, row.year, row.month, line.debtId, line.charged)
+    next = setMonthInterest(next, row.year, row.month, line.debtId, line.interest)
+  }
   const currentLogged = next.loggedMonths ?? []
   const loggedMonths = currentLogged.includes(key)
     ? currentLogged

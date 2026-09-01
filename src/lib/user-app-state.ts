@@ -65,6 +65,7 @@ export function rememberPlan(plan: DebtPlanState) {
 
 export function markCloudReady() {
   ready = true
+  scheduleUserAppStatePush()
 }
 
 export function resetUserAppStateSync() {
@@ -227,7 +228,7 @@ function mergeDebts(remote: Debt[], local: Debt[]) {
   return [...byId.values()]
 }
 
-function mergeBudgets(remote: BudgetState, local: BudgetState): BudgetState {
+export function mergeBudgets(remote: BudgetState, local: BudgetState): BudgetState {
   const remoteExpenses = remote.expenses.length
   const localExpenses = local.expenses.length
   return {
@@ -244,14 +245,10 @@ function mergeBudgets(remote: BudgetState, local: BudgetState): BudgetState {
   }
 }
 
-function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPlanState {
+export function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPlanState {
   const loggedMonths = [
     ...new Set([...(remote.loggedMonths ?? []), ...(local.loggedMonths ?? [])]),
   ].sort()
-  const history = { ...(remote.loggedHistory ?? {}) }
-  for (const [key, snapshot] of Object.entries(local.loggedHistory ?? {})) {
-    if (!history[key]) history[key] = snapshot
-  }
   return {
     ...remote,
     customOrder:
@@ -261,7 +258,10 @@ function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPlanState 
         ? remote.affirmLoans
         : local.affirmLoans,
     loggedMonths,
-    loggedHistory: history,
+    loggedHistory: {
+      ...(remote.loggedHistory ?? {}),
+      ...(local.loggedHistory ?? {}),
+    },
     paymentsByMonth: mergeMonthMaps(
       remote.paymentsByMonth,
       local.paymentsByMonth,
@@ -289,8 +289,8 @@ function mergeAppState(remote: UserAppState, local: UserAppState): UserAppState 
 export function syncUserAppStateFromCloud() {
   if (!inflight) {
     inflight = (async () => {
-      const local = localAppState()
       const remote = await fetchUserAppState()
+      const local = localAppState()
       if (remote) {
         const merged = mergeAppState(remote, local)
         applyLocal(merged)
