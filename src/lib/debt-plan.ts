@@ -807,20 +807,18 @@ function extraPaidOnLine(paid: number, minimum: number, balanceBeforePay: number
   return roundCents(Math.max(0, paid - minDue))
 }
 
-/** Fill leftover paycheck plus any unused scheduled payments, including Affirm. */
+/** Leftover paycheck plus any unused scheduled payments, including Affirm. */
 function extraPool(
   plan: DebtPlanState,
   debts: Debt[],
   payments: Map<string, number>,
   locked: Map<string, number>,
-  monthCharges: number,
 ) {
-  const target = roundCents(plan.monthlyBudget + Math.max(0, monthCharges))
   let needed = 0
   for (const debt of debts) {
     needed += locked.get(debt.id) ?? payments.get(debt.id) ?? 0
   }
-  return roundCents(Math.max(0, target - roundCents(needed)))
+  return roundCents(Math.max(0, plan.monthlyBudget - roundCents(needed)))
 }
 
 function remainingAfterPayments(
@@ -1018,12 +1016,7 @@ export function projectDebtPlan(
     }
 
     const applyExtra = monthIdx >= nowIdx && locked.size === 0
-    const monthCharges = roundCents(
-      lines.reduce((sum, line) => sum + line.charged, 0),
-    )
-    let leftover = applyExtra
-      ? extraPool(plan, debts, payments, locked, monthCharges)
-      : 0
+    let leftover = applyExtra ? extraPool(plan, debts, payments, locked) : 0
     const owingIds = new Set(owing.map((debt) => debt.id))
     const unlocked = owing.filter(
       (debt) => !locked.has(debt.id) && debt.id !== AFFIRM_DEBT_ID,

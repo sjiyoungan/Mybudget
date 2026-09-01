@@ -89,6 +89,7 @@ import {
   parsePromoEndsOn,
   promoEndYearMonth,
   totalDebtPayments,
+  leftoverPaycheckDeposit,
   totalForCategory,
   totalMonthlyExpenses,
   totalMonthlyExpensesExcluding,
@@ -3343,13 +3344,7 @@ export function DebtsCard() {
   )
   const totalBalance = debts.reduce((sum, item) => sum + item.balance, 0)
   const totalPayment = totalDebtPayments(debts)
-  const extraThisMonth =
-    months.find(
-      (row) =>
-        row.source === 'plan' &&
-        row.year === now.getFullYear() &&
-        row.month === now.getMonth(),
-    )?.extraPaid ?? 0
+  const extraThisMonth = leftoverPaycheckDeposit(expenses, monthlyNet)
 
   return (
     <>
