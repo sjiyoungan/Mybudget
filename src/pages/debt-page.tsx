@@ -435,6 +435,7 @@ function PlannerCard({
           debts={columns}
           plan={plan}
           months={rows}
+          lockHeight={view === 'history'}
           showStart={view === 'planner'}
           monthAction={view === 'planner' ? 'task' : 'pencil'}
           now={now}
@@ -748,6 +749,7 @@ function MonthTable({
   debts,
   plan,
   months,
+  lockHeight = false,
   showStart,
   monthAction,
   now,
@@ -762,6 +764,7 @@ function MonthTable({
   debts: { id: string; lender: string; apr: number }[]
   plan: DebtPlanState
   months: PlannerMonth[]
+  lockHeight?: boolean
   showStart: boolean
   monthAction: 'task' | 'pencil'
   now: Date
@@ -803,6 +806,7 @@ function MonthTable({
   } | null>(null)
   const [scrolled, setScrolled] = useState(false)
   const [canDrag, setCanDrag] = useState(false)
+  const [bodyHeight, setBodyHeight] = useState<number | null>(null)
   const [tip, setTip] = useState<MonthTip | null>(null)
   const pendingRef = useRef<{ key: string; timer: number } | null>(null)
   const hideRef = useRef<number | null>(null)
@@ -961,6 +965,19 @@ function MonthTable({
   useEffect(() => () => hideTip(), [hideTip])
 
   useLayoutEffect(() => {
+    if (lockHeight) return
+    const el = plannerRef.current
+    if (!el) return
+    const height = el.offsetHeight
+    if (height > 0) setBodyHeight(height)
+  }, [lockHeight, months, debts.length, showStart])
+
+  useLayoutEffect(() => {
+    if (!lockHeight) return
+    scrollerRef.current?.scrollTo({ top: 0 })
+  }, [lockHeight])
+
+  useLayoutEffect(() => {
     const el = scrollerRef.current
     if (!el) return
     const node = el
@@ -983,6 +1000,7 @@ function MonthTable({
     () => ({ enter, leave, hide: hideTip }),
     [enter, hideTip, leave],
   )
+  const capped = lockHeight && bodyHeight != null
 
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0 || !canDrag) return
@@ -1029,11 +1047,16 @@ function MonthTable({
 
   return (
     <TipContext.Provider value={tipApi}>
-    <div ref={plannerRef} className="planner-scroll relative">
+    <div
+      ref={plannerRef}
+      className={cn('planner-scroll relative', capped && 'planner-scroll-capped')}
+      style={capped ? { maxHeight: bodyHeight } : undefined}
+    >
       <div
         ref={scrollerRef}
         className="drag-scroll"
         data-can-drag={canDrag ? '' : undefined}
+        style={capped ? { maxHeight: bodyHeight } : undefined}
         onScroll={() => {
           const el = scrollerRef.current
           setScrolled((el?.scrollLeft ?? 0) > 0)
@@ -1052,16 +1075,16 @@ function MonthTable({
           </colgroup>
           <thead>
             <tr className="text-muted-foreground text-left text-xs">
-              <th className="sticky left-0 z-20 bg-card pt-2 pr-3 pb-2 pl-4 font-medium">
+              <th className="sticky top-0 left-0 z-30 bg-card pt-2 pr-3 pb-2 pl-4 font-medium">
                 Month
               </th>
-              <th className="sticky z-20 bg-card pt-2 pr-4 pb-2 font-medium" style={{ left: MONTH_COL }}>
+              <th className="sticky top-0 z-30 bg-card pt-2 pr-4 pb-2 font-medium" style={{ left: MONTH_COL }}>
                 <span className="sr-only">Line</span>
               </th>
             {debts.map((debt) => (
               <th
                 key={debt.id}
-                className="px-4 pt-2 pb-2 text-center font-medium"
+                className="sticky top-0 z-20 bg-card px-4 pt-2 pb-2 text-center font-medium"
               >
                 <div className="flex flex-col items-center whitespace-nowrap">
                   <span>{debt.lender}</span>
@@ -1069,7 +1092,7 @@ function MonthTable({
                 </div>
               </th>
             ))}
-            <th className="total-rule pt-2 pr-4 pb-2 pl-4 text-right font-medium">
+            <th className="total-rule sticky top-0 z-20 bg-card pt-2 pr-4 pb-2 pl-4 text-right font-medium">
               Total
             </th>
           </tr>

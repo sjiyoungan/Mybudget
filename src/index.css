@@ -131,6 +131,7 @@
 
 .drag-scroll {
   overflow-x: auto;
+  overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
   cursor: default;
@@ -152,6 +153,22 @@
 
 .planner-scroll {
   isolation: isolate;
+}
+.planner-scroll-capped .drag-scroll {
+  scrollbar-width: thin;
+}
+.planner-scroll-capped .drag-scroll::-webkit-scrollbar {
+  display: block;
+}
+.planner-scroll-capped .drag-scroll::-webkit-scrollbar:vertical {
+  width: 8px;
+}
+.planner-scroll-capped .drag-scroll::-webkit-scrollbar:horizontal {
+  height: 0;
+}
+.planner-scroll-capped .drag-scroll::-webkit-scrollbar-thumb {
+  background: rgb(0 0 0 / 0.22);
+  border-radius: 999px;
 }
 .sticky-edge {
   pointer-events: none;
