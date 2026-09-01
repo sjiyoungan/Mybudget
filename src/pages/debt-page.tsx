@@ -11,7 +11,7 @@ import {
   type PointerEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, Menu, Undo2, X } from 'lucide-react'
+import { Check, ChevronDown, Menu, Pencil, Undo2 } from 'lucide-react'
 
 import { AffirmCard } from '@/components/affirm-card'
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
@@ -43,9 +43,10 @@ import {
   debtsWithAffirmPlan,
   loadDebtPlan,
   historyRows,
-  isMonthLogged,
   logPlannerMonth,
-  chargeOverride,
+  applyPlannerMonthValue,
+  monthWithLineValue,
+  type PlannerValueField,
   interestOverride,
   monthKey,
   paymentOverride,
@@ -56,13 +57,9 @@ import {
   projectDebtPlan,
   resolveCustomOrder,
   saveDebtPlan,
-  setMonthCharge,
-  setMonthInterest,
-  setMonthPayment,
   strategyDebtOrder,
   strategyLabel,
   withLiveMonthlyBudget,
-  ymIndex,
   type DebtPlanState,
   type PayoffStrategy,
   type PlannerLine,
@@ -239,10 +236,6 @@ function PlannerCard({
   const [debtsOpen, setDebtsOpen] = useState(false)
   const [undoStack, setUndoStack] = useState<DebtPlanState[]>([])
   const [editingKey, setEditingKey] = useState<string | null>(null)
-  const editBackupRef = useRef<{
-    plan: DebtPlanState
-    undo: DebtPlanState[]
-  } | null>(null)
   const discardPaidCommit = useRef(false)
   const ordered = useMemo(() => strategyDebtOrder(debts, plan), [debts, plan])
   const columns = useMemo(
@@ -360,81 +353,60 @@ function PlannerCard({
           plan={plan}
           months={rows}
           showStart={view === 'planner'}
-          showLog={view === 'planner'}
-          now={now}
+          monthAction={view === 'planner' ? 'task' : 'pencil'}
           editingKey={editingKey}
           onEditMonth={(row) => {
-            const key = monthKey(row.year, row.month)
-            if (editingKey !== key) {
-              editBackupRef.current = { plan, undo: undoStack }
-            }
-            setEditingKey(key)
+            setEditingKey(monthKey(row.year, row.month))
           }}
-          onSaveMonth={(row) => {
+          onExitEdit={() => {
             const focused = document.activeElement
-            let next = plan
             if (
               focused instanceof HTMLInputElement &&
-              focused.classList.contains('paid-input') &&
-              focused.dataset.debtId
+              focused.classList.contains('paid-input')
             ) {
-              const raw = focused.value.trim()
-              const amount = raw === '' ? null : parseUsdInput(raw)
-              if (focused.dataset.field === 'charged') {
-                next = setMonthCharge(
-                  next,
-                  row.year,
-                  row.month,
-                  focused.dataset.debtId,
-                  amount,
-                )
-              } else if (focused.dataset.field === 'interest') {
-                next = setMonthInterest(
-                  next,
-                  row.year,
-                  row.month,
-                  focused.dataset.debtId,
-                  amount,
-                )
-              } else {
-                next = setMonthPayment(
-                  next,
-                  row.year,
-                  row.month,
-                  focused.dataset.debtId,
-                  amount,
-                )
-              }
               focused.blur()
             }
-            changePlan(logPlannerMonth(next, row))
-            editBackupRef.current = null
             setEditingKey(null)
           }}
-          onCancelMonth={() => {
-            discardPaidCommit.current = true
-            const backup = editBackupRef.current
+          onLogMonth={(row) => {
+            const { plan: next, row: snapshot } = applyFocusedPaidInput(
+              plan,
+              row,
+            )
+            changePlan(logPlannerMonth(next, snapshot))
             setEditingKey(null)
-            if (backup) {
-              onPlanChange(backup.plan)
-              setUndoStack(backup.undo)
-              editBackupRef.current = null
-            }
-            queueMicrotask(() => {
-              discardPaidCommit.current = false
-            })
           }}
           onPaidChange={(year, month, debtId, amount) => {
             if (discardPaidCommit.current) return
-            changePlan(setMonthPayment(plan, year, month, debtId, amount))
+            changePlan(
+              applyPlannerMonthValue(plan, year, month, debtId, 'paid', amount),
+            )
           }}
           onChargeChange={(year, month, debtId, amount) => {
             if (discardPaidCommit.current) return
-            changePlan(setMonthCharge(plan, year, month, debtId, amount))
+            changePlan(
+              applyPlannerMonthValue(
+                plan,
+                year,
+                month,
+                debtId,
+                'charged',
+                amount,
+              ),
+            )
           }}
           onInterestChange={(year, month, debtId, amount) => {
             if (discardPaidCommit.current) return
-            changePlan(setMonthInterest(plan, year, month, debtId, amount))
+            changePlan(
+              applyPlannerMonthValue(
+                plan,
+                year,
+                month,
+                debtId,
+                'interest',
+                amount,
+              ),
+            )
           }}
         />
       </CardContent>
@@ -663,12 +635,11 @@ function MonthTable({
   plan,
   months,
   showStart,
-  showLog,
-  now,
+  monthAction,
   editingKey,
   onEditMonth,
-  onSaveMonth,
-  onCancelMonth,
+  onExitEdit,
+  onLogMonth,
   onPaidChange,
   onChargeChange,
   onInterestChange,
@@ -677,12 +648,11 @@ function MonthTable({
   plan: DebtPlanState
   months: PlannerMonth[]
   showStart: boolean
-  showLog: boolean
-  now: Date
+  monthAction: 'task' | 'pencil'
   editingKey: string | null
   onEditMonth: (row: PlannerMonth) => void
-  onSaveMonth: (row: PlannerMonth) => void
-  onCancelMonth: () => void
+  onExitEdit: () => void
+  onLogMonth: (row: PlannerMonth) => void
   onPaidChange: (
     year: number,
     month: number,
@@ -729,7 +699,6 @@ function MonthTable({
     pointerId: -1,
   })
   const years = groupMonthsByYear(months)
-  const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
   const editingRow = months.find(
     (row) => monthKey(row.year, row.month) === editingKey,
   )
@@ -837,6 +806,24 @@ function MonthTable({
   useEffect(() => {
     if (editingKey) hideTip()
   }, [editingKey, hideTip])
+
+  useEffect(() => {
+    if (!editingKey) return
+    function onPointerDown(event: globalThis.PointerEvent) {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (
+        target.closest(
+          '.month-edit-row, .month-edit-frame, [data-month-edit-actions], .month-label',
+        )
+      ) {
+        return
+      }
+      onExitEdit()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [editingKey, onExitEdit])
 
   const leave = useCallback(
     (event: PointerEvent<HTMLElement>, key: string) => {
@@ -998,10 +985,10 @@ function MonthTable({
               showStart={showStart && groupIndex === 0}
               spaced={groupIndex > 0}
               lastGroup={groupIndex === years.length - 1}
-              showLog={showLog}
-              nowIdx={nowIdx}
+              monthAction={monthAction}
               editingKey={editingKey}
               onEditMonth={onEditMonth}
+              onExitEdit={onExitEdit}
               onPaidChange={onPaidChange}
               onChargeChange={onChargeChange}
               onInterestChange={onInterestChange}
@@ -1032,28 +1019,22 @@ function MonthTable({
         data-scrolled={scrolled ? '' : undefined}
         style={{ left: MONTH_COL + LABEL_COL }}
       />
-      {editActions && editingRow
+      {editActions && editingRow && monthAction === 'task'
         ? createPortal(
             <div
               data-no-drag
+              data-month-edit-actions
               className="fixed z-30 flex items-center rounded-md bg-white p-1 shadow-md"
               style={{ top: editActions.top, right: editActions.right }}
             >
               <button
                 type="button"
-                className="hover-fill flex size-6 items-center justify-center rounded"
-                aria-label={`Save ${formatMonthName(editingRow.month)}`}
-                onClick={() => onSaveMonth(editingRow)}
+                className="hover-fill flex items-center gap-1 rounded px-2 py-1 text-sm"
+                aria-label={`Log ${formatMonthName(editingRow.month)}`}
+                onClick={() => onLogMonth(editingRow)}
               >
                 <Check className="size-4" />
-              </button>
-              <button
-                type="button"
-                className="hover-fill flex size-6 items-center justify-center rounded"
-                aria-label="Cancel"
-                onClick={onCancelMonth}
-              >
-                <X className="size-4" />
+                Log
               </button>
             </div>,
             document.body,
@@ -1115,10 +1096,10 @@ function YearGroupRows({
   showStart,
   spaced,
   lastGroup,
-  showLog,
-  nowIdx,
+  monthAction,
   editingKey,
   onEditMonth,
+  onExitEdit,
   onPaidChange,
   onChargeChange,
   onInterestChange,
@@ -1131,10 +1112,10 @@ function YearGroupRows({
   showStart: boolean
   spaced: boolean
   lastGroup: boolean
-  showLog: boolean
-  nowIdx: number
+  monthAction: 'task' | 'pencil'
   editingKey: string | null
   onEditMonth: (row: PlannerMonth) => void
+  onExitEdit: () => void
   onPaidChange: (
     year: number,
     month: number,
@@ -1186,10 +1167,10 @@ function YearGroupRows({
           }
           showStart={showStart && index === 0}
           last={lastGroup && index === months.length - 1}
-          showLog={showLog}
-          nowIdx={nowIdx}
+          monthAction={monthAction}
           editing={editingKey === monthKey(row.year, row.month)}
           onEditMonth={onEditMonth}
+          onExitEdit={onExitEdit}
           onPaidChange={onPaidChange}
           onChargeChange={onChargeChange}
           onInterestChange={onInterestChange}
@@ -1207,10 +1188,10 @@ function MonthBlock({
   nextRow,
   showStart,
   last,
-  showLog,
-  nowIdx,
+  monthAction,
   editing,
   onEditMonth,
+  onExitEdit,
   onPaidChange,
   onChargeChange,
   onInterestChange,
@@ -1222,10 +1203,10 @@ function MonthBlock({
   nextRow?: PlannerMonth
   showStart: boolean
   last: boolean
-  showLog: boolean
-  nowIdx: number
+  monthAction: 'task' | 'pencil'
   editing: boolean
   onEditMonth: (row: PlannerMonth) => void
+  onExitEdit: () => void
   onPaidChange: (
     year: number,
     month: number,
@@ -1293,17 +1274,10 @@ function MonthBlock({
         <MonthCell
           label={label}
           rowSpan={editing ? 4 : 2}
-          showLog={
-            showLog &&
-            (ymIndex(row.year, row.month) <= nowIdx ||
-              isMonthLogged(plan, row.year, row.month))
-          }
-          confirmed={
-            isMonthLogged(plan, row.year, row.month) &&
-            ymIndex(row.year, row.month) >= nowIdx
-          }
+          action={monthAction}
           editing={editing}
           onEdit={() => onEditMonth(row)}
+          onExit={onExitEdit}
         />
         {editing ? (
           <>
@@ -1505,17 +1479,17 @@ function TaskAltIcon({ className }: { className?: string }) {
 function MonthCell({
   label,
   rowSpan,
-  showLog = false,
-  confirmed = false,
+  action,
   editing = false,
   onEdit,
+  onExit,
 }: {
   label: string
   rowSpan: number
-  showLog?: boolean
-  confirmed?: boolean
+  action: 'task' | 'pencil'
   editing?: boolean
   onEdit?: () => void
+  onExit?: () => void
 }) {
   return (
     <td
@@ -1525,35 +1499,33 @@ function MonthCell({
         editing && 'month-editing',
       )}
     >
-      {showLog ? (
-        <div className="flex flex-col items-start gap-1">
-          <span>{label}</span>
-          <button
-            type="button"
-            data-no-drag
-            className={cn(
-              'flex size-5 items-center justify-center',
-              confirmed
-                ? 'text-emerald-600 hover:text-emerald-700'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-            aria-label={confirmed ? `Edit ${label}` : `Log ${label}`}
-            aria-pressed={editing}
-            onClick={(event) => {
-              event.stopPropagation()
-              if (!editing) onEdit?.()
-            }}
-          >
-            {confirmed ? (
-              <Check className="size-4" strokeWidth={2.5} />
-            ) : (
-              <TaskAltIcon className="size-4" />
-            )}
-          </button>
-        </div>
-      ) : (
-        label
-      )}
+      <div className="flex flex-col items-start gap-1">
+        <span>{label}</span>
+        <button
+          type="button"
+          data-no-drag
+          className="text-muted-foreground hover:text-foreground flex size-5 items-center justify-center"
+          aria-label={
+            action === 'pencil'
+              ? `Edit ${label}`
+              : editing
+                ? `Done editing ${label}`
+                : `Edit ${label}`
+          }
+          aria-pressed={editing}
+          onClick={(event) => {
+            event.stopPropagation()
+            if (editing) onExit?.()
+            else onEdit?.()
+          }}
+        >
+          {action === 'pencil' ? (
+            <Pencil className="size-3.5" />
+          ) : (
+            <TaskAltIcon className="size-4" />
+          )}
+        </button>
+      </div>
     </td>
   )
 }
@@ -1769,6 +1741,36 @@ function parseUsdInput(raw: string) {
   const parsed = Number(raw.replace(/[$,\s]/g, ''))
   if (!Number.isFinite(parsed) || parsed < 0) return null
   return Math.round(parsed * 100) / 100
+}
+
+function applyFocusedPaidInput(plan: DebtPlanState, row: PlannerMonth) {
+  const focused = document.activeElement
+  if (
+    !(focused instanceof HTMLInputElement) ||
+    !focused.classList.contains('paid-input') ||
+    !focused.dataset.debtId
+  ) {
+    return { plan, row }
+  }
+  const field = focused.dataset.field
+  if (field !== 'interest' && field !== 'charged' && field !== 'paid') {
+    return { plan, row }
+  }
+  const typed = field as PlannerValueField
+  const raw = focused.value.trim()
+  const amount = raw === '' ? null : parseUsdInput(raw)
+  focused.blur()
+  return {
+    plan: applyPlannerMonthValue(
+      plan,
+      row.year,
+      row.month,
+      focused.dataset.debtId,
+      typed,
+      amount,
+    ),
+    row: monthWithLineValue(row, focused.dataset.debtId, typed, amount),
+  }
 }
 
 function roundCents(value: number) {

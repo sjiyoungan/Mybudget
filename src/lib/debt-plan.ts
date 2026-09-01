@@ -658,6 +658,80 @@ export function unlogPlannerMonth(
   return { ...plan, loggedMonths, loggedHistory }
 }
 
+export type PlannerValueField = 'interest' | 'charged' | 'paid'
+
+function rewritePlannerLine(
+  line: PlannerLine,
+  field: PlannerValueField,
+  amount: number | null,
+): PlannerLine {
+  const nextValue = amount == null ? 0 : roundCents(Math.max(0, amount))
+  const interest = field === 'interest' ? nextValue : line.interest
+  const charged = field === 'charged' ? nextValue : line.charged
+  const paidRaw = field === 'paid' ? nextValue : line.paid
+  const due = roundCents(line.start + interest + charged)
+  const paid = roundCents(Math.min(paidRaw, Math.max(0, due)))
+  const scheduled = Math.max(0, roundCents(line.paid - line.extra))
+  return {
+    ...line,
+    interest,
+    charged,
+    paid,
+    extra: extraPaidOnLine(paid, scheduled, due),
+    balance: roundCents(Math.max(0, due - paid)),
+  }
+}
+
+export function monthWithLineValue(
+  row: PlannerMonth,
+  debtId: string,
+  field: PlannerValueField,
+  amount: number | null,
+): PlannerMonth {
+  const lines = row.lines.map((line) =>
+    line.debtId === debtId ? rewritePlannerLine(line, field, amount) : line,
+  )
+  return {
+    ...row,
+    lines,
+    totalInterest: roundCents(lines.reduce((sum, line) => sum + line.interest, 0)),
+    totalPaid: roundCents(lines.reduce((sum, line) => sum + line.paid, 0)),
+    extraPaid: roundCents(lines.reduce((sum, line) => sum + line.extra, 0)),
+    remainingTotal: roundCents(
+      lines.reduce((sum, line) => sum + line.balance, 0),
+    ),
+  }
+}
+
+export function applyPlannerMonthValue(
+  plan: DebtPlanState,
+  year: number,
+  month: number,
+  debtId: string,
+  field: PlannerValueField,
+  amount: number | null,
+): DebtPlanState {
+  let next = plan
+  if (field === 'interest') {
+    next = setMonthInterest(next, year, month, debtId, amount)
+  } else if (field === 'charged') {
+    next = setMonthCharge(next, year, month, debtId, amount)
+  } else {
+    next = setMonthPayment(next, year, month, debtId, amount)
+  }
+  const key = monthKey(year, month)
+  const snap = next.loggedHistory?.[key]
+  if (!snap) return next
+  const updated = monthWithLineValue(snap, debtId, field, amount)
+  return {
+    ...next,
+    loggedHistory: {
+      ...(next.loggedHistory ?? {}),
+      [key]: { ...updated, source: 'history' },
+    },
+  }
+}
+
 function snapshotLoggedMonth(
   row: PlannerMonth,
   paidOverrides?: Record<string, number | null>,
@@ -1112,15 +1186,12 @@ export function plannedThroughPayoff(months: PlannerMonth[]) {
 export function plannerRows(
   months: PlannerMonth[],
   plan: DebtPlanState,
-  now: Date,
+  _now?: Date,
 ) {
-  const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
   const logged = new Set(plan.loggedMonths ?? [])
-  return plannedThroughPayoff(months).filter((row) => {
-    const idx = ymIndex(row.year, row.month)
-    if (idx >= nowIdx) return true
-    return !logged.has(monthKey(row.year, row.month))
-  })
+  return plannedThroughPayoff(months).filter(
+    (row) => !logged.has(monthKey(row.year, row.month)),
+  )
 }
 
 /** Hide a debt from the planner after its last payment month has passed. */
@@ -1140,14 +1211,13 @@ export function plannerVisibleDebts<T extends { id: string }>(
 export function historyRows(
   months: PlannerMonth[],
   plan: DebtPlanState,
-  now: Date,
+  _now?: Date,
 ) {
-  const nowIdx = ymIndex(now.getFullYear(), now.getMonth())
   const seeded = months.filter((row) => row.source === 'history')
-  const loggedPast = Object.values(plan.loggedHistory ?? {})
-    .filter((row) => ymIndex(row.year, row.month) < nowIdx)
-    .sort((a, b) => ymIndex(a.year, a.month) - ymIndex(b.year, b.month))
-  return [...seeded, ...loggedPast]
+  const logged = Object.values(plan.loggedHistory ?? {}).sort(
+    (a, b) => ymIndex(a.year, a.month) - ymIndex(b.year, b.month),
+  )
+  return [...seeded, ...logged]
 }
 
 export function plannedInterest(months: PlannerMonth[]) {
