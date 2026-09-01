@@ -1089,6 +1089,20 @@ export function plannerRows(
   })
 }
 
+/** Hide a debt from the planner after its last payment month has passed. */
+export function plannerVisibleDebts<T extends { id: string }>(
+  debts: T[],
+  months: PlannerMonth[],
+) {
+  return debts.filter((debt) =>
+    months.some((row) => {
+      const line = row.lines.find((item) => item.debtId === debt.id)
+      if (!line) return false
+      return line.paid > 0.005 || line.start > 0.005 || line.balance > 0.005
+    }),
+  )
+}
+
 export function historyRows(
   months: PlannerMonth[],
   plan: DebtPlanState,

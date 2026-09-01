@@ -43,6 +43,7 @@ import {
   debtsWithAffirmPlan,
   loadDebtPlan,
   historyRows,
+  isMonthLogged,
   logPlannerMonth,
   chargeOverride,
   interestOverride,
@@ -50,6 +51,7 @@ import {
   paymentOverride,
   plannedInterest,
   plannerRows,
+  plannerVisibleDebts,
   pruneExpiredAffirmLoans,
   projectDebtPlan,
   resolveCustomOrder,
@@ -242,7 +244,12 @@ function PlannerCard({
     undo: DebtPlanState[]
   } | null>(null)
   const discardPaidCommit = useRef(false)
-  const columns = useMemo(() => strategyDebtOrder(debts, plan), [debts, plan])
+  const ordered = useMemo(() => strategyDebtOrder(debts, plan), [debts, plan])
+  const columns = useMemo(
+    () =>
+      view === 'planner' ? plannerVisibleDebts(ordered, upcoming) : ordered,
+    [ordered, view, upcoming],
+  )
   const rows = view === 'planner' ? upcoming : [...history].reverse()
 
   function changePlan(next: DebtPlanState) {
@@ -1287,7 +1294,13 @@ function MonthBlock({
           label={label}
           rowSpan={editing ? 4 : 2}
           showLog={
-            showLog && ymIndex(row.year, row.month) <= nowIdx
+            showLog &&
+            (ymIndex(row.year, row.month) <= nowIdx ||
+              isMonthLogged(plan, row.year, row.month))
+          }
+          confirmed={
+            isMonthLogged(plan, row.year, row.month) &&
+            ymIndex(row.year, row.month) >= nowIdx
           }
           editing={editing}
           onEdit={() => onEditMonth(row)}
@@ -1358,13 +1371,14 @@ function MonthBlock({
                   overridden={
                     chargeOverride(plan, debt.id, row.year, row.month) != null
                   }
+                  muted
                   onCommit={(next) => {
                     onChargeChange(row.year, row.month, debt.id, next)
                   }}
                 />
               )
             })}
-            <td className="total-rule py-1.5 pr-4 pl-4 text-right tabular-nums">
+            <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
               {plannerUsd(
                 row.lines.reduce((sum, line) => sum + line.charged, 0),
               )}
@@ -1410,10 +1424,16 @@ function MonthBlock({
               detail={line}
               showZero={paidOff(debt.id)}
               highlighted={!editing && extraOn(debt.id)}
+              faint={editing}
             />
           )
         })}
-        <td className="total-rule py-1.5 pr-4 pl-4 text-right font-medium tabular-nums">
+        <td
+          className={cn(
+            'total-rule py-1.5 pr-4 pl-4 text-right tabular-nums',
+            editing ? 'text-muted-foreground/40' : 'font-medium',
+          )}
+        >
           {plannerUsd(
             row.remainingTotal,
             row.remainingTotal <= 0.005 && row.totalPaid > 0.005,
@@ -1486,12 +1506,14 @@ function MonthCell({
   label,
   rowSpan,
   showLog = false,
+  confirmed = false,
   editing = false,
   onEdit,
 }: {
   label: string
   rowSpan: number
   showLog?: boolean
+  confirmed?: boolean
   editing?: boolean
   onEdit?: () => void
 }) {
@@ -1509,15 +1531,24 @@ function MonthCell({
           <button
             type="button"
             data-no-drag
-            className="text-muted-foreground hover:text-foreground flex size-5 items-center justify-center"
-            aria-label={`Log ${label}`}
+            className={cn(
+              'flex size-5 items-center justify-center',
+              confirmed
+                ? 'text-emerald-600 hover:text-emerald-700'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+            aria-label={confirmed ? `Edit ${label}` : `Log ${label}`}
             aria-pressed={editing}
             onClick={(event) => {
               event.stopPropagation()
               if (!editing) onEdit?.()
             }}
           >
-            <TaskAltIcon className="size-4" />
+            {confirmed ? (
+              <Check className="size-4" strokeWidth={2.5} />
+            ) : (
+              <TaskAltIcon className="size-4" />
+            )}
           </button>
         </div>
       ) : (
