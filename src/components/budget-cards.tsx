@@ -102,8 +102,8 @@ import {
   type ExpenseFrequency,
   type RecurringExpense,
 } from '@/lib/budget'
+import { useDebtPlan } from '@/lib/debt-plan-context'
 import {
-  loadDebtPlan,
   payoffMonth,
   plannedCurrentBalances,
   projectDebtPlan,
@@ -3318,6 +3318,7 @@ function AccountDrawer({
 
 export function DebtsCard() {
   const { debts, expenses } = useBudget()
+  const { plan } = useDebtPlan()
   const { paystubs } = usePaystubs()
   const [open, setOpen] = useState(false)
   const now = useMemo(() => new Date(), [])
@@ -3326,14 +3327,9 @@ export function DebtsCard() {
     [paystubs, now],
   )
   const months = useMemo(() => {
-    const plan = withLiveMonthlyBudget(
-      loadDebtPlan(),
-      debts,
-      expenses,
-      monthlyNet,
-    )
-    return projectDebtPlan(debts, plan, expenses, 120, now)
-  }, [debts, expenses, monthlyNet, now])
+    const live = withLiveMonthlyBudget(plan, debts, expenses, monthlyNet)
+    return projectDebtPlan(debts, live, expenses, 120, now)
+  }, [debts, expenses, monthlyNet, now, plan])
   const upcoming = useMemo(
     () => months.filter((row) => row.source === 'plan'),
     [months],
@@ -3565,6 +3561,7 @@ export function EditDebtsDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { accounts, expenses, debts, replaceDebts } = useBudget()
+  const { plan } = useDebtPlan()
   const { paystubs } = usePaystubs()
   const monthlyNet = useMemo(
     () => Math.round(currentMonthNet(paystubs)),
@@ -3651,11 +3648,11 @@ export function EditDebtsDialog({
     if (projected.length === 0) return new Map<string, number>()
     return plannedCurrentBalances(
       projected,
-      withLiveMonthlyBudget(loadDebtPlan(), projected, expenses, monthlyNet),
+      withLiveMonthlyBudget(plan, projected, expenses, monthlyNet),
       expenses,
       now,
     )
-  }, [open, drafts, previousById, expenses, monthlyNet, now])
+  }, [open, drafts, previousById, expenses, monthlyNet, now, plan])
 
   function updateDraft(id: string, patch: Partial<DebtDraft>) {
     setDrafts((current) =>

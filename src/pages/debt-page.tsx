@@ -45,12 +45,12 @@ import {
 } from '@/components/ui/select'
 import { paymentWithoutCharges, type Debt } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
+import { useDebtPlan } from '@/lib/debt-plan-context'
 import {
   PAYOFF_STRATEGIES,
   debtFreeLabel,
   debtsWithAffirmPlan,
   debtsWithHistoryAccounts,
-  loadDebtPlan,
   historyRows,
   historyVisibleDebts,
   logPlannerMonth,
@@ -70,7 +70,6 @@ import {
   pruneExpiredAffirmLoans,
   projectDebtPlan,
   resolveCustomOrder,
-  saveDebtPlan,
   strategyDebtOrder,
   strategyLabel,
   withLiveMonthlyBudget,
@@ -83,7 +82,7 @@ import {
   type PlannerMonth,
 } from '@/lib/debt-plan'
 import { formatUsdWhole } from '@/lib/format'
-import { averageMonthlyNet } from '@/lib/income'
+import { plannerMonthlyNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
 import { cn } from '@/lib/utils'
 
@@ -146,10 +145,10 @@ function tipPosition(el: HTMLElement) {
 export function DebtPage() {
   const { paystubs } = usePaystubs()
   const { debts, expenses } = useBudget()
-  const [plan, setPlan] = useState<DebtPlanState>(() => loadDebtPlan())
+  const { plan, setPlan } = useDebtPlan()
   const now = useMemo(() => new Date(), [])
   const monthlyNet = useMemo(
-    () => Math.round(averageMonthlyNet(paystubs, now.getFullYear())),
+    () => Math.round(plannerMonthlyNet(paystubs, now)),
     [paystubs, now],
   )
   const plannerDebts = useMemo(
@@ -165,10 +164,6 @@ export function DebtPage() {
     () => withLiveMonthlyBudget(plan, plannerDebts, expenses, monthlyNet),
     [plan, plannerDebts, expenses, monthlyNet],
   )
-
-  useEffect(() => {
-    saveDebtPlan(planForMath)
-  }, [planForMath])
   const months = useMemo(
     () => projectDebtPlan(allDebts, planForMath, expenses, PLAN_HORIZON, now),
     [allDebts, expenses, planForMath, now],

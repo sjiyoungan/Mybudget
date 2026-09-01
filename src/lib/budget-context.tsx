@@ -21,6 +21,15 @@ import {
   type RecurringExpense,
 } from '@/lib/budget'
 import { debtsWithAffirmPlan, loadDebtPlan } from '@/lib/debt-plan'
+import { useAuth } from '@/lib/auth-context'
+import { supabase } from '@/lib/supabase'
+import {
+  markCloudReady,
+  rememberBudget,
+  resetUserAppStateSync,
+  scheduleUserAppStatePush,
+  syncUserAppStateFromCloud,
+} from '@/lib/user-app-state'
 
 function withLinkedExpenses(current: BudgetState, expenses: RecurringExpense[]) {
   return {
@@ -85,11 +94,33 @@ function withExclusiveRole(
 }
 
 export function BudgetProvider({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
   const [state, setState] = useState<BudgetState>(() => loadBudget())
 
   useEffect(() => {
     saveBudget(state)
+    rememberBudget(state)
+    scheduleUserAppStatePush()
   }, [state])
+
+  useEffect(() => {
+    if (loading) return
+    if (!supabase || !user) {
+      if (!supabase) markCloudReady()
+      else resetUserAppStateSync()
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const synced = await syncUserAppStateFromCloud()
+      if (cancelled) return
+      setState(synced.budget)
+      markCloudReady()
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [loading, user])
 
   const value = useMemo<BudgetContextValue>(
     () => ({

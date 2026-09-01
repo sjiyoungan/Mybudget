@@ -721,31 +721,36 @@ function isBudgetState(value: unknown): value is BudgetState {
   )
 }
 
+export function parseBudgetState(value: unknown): BudgetState | null {
+  if (!isBudgetState(value)) return null
+  const parsed = value
+  const expenses = parsed.expenses
+    .map(normalizeExpense)
+    .filter((item): item is RecurringExpense => item != null)
+  return {
+    accounts: (parsed.accounts.length > 0 ? parsed.accounts : defaultAccounts)
+      .map(normalizeAccount)
+      .filter((item): item is BankAccount => item != null),
+    expenses,
+    debts: parsed.debts
+      .map(normalizeDebt)
+      .filter((item): item is Debt => item != null),
+    categories: normalizeCategories(parsed.categories, expenses),
+  }
+}
+
+export function markBudgetSeedsApplied() {
+  localStorage.setItem(EXPENSE_SHEET_SEED, '1')
+  localStorage.setItem(ACCOUNTS_SHEET_SEED, '1')
+  localStorage.setItem(DEBT_SHEET_SEED, '1')
+  localStorage.setItem(DEBT_BALANCE_SEED, '1')
+}
+
 export function loadBudget(): BudgetState {
   let state = emptyBudget
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw)
-      if (isBudgetState(parsed)) {
-        const expenses = parsed.expenses
-          .map(normalizeExpense)
-          .filter((item): item is RecurringExpense => item != null)
-        state = {
-          accounts: (parsed.accounts.length > 0
-            ? parsed.accounts
-            : defaultAccounts
-          )
-            .map(normalizeAccount)
-            .filter((item): item is BankAccount => item != null),
-          expenses,
-          debts: parsed.debts
-            .map(normalizeDebt)
-            .filter((item): item is Debt => item != null),
-          categories: normalizeCategories(parsed.categories, expenses),
-        }
-      }
-    }
+    if (raw) state = parseBudgetState(JSON.parse(raw)) ?? emptyBudget
   } catch {
     state = emptyBudget
   }

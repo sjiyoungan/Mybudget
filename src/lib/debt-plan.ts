@@ -166,6 +166,7 @@ export function withLiveMonthlyBudget(
   expenses: RecurringExpense[],
   monthlyNet: number,
 ): DebtPlanState {
+  if (monthlyNet <= 0.005) return plan
   return {
     ...plan,
     monthlyBudget: monthlyDebtBudget(debts, expenses, monthlyNet),
@@ -294,63 +295,73 @@ export function chargedForDebt(
   return chargesForDebt(expenses, { id: debtId })
 }
 
+export function parseDebtPlan(value: unknown): DebtPlanState | null {
+  if (value == null || typeof value !== 'object') return null
+  const fallback = defaultDebtPlan()
+  const item = value as Partial<DebtPlanState>
+  const snowballDebtId =
+    typeof item.snowballDebtId === 'string' && item.snowballDebtId
+      ? item.snowballDebtId
+      : fallback.snowballDebtId
+  const customOrder = normalizeIdList(item.customOrder)
+  const hasLogging = Array.isArray(item.loggedMonths)
+  return {
+    monthlyBudget:
+      typeof item.monthlyBudget === 'number' && Number.isFinite(item.monthlyBudget)
+        ? item.monthlyBudget
+        : fallback.monthlyBudget,
+    snowballDebtId,
+    strategy: isPayoffStrategy(item.strategy) ? item.strategy : fallback.strategy,
+    customOrder:
+      customOrder.length > 0
+        ? customOrder
+        : snowballDebtId
+          ? [snowballDebtId]
+          : fallback.customOrder,
+    recurringCharges:
+      item.recurringCharges && typeof item.recurringCharges === 'object'
+        ? { ...item.recurringCharges }
+        : {},
+    chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
+    interestByMonth: normalizeChargesByMonth(item.interestByMonth),
+    paymentsByMonth: hasLogging
+      ? normalizeChargesByMonth(item.paymentsByMonth)
+      : {},
+    loggedMonths: hasLogging ? normalizeLoggedMonths(item.loggedMonths) : [],
+    loggedHistory: hasLogging
+      ? normalizeLoggedHistory(item.loggedHistory)
+      : {},
+    planStartMonth:
+      typeof item.planStartMonth === 'string' && parseYm(item.planStartMonth)
+        ? item.planStartMonth
+        : FRESH_PLAN_START,
+    affirmLoans: pruneExpiredAffirmLoans(
+      Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
+        ? withSeededStartDates(
+            item.affirmLoans.filter(isAffirmLoan).map(normalizeAffirmLoan),
+          )
+        : fallback.affirmLoans,
+    ),
+  }
+}
+
+export function markPlanMigrationsApplied() {
+  localStorage.setItem(PLAN_HISTORY_RESET, '1')
+  localStorage.setItem(UNLOG_AUGUST_2026, '1')
+}
+
 export function loadDebtPlan(): DebtPlanState {
   const fallback = defaultDebtPlan()
   try {
     const raw = localStorage.getItem(PLAN_KEY)
     if (!raw) {
-      localStorage.setItem(PLAN_HISTORY_RESET, '1')
+      markPlanMigrationsApplied()
       return fallback
     }
-    const parsed: unknown = JSON.parse(raw)
-    if (parsed == null || typeof parsed !== 'object') return fallback
-    const item = parsed as Partial<DebtPlanState>
-    const snowballDebtId =
-      typeof item.snowballDebtId === 'string' && item.snowballDebtId
-        ? item.snowballDebtId
-        : fallback.snowballDebtId
-    const customOrder = normalizeIdList(item.customOrder)
-    const hasLogging = Array.isArray(item.loggedMonths)
-    const loaded: DebtPlanState = {
-      monthlyBudget:
-        typeof item.monthlyBudget === 'number' && Number.isFinite(item.monthlyBudget)
-          ? item.monthlyBudget
-          : fallback.monthlyBudget,
-      snowballDebtId,
-      strategy: isPayoffStrategy(item.strategy) ? item.strategy : fallback.strategy,
-      customOrder:
-        customOrder.length > 0
-          ? customOrder
-          : snowballDebtId
-            ? [snowballDebtId]
-            : fallback.customOrder,
-      recurringCharges:
-        item.recurringCharges && typeof item.recurringCharges === 'object'
-          ? { ...item.recurringCharges }
-          : {},
-      chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
-      interestByMonth: normalizeChargesByMonth(item.interestByMonth),
-      paymentsByMonth: hasLogging
-        ? normalizeChargesByMonth(item.paymentsByMonth)
-        : {},
-      loggedMonths: hasLogging ? normalizeLoggedMonths(item.loggedMonths) : [],
-      loggedHistory: hasLogging
-        ? normalizeLoggedHistory(item.loggedHistory)
-        : {},
-      planStartMonth:
-        typeof item.planStartMonth === 'string' && parseYm(item.planStartMonth)
-          ? item.planStartMonth
-          : FRESH_PLAN_START,
-      affirmLoans: pruneExpiredAffirmLoans(
-        Array.isArray(item.affirmLoans) && item.affirmLoans.length > 0
-          ? withSeededStartDates(
-              item.affirmLoans.filter(isAffirmLoan).map(normalizeAffirmLoan),
-            )
-          : fallback.affirmLoans,
-      ),
-    }
+    const loaded = parseDebtPlan(JSON.parse(raw))
+    if (!loaded) return fallback
     if (!localStorage.getItem(PLAN_HISTORY_RESET)) {
-      localStorage.setItem(PLAN_HISTORY_RESET, '1')
+      markPlanMigrationsApplied()
       loaded.loggedMonths = []
       loaded.loggedHistory = {}
       loaded.paymentsByMonth = {}

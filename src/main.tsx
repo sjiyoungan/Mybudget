@@ -6,6 +6,7 @@ import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from '@/lib/auth-context'
 import { BudgetProvider } from '@/lib/budget-context'
+import { DebtPlanProvider } from '@/lib/debt-plan-context'
 import { PaystubProvider } from '@/lib/paystub-context'
 
 createRoot(document.getElementById('root')!).render(
@@ -14,7 +15,9 @@ createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <PaystubProvider>
           <BudgetProvider>
-            <App />
+            <DebtPlanProvider>
+              <App />
+            </DebtPlanProvider>
           </BudgetProvider>
         </PaystubProvider>
       </AuthProvider>
