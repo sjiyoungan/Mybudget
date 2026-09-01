@@ -1,3 +1,10 @@
+import { seededDebtHistory as historyFromPdf } from './debt-plan-history-seed'
+
+export {
+  seededHistoryDebts,
+  seededHistoryOpening,
+} from './debt-plan-history-seed'
+
 export const seededDebtBalances: Record<string, number> = {
   "debt-p-boa": 13404.93,
   "debt-t-boa": 3268.68,
@@ -42,7 +49,8 @@ export type SeededHistoryMonth = {
   extra: number
 }
 
-export const seededDebtHistory: SeededHistoryMonth[] = []
+export const seededDebtHistory: SeededHistoryMonth[] =
+  historyFromPdf as unknown as SeededHistoryMonth[]
 
 export type SeededAffirmLoan = {
   id: string

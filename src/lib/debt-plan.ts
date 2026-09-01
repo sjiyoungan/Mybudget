@@ -14,6 +14,8 @@ import {
   seededAmazonDebt,
   seededDebtBalances,
   seededDebtHistory,
+  seededHistoryDebts,
+  seededHistoryOpening,
   type SeededAffirmLoan,
   type SeededHistoryMonth,
 } from '@/lib/debt-plan-seed'
@@ -100,6 +102,29 @@ export function applyDebtBalanceSnapshot(debts: Debt[]): Debt[] {
     return [...next.slice(0, ikeaAt + 1), amazon, ...next.slice(ikeaAt + 1)]
   }
   return [...next, amazon]
+}
+
+export function debtsWithHistoryAccounts(debts: Debt[]): Debt[] {
+  const have = new Set(debts.map((debt) => debt.id))
+  const extra: Debt[] = []
+  for (const meta of seededHistoryDebts) {
+    if (have.has(meta.id)) continue
+    extra.push({
+      id: meta.id,
+      lender: meta.lender,
+      dueDay: null,
+      minimum: 0,
+      extraPayment: 0,
+      paidFromAccountId: '',
+      chargeAccountId: '',
+      type: meta.type,
+      apr: meta.apr,
+      promoApr: null,
+      promoEndsOn: null,
+      balance: 0,
+    })
+  }
+  return extra.length > 0 ? [...debts, ...extra] : debts
 }
 
 export function defaultDebtPlan(): DebtPlanState {
@@ -937,7 +962,12 @@ export function projectDebtPlan(
   monthsAhead = 18,
   now = new Date(),
 ): PlannerMonth[] {
-  const previous = new Map<string, number>()
+  const previous = new Map<string, number>(
+    Object.entries(seededHistoryOpening).map(([id, amount]) => [
+      id,
+      roundCents(amount),
+    ]),
+  )
   const history = seededDebtHistory.map((row) => {
     const month = historyMonth(debts, row, previous)
     for (const line of month.lines) previous.set(line.debtId, line.balance)
@@ -1243,6 +1273,34 @@ export function plannerVisibleDebts<T extends { id: string }>(
       const line = row.lines.find((item) => item.debtId === debt.id)
       if (!line) return false
       return line.paid > 0.005 || line.start > 0.005 || line.balance > 0.005
+    }),
+  )
+}
+
+export function historyVisibleDebts<T extends { id: string }>(
+  debts: T[],
+  months: PlannerMonth[],
+) {
+  const byId = new Map(debts.map((debt) => [debt.id, debt]))
+  const ordered: T[] = []
+  for (const meta of seededHistoryDebts) {
+    const debt = byId.get(meta.id)
+    if (debt) ordered.push(debt)
+  }
+  for (const debt of debts) {
+    if (!ordered.some((item) => item.id === debt.id)) ordered.push(debt)
+  }
+  return ordered.filter((debt) =>
+    months.some((row) => {
+      const line = row.lines.find((item) => item.debtId === debt.id)
+      if (!line) return false
+      return (
+        line.paid > 0.005 ||
+        line.start > 0.005 ||
+        line.balance > 0.005 ||
+        line.interest > 0.005 ||
+        Math.abs(line.charged) > 0.005
+      )
     }),
   )
 }

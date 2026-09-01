@@ -49,8 +49,10 @@ import {
   PAYOFF_STRATEGIES,
   debtFreeLabel,
   debtsWithAffirmPlan,
+  debtsWithHistoryAccounts,
   loadDebtPlan,
   historyRows,
+  historyVisibleDebts,
   logPlannerMonth,
   applyPlannerMonthValue,
   monthWithLineValue,
@@ -150,6 +152,10 @@ export function DebtPage() {
     () => debtsWithAffirmPlan(debts, plan.affirmLoans, now),
     [debts, plan.affirmLoans, now],
   )
+  const allDebts = useMemo(
+    () => debtsWithHistoryAccounts(plannerDebts),
+    [plannerDebts],
+  )
 
   const planForMath = useMemo(
     () => withLiveMonthlyBudget(plan, plannerDebts, expenses, monthlyNet),
@@ -160,8 +166,8 @@ export function DebtPage() {
     saveDebtPlan(planForMath)
   }, [planForMath])
   const months = useMemo(
-    () => projectDebtPlan(plannerDebts, planForMath, expenses, PLAN_HORIZON, now),
-    [plannerDebts, expenses, planForMath, now],
+    () => projectDebtPlan(allDebts, planForMath, expenses, PLAN_HORIZON, now),
+    [allDebts, expenses, planForMath, now],
   )
   const upcoming = plannerRows(months, plan, now)
   const history = historyRows(months, plan, now)
@@ -224,7 +230,7 @@ export function DebtPage() {
 
       <div className="mt-8 grid gap-6">
         <PlannerCard
-          debts={plannerDebts}
+          debts={allDebts}
           plan={plan}
           freeOn={freeOn}
           history={history}
@@ -302,8 +308,10 @@ function PlannerCard({
   const ordered = useMemo(() => strategyDebtOrder(debts, plan), [debts, plan])
   const columns = useMemo(
     () =>
-      view === 'planner' ? plannerVisibleDebts(ordered, upcoming) : ordered,
-    [ordered, view, upcoming],
+      view === 'planner'
+        ? plannerVisibleDebts(ordered, upcoming)
+        : historyVisibleDebts(ordered, history),
+    [ordered, view, upcoming, history],
   )
   const rows = view === 'planner' ? upcoming : [...history].reverse()
 
@@ -347,14 +355,15 @@ function PlannerCard({
   }, [customOpen, debtsOpen, onPlanChange, undoStack])
 
   function chooseStrategy(strategy: PayoffStrategy) {
+    const active = plannerVisibleDebts(debts, upcoming)
     if (strategy === 'custom') {
       const customOrder =
         plan.customOrder.length > 0
           ? resolveCustomOrder(
-              debts.map((debt) => debt.id),
+              active.map((debt) => debt.id),
               plan.customOrder,
             )
-          : strategyDebtOrder(debts, plan).map((debt) => debt.id)
+          : strategyDebtOrder(active, plan).map((debt) => debt.id)
       changePlan({ ...plan, strategy, customOrder })
       return
     }
@@ -470,7 +479,7 @@ function PlannerCard({
       </CardContent>
       <CustomOrderDialog
         open={customOpen}
-        debts={debts}
+        debts={plannerVisibleDebts(debts, upcoming)}
         order={plan.customOrder}
         interestById={new Map(
           (upcoming[0]?.lines ?? []).map((line) => [line.debtId, line.interest]),
