@@ -198,6 +198,19 @@ export function affirmDueSortKey(startDate: string | undefined, now: Date) {
   return lastThisMonth - today + dayNext
 }
 
+/** Today, tomorrow, next day… Loans with no starting date go last. */
+export function sortAffirmLoansByDue(loans: AffirmLoan[], now: Date) {
+  return [...loans].sort((left, right) => {
+    const byDue =
+      affirmDueSortKey(left.startDate, now) -
+      affirmDueSortKey(right.startDate, now)
+    if (byDue !== 0) return byDue
+    const byName = left.name.localeCompare(right.name)
+    if (byName !== 0) return byName
+    return left.loanId.localeCompare(right.loanId)
+  })
+}
+
 export function ymIndex(year: number, month: number) {
   return year * 12 + month
 }

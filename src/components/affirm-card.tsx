@@ -27,7 +27,6 @@ import {
 import { Input } from '@/components/ui/input'
 import {
   affirmCurrentLoans,
-  affirmDueSortKey,
   affirmLoanPayments,
   affirmMonthPaid,
   affirmVisibleMonths,
@@ -36,6 +35,7 @@ import {
   formatYm,
   formatYmd,
   sortAffirmLoans,
+  sortAffirmLoansByDue,
   type AffirmLoan,
 } from '@/lib/debt-plan'
 import { formatUsd } from '@/lib/format'
@@ -689,26 +689,22 @@ function EditAffirmDialog({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
+  const opened = useRef(false)
 
   useLayoutEffect(() => {
-    if (!open) return
-    const loaded = [...loans]
-      .sort((left, right) => {
-        const byDue =
-          affirmDueSortKey(left.startDate, now) -
-          affirmDueSortKey(right.startDate, now)
-        if (byDue !== 0) return byDue
-        const byName = left.name.localeCompare(right.name)
-        if (byName !== 0) return byName
-        return left.loanId.localeCompare(right.loanId)
-      })
-      .map(draftFromStored)
+    if (!open) {
+      opened.current = false
+      return
+    }
+    if (opened.current) return
+    opened.current = true
+    const loaded = sortAffirmLoansByDue(loans, new Date()).map(draftFromStored)
     setDrafts(loaded)
     setBaseline(JSON.stringify(loaded))
     setConfirmOpen(false)
     setRemoveId(null)
     setFocusId(null)
-  }, [open, loans, now])
+  }, [open, loans])
 
   const dirty = JSON.stringify(drafts) !== baseline
   const existingIds = useMemo(() => new Set(loans.map((loan) => loan.id)), [loans])
@@ -766,7 +762,7 @@ function EditAffirmDialog({
     const next = filled
       .map((draft) => previewAffirmDraft(draft, now))
       .filter((item): item is AffirmLoan => item != null)
-    onSave(sortAffirmLoans(next))
+    onSave(sortAffirmLoansByDue(next, new Date()))
     closeClean()
   }
 
