@@ -40,6 +40,7 @@ import { useBudget } from '@/lib/budget-context'
 import {
   PAYOFF_STRATEGIES,
   debtFreeLabel,
+  debtsWithAffirmPlan,
   loadDebtPlan,
   historyRows,
   logPlannerMonth,
@@ -131,18 +132,22 @@ export function DebtPage() {
     () => Math.round(currentMonthNet(paystubs)),
     [paystubs],
   )
+  const plannerDebts = useMemo(
+    () => debtsWithAffirmPlan(debts, plan.affirmLoans, now),
+    [debts, plan.affirmLoans, now],
+  )
 
   const planForMath = useMemo(
-    () => withLiveMonthlyBudget(plan, debts, expenses, monthlyNet),
-    [plan, debts, expenses, monthlyNet],
+    () => withLiveMonthlyBudget(plan, plannerDebts, expenses, monthlyNet),
+    [plan, plannerDebts, expenses, monthlyNet],
   )
 
   useEffect(() => {
     saveDebtPlan(planForMath)
   }, [planForMath])
   const months = useMemo(
-    () => projectDebtPlan(debts, planForMath, expenses, PLAN_HORIZON, now),
-    [debts, expenses, planForMath, now],
+    () => projectDebtPlan(plannerDebts, planForMath, expenses, PLAN_HORIZON, now),
+    [plannerDebts, expenses, planForMath, now],
   )
   const upcoming = plannerRows(months, plan, now)
   const history = historyRows(months, plan, now)
@@ -156,7 +161,7 @@ export function DebtPage() {
       </h1>
 
         <PlannerCard
-          debts={debts}
+          debts={plannerDebts}
           plan={plan}
           freeOn={freeOn}
           interestPaid={interestPaid}

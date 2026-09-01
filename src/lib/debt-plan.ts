@@ -19,6 +19,7 @@ import {
 } from '@/lib/debt-plan-seed'
 
 export const DEBT_BALANCE_SEED = 'mybudget.debt-balances-2026-08.v1'
+export const AFFIRM_DEBT_ID = 'debt-affirm'
 const PLAN_KEY = 'mybudget.debt-plan.v1'
 
 export type AffirmLoan = SeededAffirmLoan
@@ -78,12 +79,11 @@ export function applyDebtBalanceSnapshot(debts: Debt[]): Debt[] {
     if (typeof balance === 'number') {
       return { ...debt, balance }
     }
-    if (debt.id === 'debt-affirm') {
-      const remaining = seededAffirmLoans.reduce(
-        (sum, loan) => sum + loan.remaining,
-        0,
-      )
-      return { ...debt, balance: roundCents(remaining) }
+    if (debt.id === AFFIRM_DEBT_ID) {
+      return {
+        ...debt,
+        ...affirmDebtFromLoans(seededAffirmLoans),
+      }
     }
     return debt
   })
@@ -679,7 +679,15 @@ function paymentToClear(
   return roundCents(hi)
 }
 
-function scheduledPayment(debt: Debt, _expenses: RecurringExpense[]) {
+function scheduledPayment(
+  debt: Debt,
+  plan: DebtPlanState,
+  year: number,
+  month: number,
+) {
+  if (debt.id === AFFIRM_DEBT_ID) {
+    return affirmMonthTotal(plan.affirmLoans, monthKey(year, month))
+  }
   return paymentWithoutCharges(debt)
 }
 
@@ -808,7 +816,7 @@ export function projectDebtPlan(
     for (const debt of owing) {
       if (locked.has(debt.id)) continue
       const due = afterInterest.get(debt.id) ?? 0
-      const minPay = roundCents(Math.min(scheduledPayment(debt, expenses), due))
+      const minPay = roundCents(Math.min(scheduledPayment(debt, plan, year, month), due))
       payments.set(debt.id, minPay)
       allocated += minPay
     }
@@ -817,7 +825,9 @@ export function projectDebtPlan(
       Math.max(0, plan.monthlyBudget - allocated - lockedTotal),
     )
     const owingIds = new Set(owing.map((debt) => debt.id))
-    const unlocked = owing.filter((debt) => !locked.has(debt.id))
+    const unlocked = owing.filter(
+      (debt) => !locked.has(debt.id) && debt.id !== AFFIRM_DEBT_ID,
+    )
     const promoQueue = unlocked
       .filter((debt) => monthsUntilPromoEnd(debt, year, month) != null)
       .sort((a, b) => {
@@ -871,7 +881,7 @@ export function projectDebtPlan(
       line.paid = paid
       line.extra = extraPaidOnLine(
         paid,
-        debt ? scheduledPayment(debt, expenses) : 0,
+        debt ? scheduledPayment(debt, plan, year, month) : 0,
         due,
       )
       line.balance = roundCents(Math.max(0, due - paid))
@@ -1197,6 +1207,42 @@ export function affirmLoanIsCurrent(loan: AffirmLoan, now: Date) {
 
 export function affirmCurrentLoans(loans: AffirmLoan[], now: Date) {
   return loans.filter((loan) => affirmLoanIsCurrent(loan, now))
+}
+
+export function affirmMonthTotal(loans: AffirmLoan[], ym: string) {
+  return roundCents(
+    loans.reduce((sum, loan) => sum + (affirmLoanPayments(loan)[ym] ?? 0), 0),
+  )
+}
+
+export function affirmOpenRemaining(loans: AffirmLoan[], now: Date) {
+  return roundCents(
+    affirmCurrentLoans(loans, now).reduce((sum, loan) => sum + loan.remaining, 0),
+  )
+}
+
+export function affirmDebtFromLoans(loans: AffirmLoan[], now = new Date()) {
+  const current = affirmCurrentLoans(loans, now)
+  return {
+    balance: affirmOpenRemaining(loans, now),
+    minimum: affirmMonthTotal(
+      current,
+      monthKey(now.getFullYear(), now.getMonth()),
+    ),
+    extraPayment: 0,
+    apr: 0,
+  }
+}
+
+export function debtsWithAffirmPlan(
+  debts: Debt[],
+  loans: AffirmLoan[],
+  now = new Date(),
+) {
+  const fields = affirmDebtFromLoans(loans, now)
+  return debts.map((debt) =>
+    debt.id === AFFIRM_DEBT_ID ? { ...debt, ...fields } : debt,
+  )
 }
 
 export function affirmVisibleMonths(loans: AffirmLoan[], now: Date) {

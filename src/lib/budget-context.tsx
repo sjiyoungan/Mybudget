@@ -20,6 +20,7 @@ import {
   type ExpenseCategoryGroup,
   type RecurringExpense,
 } from '@/lib/budget'
+import { debtsWithAffirmPlan, loadDebtPlan } from '@/lib/debt-plan'
 
 function withLinkedExpenses(current: BudgetState, expenses: RecurringExpense[]) {
   return {
@@ -95,7 +96,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       accounts: state.accounts,
       categories: state.categories,
       expenses: state.expenses,
-      debts: state.debts,
+      debts: debtsWithAffirmPlan(state.debts, loadDebtPlan().affirmLoans),
       addAccount({ name, kind, role }) {
         const id = crypto.randomUUID()
         setState((current) => {
