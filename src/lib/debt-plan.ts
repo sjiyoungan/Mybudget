@@ -968,7 +968,6 @@ export function projectDebtPlan(
 
   for (let step = 0; step < monthsAhead; step++) {
     const monthIdx = ymIndex(year, month)
-    const applyExtra = monthIdx > nowIdx
     const lines: PlannerLine[] = []
     const owing = debts.filter((debt) => (balances.get(debt.id) ?? 0) > 0.005)
     const afterInterest = new Map<string, number>()
@@ -1031,6 +1030,7 @@ export function projectDebtPlan(
       allocated += minPay
     }
 
+    const applyExtra = monthIdx >= nowIdx && locked.size === 0
     let leftover = applyExtra ? extraPool(plan, debts, payments, locked) : 0
     const owingIds = new Set(owing.map((debt) => debt.id))
     const unlocked = owing.filter(

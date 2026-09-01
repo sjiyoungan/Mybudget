@@ -3347,8 +3347,8 @@ export function DebtsCard() {
     months.find(
       (row) =>
         row.source === 'plan' &&
-        (row.year > now.getFullYear() ||
-          (row.year === now.getFullYear() && row.month > now.getMonth())),
+        row.year === now.getFullYear() &&
+        row.month === now.getMonth(),
     )?.extraPaid ?? 0
 
   return (
