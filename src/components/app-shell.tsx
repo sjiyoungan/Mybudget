@@ -21,6 +21,7 @@ const SUB_PAGES = [
   { to: '/income', label: 'Income' },
   { to: '/expenses', label: 'Expenses' },
   { to: '/debt', label: 'Debt' },
+  { to: '/spending', label: 'Spending' },
 ] as const
 
 const BOTTOM_PAGES = [{ to: '/calculate', label: 'Calculator' }] as const

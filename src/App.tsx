@@ -9,6 +9,7 @@ import { DebtPage } from '@/pages/debt-page'
 import { ExpensesPage } from '@/pages/expenses-page'
 import { IncomePage } from '@/pages/income-page'
 import { LoginPage } from '@/pages/login-page'
+import { SpendingPage } from '@/pages/spending-page'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="/income" element={<IncomePage />} />
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/debt" element={<DebtPage />} />
+        <Route path="/spending" element={<SpendingPage />} />
         <Route path="/calculate" element={<CalculatePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
