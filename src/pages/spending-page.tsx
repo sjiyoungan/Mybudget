@@ -145,22 +145,34 @@ export function SpendingPage() {
   )
   const totalSpent = spentTxns.reduce((sum, txn) => sum + txn.amount, 0)
   const slices = useMemo(() => {
-    const totals = new Map<string, number>()
+    const totals = new Map(categories.map((category) => [category.id, 0]))
+    let uncategorized = 0
     for (const txn of spentTxns) {
       const key = txn.categoryId ?? ''
-      totals.set(key, (totals.get(key) ?? 0) + txn.amount)
+      if (key && totals.has(key)) {
+        totals.set(key, (totals.get(key) ?? 0) + txn.amount)
+      } else {
+        uncategorized += txn.amount
+      }
     }
-    const rows = [...totals.entries()]
-      .map(([id, amount]) => ({
-        id,
-        name: categoryName(id || undefined, categories),
-        amount,
-      }))
-      .sort((left, right) => right.amount - left.amount)
-    return rows.map((row, index) => ({
-      ...row,
-      color: row.id ? SLICE_COLORS[index % SLICE_COLORS.length] : 'var(--muted-foreground)',
+    const rows = categories.map((category, index) => ({
+      id: category.id,
+      name: category.name,
+      amount: totals.get(category.id) ?? 0,
+      color: SLICE_COLORS[index % SLICE_COLORS.length],
     }))
+    if (uncategorized > 0) {
+      rows.push({
+        id: '',
+        name: 'Uncategorized',
+        amount: uncategorized,
+        color: 'var(--muted-foreground)',
+      })
+    }
+    return rows.sort(
+      (left, right) =>
+        right.amount - left.amount || left.name.localeCompare(right.name),
+    )
   }, [categories, spentTxns])
   const dayRows = useMemo(() => {
     const byDay = new Map<string, number>()
@@ -224,25 +236,19 @@ export function SpendingPage() {
           <div className="flex flex-wrap items-center gap-6">
             <CategoryPie slices={slices} total={totalSpent} />
             <ul className="grid min-w-[12rem] flex-1 gap-2">
-              {slices.length === 0 ? (
-                <li className="text-muted-foreground text-sm">
-                  No purchases in this month.
+              {slices.map((slice) => (
+                <li
+                  key={slice.id || 'uncategorized'}
+                  className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-sm"
+                >
+                  <span
+                    className="size-2.5 rounded-full"
+                    style={{ background: slice.color }}
+                  />
+                  <span className="truncate">{slice.name}</span>
+                  <span className="tabular-nums">{formatUsd(slice.amount)}</span>
                 </li>
-              ) : (
-                slices.map((slice) => (
-                  <li
-                    key={slice.id || 'uncategorized'}
-                    className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-sm"
-                  >
-                    <span
-                      className="size-2.5 rounded-full"
-                      style={{ background: slice.color }}
-                    />
-                    <span className="truncate">{slice.name}</span>
-                    <span className="tabular-nums">{formatUsd(slice.amount)}</span>
-                  </li>
-                ))
-              )}
+              ))}
             </ul>
           </div>
         </CardContent>
@@ -392,7 +398,7 @@ function CategoryPie({
       style={{ background: `conic-gradient(${gradient})` }}
       aria-hidden
     >
-      <div className="bg-card absolute inset-[22%] rounded-full" />
+      <div className="bg-card absolute inset-[8px] rounded-full" />
     </div>
   )
 }
