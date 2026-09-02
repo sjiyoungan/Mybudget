@@ -9,8 +9,17 @@ export type SpendingTxn = {
   /** Money out is positive; deposits/credits are negative. */
   amount: number
   sourceFile?: string
+  categoryId?: string
   /** When true, rename rules leave `merchant` alone. */
   customName?: boolean
+  /** When true, rename rules leave `categoryId` alone. */
+  customCategory?: boolean
+  updatedAt?: string
+}
+
+export type SpendingCategory = {
+  id: string
+  name: string
   updatedAt?: string
 }
 
@@ -18,16 +27,18 @@ export type SpendingRule = {
   id: string
   match: string
   merchant: string
+  categoryId?: string
   updatedAt?: string
 }
 
 export type SpendingState = {
   transactions: SpendingTxn[]
   rules: SpendingRule[]
+  categories: SpendingCategory[]
 }
 
 export function emptySpending(): SpendingState {
-  return { transactions: [], rules: [] }
+  return { transactions: [], rules: [], categories: [] }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -83,9 +94,24 @@ function normalizeTxn(value: unknown): SpendingTxn | null {
     accountId,
     amount,
     ...(sourceFile ? { sourceFile } : {}),
+    ...(typeof row.categoryId === 'string' && row.categoryId
+      ? { categoryId: row.categoryId }
+      : {}),
     ...(row.customName === true ? { customName: true } : {}),
+    ...(row.customCategory === true ? { customCategory: true } : {}),
     ...(updatedAt ? { updatedAt } : {}),
   }
+}
+
+function normalizeCategory(value: unknown): SpendingCategory | null {
+  const row = asRecord(value)
+  if (!row) return null
+  const id = typeof row.id === 'string' && row.id ? row.id : null
+  const name = typeof row.name === 'string' ? row.name.trim() : ''
+  if (!id || !name) return null
+  const updatedAt =
+    typeof row.updatedAt === 'string' && row.updatedAt ? row.updatedAt : undefined
+  return { id, name, ...(updatedAt ? { updatedAt } : {}) }
 }
 
 function normalizeRule(value: unknown): SpendingRule | null {
@@ -97,7 +123,17 @@ function normalizeRule(value: unknown): SpendingRule | null {
   if (!id || !match || !merchant) return null
   const updatedAt =
     typeof row.updatedAt === 'string' && row.updatedAt ? row.updatedAt : undefined
-  return { id, match, merchant, ...(updatedAt ? { updatedAt } : {}) }
+  const categoryId =
+    typeof row.categoryId === 'string' && row.categoryId
+      ? row.categoryId
+      : undefined
+  return {
+    id,
+    match,
+    merchant,
+    ...(categoryId ? { categoryId } : {}),
+    ...(updatedAt ? { updatedAt } : {}),
+  }
 }
 
 export function parseSpendingState(value: unknown): SpendingState | null {
@@ -112,6 +148,11 @@ export function parseSpendingState(value: unknown): SpendingState | null {
     rules: row.rules
       .map(normalizeRule)
       .filter((item): item is SpendingRule => item != null),
+    categories: Array.isArray(row.categories)
+      ? row.categories
+          .map(normalizeCategory)
+          .filter((item): item is SpendingCategory => item != null)
+      : [],
   }
 }
 
@@ -149,13 +190,17 @@ export function descriptionMatchesRule(description: string, match: string) {
   return description.toLowerCase().includes(needle)
 }
 
-export function merchantFromRules(description: string, rules: SpendingRule[]) {
+export function matchingSpendingRule(
+  description: string,
+  rules: SpendingRule[],
+) {
   const hits = rules.filter((rule) =>
     descriptionMatchesRule(description, rule.match),
   )
   if (hits.length === 0) return null
-  return [...hits].sort((left, right) => right.match.trim().length - left.match.trim().length)[0]
-    .merchant
+  return [...hits].sort(
+    (left, right) => right.match.trim().length - left.match.trim().length,
+  )[0]
 }
 
 export function applySpendingRules(
@@ -163,10 +208,16 @@ export function applySpendingRules(
   rules: SpendingRule[],
 ): SpendingTxn[] {
   return transactions.map((txn) => {
-    if (txn.customName) return txn
-    const merchant = merchantFromRules(txn.description, rules) ?? txn.description
-    if (merchant === txn.merchant) return txn
-    return { ...txn, merchant }
+    const rule = matchingSpendingRule(txn.description, rules)
+    let next = txn
+    if (!txn.customName) {
+      const merchant = rule?.merchant ?? txn.description
+      if (merchant !== next.merchant) next = { ...next, merchant }
+    }
+    if (!txn.customCategory && rule?.categoryId && rule.categoryId !== next.categoryId) {
+      next = { ...next, categoryId: rule.categoryId }
+    }
+    return next
   })
 }
 
@@ -191,6 +242,7 @@ export function mergeSpending(
   return {
     transactions: mergeById(remote.transactions, local.transactions),
     rules: mergeById(remote.rules, local.rules),
+    categories: mergeById(remote.categories ?? [], local.categories ?? []),
   }
 }
 

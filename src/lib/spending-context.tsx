@@ -15,6 +15,7 @@ import {
   mergeSpending,
   saveSpending,
   type NewSpendingTxn,
+  type SpendingCategory,
   type SpendingRule,
   type SpendingState,
   type SpendingTxn,
@@ -31,6 +32,7 @@ import {
 type SpendingContextValue = {
   transactions: SpendingTxn[]
   rules: SpendingRule[]
+  categories: SpendingCategory[]
   importTransactions: (incoming: NewSpendingTxn[]) => {
     added: number
     skipped: number
@@ -40,10 +42,15 @@ type SpendingContextValue = {
     patch: Partial<Omit<SpendingTxn, 'id'>>,
   ) => void
   removeTransaction: (id: string) => void
-  addRule: (input: { match: string; merchant: string }) => void
+  addCategory: (name: string) => string | null
+  addRule: (input: {
+    match: string
+    merchant: string
+    categoryId?: string
+  }) => void
   updateRule: (
     id: string,
-    patch: Partial<Pick<SpendingRule, 'match' | 'merchant'>>,
+    patch: Partial<Pick<SpendingRule, 'match' | 'merchant' | 'categoryId'>>,
   ) => void
   removeRule: (id: string) => void
 }
@@ -87,6 +94,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
     () => ({
       transactions: state.transactions,
       rules: state.rules,
+      categories: state.categories,
       importTransactions(incoming) {
         const next = importSpendingTxns(state, incoming)
         setState(next.state)
@@ -106,9 +114,23 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
           transactions: current.transactions.filter((txn) => txn.id !== id),
         }))
       },
+      addCategory(name) {
+        const trimmed = name.trim()
+        if (!trimmed) return null
+        const id = crypto.randomUUID()
+        setState((current) => ({
+          ...current,
+          categories: [
+            ...current.categories,
+            { id, name: trimmed, updatedAt: nowIso() },
+          ],
+        }))
+        return id
+      },
       addRule(input) {
         const match = input.match.trim()
         const merchant = input.merchant.trim()
+        const categoryId = input.categoryId?.trim()
         if (!match || !merchant) return
         setState((current) => {
           const rules: SpendingRule[] = [
@@ -117,10 +139,12 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
               id: crypto.randomUUID(),
               match,
               merchant,
+              ...(categoryId ? { categoryId } : {}),
               updatedAt: nowIso(),
             },
           ]
           return {
+            ...current,
             rules,
             transactions: applySpendingRules(current.transactions, rules),
           }
@@ -140,6 +164,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
               : rule,
           )
           return {
+            ...current,
             rules,
             transactions: applySpendingRules(current.transactions, rules),
           }
@@ -149,6 +174,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
         setState((current) => {
           const rules = current.rules.filter((rule) => rule.id !== id)
           return {
+            ...current,
             rules,
             transactions: applySpendingRules(current.transactions, rules),
           }
