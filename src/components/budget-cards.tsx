@@ -4189,7 +4189,7 @@ export function CalculationsPanel() {
                 value={billsHaveText}
                 onChange={(event) => setBillsHaveText(event.target.value)}
               />
-              <div className="mt-2 grid gap-3">
+              <div className="mt-3 grid gap-3">
                 <CalcLine label="Total expenses" value={formatUsd(need)} />
                 <div>
                   <CalcLine label="Still need" value={formatUsd(stillNeed)} />
@@ -4225,7 +4225,7 @@ export function CalculationsPanel() {
                 value={overflowHaveText}
                 onChange={(event) => setOverflowHaveText(event.target.value)}
               />
-              <div className="mt-2 grid gap-3">
+              <div className="mt-3 grid gap-3">
                 <CalcLine
                   label={`Transfer to ${bills?.name ?? 'Bank of America debit'}`}
                   value={formatUsd(transfer)}
