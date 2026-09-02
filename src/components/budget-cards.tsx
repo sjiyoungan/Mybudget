@@ -4156,16 +4156,20 @@ const HAVE_INPUT_CLASS =
   'h-10 w-1/3 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
 
 export function CalculationsPanel() {
-  const { accounts, expenses, debts, updateAccountBalance } = useBudget()
+  const { accounts, expenses, debts } = useBudget()
+  const [billsHaveText, setBillsHaveText] = useState('')
+  const [overflowHaveText, setOverflowHaveText] = useState('')
   const bills = billsAccount(accounts)
   const overflow = overflowAccount(accounts)
   const need = bills ? monthlyDepositNeed(expenses, debts, bills.id) : 0
-  const have = bills?.balance ?? 0
+  const have = parseAmount(billsHaveText) ?? 0
   const stillNeed = Math.max(0, need - have)
-  const overflowHave = overflow?.balance ?? 0
+  const overflowHave = parseAmount(overflowHaveText) ?? 0
   const transfer = Math.min(stillNeed, overflowHave)
   const leftover = overflowHave - transfer
   const shortBy = stillNeed - transfer
+  const showShortBy =
+    billsHaveText.trim() !== '' && shortBy > 0.005
 
   return (
     <div className="grid grid-cols-2 gap-6">
@@ -4173,7 +4177,7 @@ export function CalculationsPanel() {
         <CardHeader>
           <CardTitle>{bills?.name ?? 'Bank of America debit'}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3">
+        <CardContent>
           {bills ? (
             <>
               <Input
@@ -4182,21 +4186,20 @@ export function CalculationsPanel() {
                 className={HAVE_INPUT_CLASS}
                 placeholder="How much I have"
                 aria-label="How much I have"
-                value={have > 0.005 ? String(have) : ''}
-                onChange={(event) => {
-                  const parsed = parseAmount(event.target.value)
-                  updateAccountBalance(bills.id, parsed ?? 0)
-                }}
+                value={billsHaveText}
+                onChange={(event) => setBillsHaveText(event.target.value)}
               />
-              <div>
-                <CalcLine label="Need" value={formatUsd(need)} />
-                <CalcLine label="Still need" value={formatUsd(stillNeed)} />
-                {shortBy > 0.005 ? (
-                  <p className="text-destructive mt-1 flex items-baseline justify-between gap-3 text-sm">
-                    <span>Short by</span>
-                    <span className="tabular-nums">{formatUsd(shortBy)}</span>
-                  </p>
-                ) : null}
+              <div className="mt-2 grid gap-3">
+                <CalcLine label="Total expenses" value={formatUsd(need)} />
+                <div>
+                  <CalcLine label="Still need" value={formatUsd(stillNeed)} />
+                  {showShortBy ? (
+                    <p className="text-destructive mt-[2px] flex items-baseline justify-between gap-3 text-xs">
+                      <span>Short by</span>
+                      <span className="tabular-nums">{formatUsd(shortBy)}</span>
+                    </p>
+                  ) : null}
+                </div>
               </div>
             </>
           ) : (
@@ -4210,7 +4213,7 @@ export function CalculationsPanel() {
         <CardHeader>
           <CardTitle>{overflow?.name ?? 'Discover debit'}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3">
+        <CardContent>
           {overflow ? (
             <>
               <Input
@@ -4219,17 +4222,16 @@ export function CalculationsPanel() {
                 className={HAVE_INPUT_CLASS}
                 placeholder="How much I have"
                 aria-label="How much I have"
-                value={overflowHave > 0.005 ? String(overflowHave) : ''}
-                onChange={(event) => {
-                  const parsed = parseAmount(event.target.value)
-                  updateAccountBalance(overflow.id, parsed ?? 0)
-                }}
+                value={overflowHaveText}
+                onChange={(event) => setOverflowHaveText(event.target.value)}
               />
-              <CalcLine
-                label={`Transfer to ${bills?.name ?? 'Bank of America debit'}`}
-                value={formatUsd(transfer)}
-              />
-              <CalcLine label="Left for debt" value={formatUsd(leftover)} />
+              <div className="mt-2 grid gap-3">
+                <CalcLine
+                  label={`Transfer to ${bills?.name ?? 'Bank of America debit'}`}
+                  value={formatUsd(transfer)}
+                />
+                <CalcLine label="Left for debt" value={formatUsd(leftover)} />
+              </div>
             </>
           ) : (
             <EmptyNote>
