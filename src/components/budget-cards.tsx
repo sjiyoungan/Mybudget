@@ -4152,105 +4152,92 @@ export function EditDebtsDialog({
   )
 }
 
+const HAVE_INPUT_CLASS =
+  'h-10 w-1/3 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
+
 export function CalculationsPanel() {
   const { accounts, expenses, debts, updateAccountBalance } = useBudget()
   const bills = billsAccount(accounts)
   const overflow = overflowAccount(accounts)
   const need = bills ? monthlyDepositNeed(expenses, debts, bills.id) : 0
   const have = bills?.balance ?? 0
-  const shortfall = Math.max(0, need - have)
+  const stillNeed = Math.max(0, need - have)
   const overflowHave = overflow?.balance ?? 0
-  const transfer = Math.min(shortfall, overflowHave)
+  const transfer = Math.min(stillNeed, overflowHave)
   const leftover = overflowHave - transfer
-  const stillShort = shortfall - transfer
+  const shortBy = stillNeed - transfer
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <div className="grid gap-3">
-        <p className="font-medium">
-          {bills?.name ?? 'Mark an account as Bills'}
-        </p>
-        {bills ? (
-          <>
-            <div className="grid gap-1">
-              <label
-                className="text-muted-foreground text-xs"
-                htmlFor="bills-have"
-              >
-                How much I have
-              </label>
+    <div className="grid grid-cols-2 gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>{bills?.name ?? 'Bank of America debit'}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {bills ? (
+            <>
               <Input
                 id="bills-have"
-                type="number"
-                min={0}
-                step="0.01"
-                value={Number.isFinite(have) ? have : ''}
+                inputMode="decimal"
+                className={HAVE_INPUT_CLASS}
+                placeholder="How much I have"
+                aria-label="How much I have"
+                value={have > 0.005 ? String(have) : ''}
                 onChange={(event) => {
                   const parsed = parseAmount(event.target.value)
                   updateAccountBalance(bills.id, parsed ?? 0)
                 }}
               />
-            </div>
-            <CalcLine label="How much I need" value={formatUsd(need)} />
-            <CalcLine
-              label="Still need in this account"
-              value={formatUsd(shortfall)}
-              warn={shortfall > 0}
-            />
-          </>
-        ) : (
-          <EmptyNote>
-            Set an account role to Bills to use this side.
-          </EmptyNote>
-        )}
-      </div>
-      <div className="grid gap-3">
-        <p className="font-medium">
-          {overflow?.name ?? 'Mark an account as Leftover'}
-        </p>
-        {overflow ? (
-          <>
-            <div className="grid gap-1">
-              <label
-                className="text-muted-foreground text-xs"
-                htmlFor="overflow-have"
-              >
-                How much I have
-              </label>
+              <div>
+                <CalcLine label="Need" value={formatUsd(need)} />
+                <CalcLine label="Still need" value={formatUsd(stillNeed)} />
+                {shortBy > 0.005 ? (
+                  <p className="text-destructive mt-1 flex items-baseline justify-between gap-3 text-sm">
+                    <span>Short by</span>
+                    <span className="tabular-nums">{formatUsd(shortBy)}</span>
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <EmptyNote>
+              Set an account role to Bills to use this side.
+            </EmptyNote>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>{overflow?.name ?? 'Discover debit'}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {overflow ? (
+            <>
               <Input
                 id="overflow-have"
-                type="number"
-                min={0}
-                step="0.01"
-                value={Number.isFinite(overflowHave) ? overflowHave : ''}
+                inputMode="decimal"
+                className={HAVE_INPUT_CLASS}
+                placeholder="How much I have"
+                aria-label="How much I have"
+                value={overflowHave > 0.005 ? String(overflowHave) : ''}
                 onChange={(event) => {
                   const parsed = parseAmount(event.target.value)
                   updateAccountBalance(overflow.id, parsed ?? 0)
                 }}
               />
-            </div>
-            <CalcLine
-              label={`Transfer to ${bills?.name ?? 'bills account'}`}
-              value={formatUsd(transfer)}
-            />
-            <CalcLine
-              label="Left after the transfer"
-              value={formatUsd(leftover)}
-            />
-            {stillShort > 0 ? (
               <CalcLine
-                label="Still short after transferring"
-                value={formatUsd(stillShort)}
-                warn
+                label={`Transfer to ${bills?.name ?? 'Bank of America debit'}`}
+                value={formatUsd(transfer)}
               />
-            ) : null}
-          </>
-        ) : (
-          <EmptyNote>
-            Set an account role to Leftover to use this side.
-          </EmptyNote>
-        )}
-      </div>
+              <CalcLine label="Left for debt" value={formatUsd(leftover)} />
+            </>
+          ) : (
+            <EmptyNote>
+              Set an account role to Leftover to use this side.
+            </EmptyNote>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -4258,18 +4245,14 @@ export function CalculationsPanel() {
 function CalcLine({
   label,
   value,
-  warn = false,
 }: {
   label: string
   value: string
-  warn?: boolean
 }) {
   return (
     <div className="flex items-baseline justify-between gap-3 text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span className={cn('tabular-nums', warn && 'text-destructive')}>
-        {value}
-      </span>
+      <span className="tabular-nums">{value}</span>
     </div>
   )
 }

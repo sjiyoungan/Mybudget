@@ -23,7 +23,7 @@ const SUB_PAGES = [
   { to: '/debt', label: 'Debt' },
 ] as const
 
-const BOTTOM_PAGES = [{ to: '/calculate', label: 'Calculate' }] as const
+const BOTTOM_PAGES = [{ to: '/calculate', label: 'Calculator' }] as const
 
 function navClass(isActive: boolean) {
   return cn(
