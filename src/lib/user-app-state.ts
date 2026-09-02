@@ -19,16 +19,26 @@ import {
   upsertPaystubRecord,
 } from '@/lib/paystub'
 import { seededDebtBalances } from '@/lib/debt-plan-seed'
+import {
+  emptySpending,
+  loadSpending,
+  mergeSpending,
+  parseSpendingState,
+  saveSpending,
+  type SpendingState,
+} from '@/lib/spending'
 import { supabase } from '@/lib/supabase'
 
 export type UserAppState = {
   budget: BudgetState
   plan: DebtPlanState
+  spending: SpendingState
 }
 
 type RemoteRow = {
   budget?: unknown
   plan?: unknown
+  spending?: unknown
 }
 
 type AppStatePaystubData = {
@@ -36,6 +46,7 @@ type AppStatePaystubData = {
   appState?: unknown
   budget?: unknown
   plan?: unknown
+  spending?: unknown
 }
 
 let cache: UserAppState | null = null
@@ -53,6 +64,7 @@ function localAppState(): UserAppState {
   return {
     budget: cache?.budget ?? loadBudget(),
     plan: cache?.plan ?? loadDebtPlan(),
+    spending: cache?.spending ?? loadSpending(),
   }
 }
 
@@ -62,6 +74,10 @@ export function rememberBudget(budget: BudgetState) {
 
 export function rememberPlan(plan: DebtPlanState) {
   cache = { ...localAppState(), plan }
+}
+
+export function rememberSpending(spending: SpendingState) {
+  cache = { ...localAppState(), spending }
 }
 
 export function markCloudReady() {
@@ -88,10 +104,12 @@ function parseRemoteAppState(row: RemoteRow | null | undefined): UserAppState | 
     typeof planValue === 'object' &&
     Array.isArray((planValue as { affirmLoans?: unknown }).affirmLoans)
   const plan = hasPlan ? parseDebtPlan(planValue) : null
-  if (!budget && !plan) return null
+  const spending = parseSpendingState(row.spending)
+  if (!budget && !plan && !spending) return null
   return {
     budget: budget ?? loadBudget(),
     plan: plan ?? loadDebtPlan(),
+    spending: spending ?? emptySpending(),
   }
 }
 
@@ -132,8 +150,15 @@ async function fetchPaystubAppState(): Promise<UserAppState | null> {
 
 async function fetchUserAppState(): Promise<UserAppState | null> {
   const dedicated = await fetchDedicatedAppState()
-  if (dedicated) return dedicated
-  return fetchPaystubAppState()
+  const fromPaystub = await fetchPaystubAppState()
+  if (!dedicated && !fromPaystub) return null
+  if (!dedicated) return fromPaystub
+  if (!fromPaystub) return dedicated
+  return {
+    budget: dedicated.budget,
+    plan: dedicated.plan,
+    spending: mergeSpending(dedicated.spending, fromPaystub.spending),
+  }
 }
 
 async function upsertDedicatedAppState(state: UserAppState) {
@@ -176,6 +201,7 @@ async function upsertPaystubAppState(state: UserAppState) {
     appState: true,
     budget: state.budget,
     plan: state.plan,
+    spending: state.spending,
   })
 }
 
@@ -187,6 +213,7 @@ async function upsertUserAppState(state: UserAppState) {
 function applyLocal(state: UserAppState) {
   saveBudget(state.budget)
   saveDebtPlan(state.plan)
+  saveSpending(state.spending)
   markBudgetSeedsApplied()
   markPlanMigrationsApplied()
   cache = state
@@ -339,6 +366,7 @@ function mergeAppState(remote: UserAppState, local: UserAppState): UserAppState 
   return {
     budget: mergeBudgets(remote.budget, local.budget),
     plan: mergePlans(remote.plan, local.plan),
+    spending: mergeSpending(remote.spending, local.spending),
   }
 }
 

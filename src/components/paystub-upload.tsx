@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ChevronDown, Upload } from 'lucide-react'
 
 import {
@@ -18,12 +19,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useBudget } from '@/lib/budget-context'
 import { formatLongDate } from '@/lib/format'
 import { parseAdpPaystub, type Paystub } from '@/lib/paystub'
 import { usePaystubs } from '@/lib/paystub-context'
+import { parseStatementFile } from '@/lib/spending-parse'
+import { useSpending } from '@/lib/spending-context'
+import type { NewSpendingTxn } from '@/lib/spending'
 import { cn } from '@/lib/utils'
-
-const MAX_PAYSTUB_FILES = 20
 
 async function readPaystubFile(file: File): Promise<Paystub> {
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
@@ -41,6 +44,8 @@ async function readPaystubFile(file: File): Promise<Paystub> {
   }
 }
 
+const MAX_FILES = 20
+
 function summaryMessage(saved: number, skipped: number, failed: string[]) {
   const parts: string[] = []
   if (saved > 0) {
@@ -57,6 +62,22 @@ function summaryMessage(saved: number, skipped: number, failed: string[]) {
   return parts.join(' ')
 }
 
+function spendingSummary(saved: number, skipped: number, failed: string[]) {
+  const parts: string[] = []
+  if (saved > 0) {
+    parts.push(`Logged ${saved} purchase${saved === 1 ? '' : 's'}.`)
+  }
+  if (skipped > 0) {
+    parts.push(
+      `Skipped ${skipped} already logged.`,
+    )
+  }
+  if (failed.length > 0) {
+    parts.push(`Could not read ${failed.join(', ')}.`)
+  }
+  return parts.join(' ')
+}
+
 export function PaystubUploadButton({
   className,
   iconOnly = false,
@@ -65,13 +86,16 @@ export function PaystubUploadButton({
   iconOnly?: boolean
 }) {
   const { paystubs, upsertPaystub } = usePaystubs()
+  const { accounts } = useBudget()
+  const { importTransactions } = useSpending()
+  const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
+  const spendingInputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(
     null,
   )
   const [message, setMessage] = useState<string | null>(null)
   const [pendingStub, setPendingStub] = useState<Paystub | null>(null)
-  const [expensesSoon, setExpensesSoon] = useState(false)
 
   const busy = progress != null
 
@@ -79,8 +103,8 @@ export function PaystubUploadButton({
     const files = [...fileList]
     if (files.length === 0) return
 
-    if (files.length > MAX_PAYSTUB_FILES) {
-      setMessage(`Upload up to ${MAX_PAYSTUB_FILES} PDFs at a time.`)
+    if (files.length > MAX_FILES) {
+      setMessage(`Upload up to ${MAX_FILES} PDFs at a time.`)
       return
     }
 
@@ -147,6 +171,49 @@ export function PaystubUploadButton({
     event.target.value = ''
   }
 
+  async function handleSpendingFiles(fileList: FileList) {
+    const files = [...fileList]
+    if (files.length === 0) return
+
+    if (files.length > MAX_FILES) {
+      setMessage(`Upload up to ${MAX_FILES} statements at a time.`)
+      return
+    }
+
+    setMessage(null)
+    setProgress({ current: 0, total: files.length })
+    const incoming: NewSpendingTxn[] = []
+    const failed: string[] = []
+
+    for (const [index, file] of files.entries()) {
+      setProgress({ current: index + 1, total: files.length })
+      try {
+        incoming.push(...(await parseStatementFile(file, accounts)))
+      } catch (caught) {
+        failed.push(
+          caught instanceof Error ? caught.message : file.name || 'one file',
+        )
+      }
+    }
+
+    const { added, skipped } = importTransactions(incoming)
+    setProgress(null)
+
+    if (added > 0) navigate('/spending')
+    if (added > 0 || skipped > 0 || failed.length > 0) {
+      setMessage(
+        spendingSummary(added, skipped, failed) ||
+          'None of those files could be added.',
+      )
+    }
+  }
+
+  function onSpendingInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files
+    if (files && files.length > 0) void handleSpendingFiles(files)
+    event.target.value = ''
+  }
+
   return (
     <>
       <input
@@ -156,6 +223,14 @@ export function PaystubUploadButton({
         multiple
         className="sr-only"
         onChange={onInputChange}
+      />
+      <input
+        ref={spendingInputRef}
+        type="file"
+        accept="application/pdf,.pdf,.csv,text/csv,.ofx,.qfx"
+        multiple
+        className="sr-only"
+        onChange={onSpendingInputChange}
       />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -190,8 +265,12 @@ export function PaystubUploadButton({
           >
             Income
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setExpensesSoon(true)}>
-            Expenses
+          <DropdownMenuItem
+            onSelect={() => {
+              spendingInputRef.current?.click()
+            }}
+          >
+            Spending
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -240,26 +319,6 @@ export function PaystubUploadButton({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogAction onClick={() => setMessage(null)}>
-              OK
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={expensesSoon}
-        onOpenChange={setExpensesSoon}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Expenses</AlertDialogTitle>
-            <AlertDialogDescription>
-              Bank statement upload is next. For now, expenses stay on the
-              expenses page.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction onClick={() => setExpensesSoon(false)}>
               OK
             </AlertDialogAction>
           </AlertDialogFooter>

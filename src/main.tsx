@@ -8,6 +8,7 @@ import { AuthProvider } from '@/lib/auth-context'
 import { BudgetProvider } from '@/lib/budget-context'
 import { DebtPlanProvider } from '@/lib/debt-plan-context'
 import { PaystubProvider } from '@/lib/paystub-context'
+import { SpendingProvider } from '@/lib/spending-context'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -16,7 +17,9 @@ createRoot(document.getElementById('root')!).render(
         <PaystubProvider>
           <BudgetProvider>
             <DebtPlanProvider>
-              <App />
+              <SpendingProvider>
+                <App />
+              </SpendingProvider>
             </DebtPlanProvider>
           </BudgetProvider>
         </PaystubProvider>
