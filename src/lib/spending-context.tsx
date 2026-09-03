@@ -157,6 +157,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
             id: item.id,
             name,
             ...(expenseId ? { expenseId } : {}),
+            ...(item.enabled === false ? { enabled: false } : {}),
             updatedAt: nowIso(),
           })
         }

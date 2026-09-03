@@ -22,7 +22,13 @@ export type SpendingCategory = {
   name: string
   /** Recurring expense line this category is budgeted against. */
   expenseId?: string
+  /** When false, hidden from the pie and categorize options. */
+  enabled?: boolean
   updatedAt?: string
+}
+
+export function isActiveSpendingCategory(category: SpendingCategory) {
+  return category.enabled !== false
 }
 
 export type SpendingRule = {
@@ -192,6 +198,7 @@ function normalizeCategory(value: unknown): SpendingCategory | null {
     id,
     name,
     ...(expenseId ? { expenseId } : {}),
+    ...(row.enabled === false ? { enabled: false } : {}),
     ...(updatedAt ? { updatedAt } : {}),
   }
 }

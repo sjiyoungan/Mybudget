@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Pencil, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Pencil, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -31,6 +31,7 @@ import {
   isLiveExpense,
   monthlyAmount,
   totalMonthlyExpensesExcluding,
+  type ExpenseCategoryGroup,
   type RecurringExpense,
 } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
@@ -39,6 +40,7 @@ import { monthName } from '@/lib/income'
 import { useSpending } from '@/lib/spending-context'
 import {
   displayMerchant,
+  isActiveSpendingCategory,
   isSpendingPurchase,
   sortSpendingTxns,
   toSentenceCase,
@@ -76,16 +78,32 @@ function budgetDeltaLabel(spent: number, budget: number) {
   return `${formatUsd(-delta)} under ${formatUsd(budget)}`
 }
 
-function linkableExpenses(expenses: RecurringExpense[]) {
-  return expenses
-    .filter(
-      (expense) =>
-        !isHiddenExpense(expense) &&
-        isLiveExpense(expense) &&
-        expense.category !== DEBT_CATEGORY_ID,
-    )
-    .slice()
-    .sort((left, right) => left.name.localeCompare(right.name))
+function isSpendingExpense(expense: RecurringExpense) {
+  return (
+    !isHiddenExpense(expense) &&
+    isLiveExpense(expense) &&
+    expense.category !== DEBT_CATEGORY_ID
+  )
+}
+
+function orderedExpenseLines(
+  expenses: RecurringExpense[],
+  groups: ExpenseCategoryGroup[],
+) {
+  const shown = expenses.filter(isSpendingExpense)
+  const used = new Set<string>()
+  const lines: RecurringExpense[] = []
+  for (const group of groups) {
+    if (group.id === DEBT_CATEGORY_ID) continue
+    for (const expense of shown.filter((item) => item.category === group.id)) {
+      used.add(expense.id)
+      lines.push(expense)
+    }
+  }
+  for (const expense of shown) {
+    if (!used.has(expense.id)) lines.push(expense)
+  }
+  return lines
 }
 
 function accountName(
@@ -177,7 +195,11 @@ export function SpendingPage() {
     replaceCategories,
     addRule,
   } = useSpending()
-  const { accounts, expenses } = useBudget()
+  const { accounts, expenses, categories: expenseGroups } = useBudget()
+  const activeCategories = useMemo(
+    () => categories.filter(isActiveSpendingCategory),
+    [categories],
+  )
   const now = useMemo(() => new Date(), [])
   const years = useMemo(
     () => availableSpendingYears(transactions, now),
@@ -230,7 +252,7 @@ export function SpendingPage() {
     [expenses],
   )
   const slices = useMemo(() => {
-    const totals = new Map(categories.map((category) => [category.id, 0]))
+    const totals = new Map(activeCategories.map((category) => [category.id, 0]))
     let uncategorized = 0
     for (const txn of spentTxns) {
       const key = txn.categoryId ?? ''
@@ -240,7 +262,7 @@ export function SpendingPage() {
         uncategorized += txn.amount
       }
     }
-    const rows = categories.map((category, index) => {
+    const rows = activeCategories.map((category, index) => {
       const expense = category.expenseId
         ? expenses.find((item) => item.id === category.expenseId)
         : undefined
@@ -265,7 +287,7 @@ export function SpendingPage() {
       (left, right) =>
         right.amount - left.amount || left.name.localeCompare(right.name),
     )
-  }, [categories, expenses, spentTxns])
+  }, [activeCategories, expenses, spentTxns])
   const dayRows = useMemo(() => {
     const byDay = new Map<string, SpendingTxn[]>()
     for (const txn of spentTxns) {
@@ -460,7 +482,7 @@ export function SpendingPage() {
       <EditTxnDialog
         txn={editing}
         accounts={accounts}
-        categories={categories}
+        categories={activeCategories}
         onClose={() => setEditing(null)}
         onSave={(id, patch, rule) => {
           updateTransaction(id, patch)
@@ -477,6 +499,7 @@ export function SpendingPage() {
         open={editCategoriesOpen}
         categories={categories}
         expenses={expenses}
+        groups={expenseGroups}
         onClose={() => setEditCategoriesOpen(false)}
         onSave={(next) => {
           replaceCategories(next)
@@ -775,58 +798,72 @@ function EditTxnForm({
   )
 }
 
-type CategoryDraft = {
+type ExtraDraft = {
   id: string
   name: string
-  expenseId: string
+  enabled: boolean
 }
 
-function snapshotCategories(drafts: CategoryDraft[]) {
-  return JSON.stringify(
-    drafts.map((item) => ({
+function snapshotCategoryPicks(
+  checked: string[],
+  extras: ExtraDraft[],
+) {
+  return JSON.stringify({
+    checked: [...checked].sort(),
+    extras: extras.map((item) => ({
       id: item.id,
       name: item.name.trim(),
-      expenseId: item.expenseId,
+      enabled: item.enabled,
     })),
-  )
+  })
 }
 
 function EditCategoriesDialog({
   open,
   categories,
   expenses,
+  groups,
   onClose,
   onSave,
 }: {
   open: boolean
   categories: SpendingCategory[]
   expenses: RecurringExpense[]
+  groups: ExpenseCategoryGroup[]
   onClose: () => void
   onSave: (categories: SpendingCategory[]) => void
 }) {
-  const [drafts, setDrafts] = useState<CategoryDraft[]>([])
+  const lines = useMemo(
+    () => orderedExpenseLines(expenses, groups),
+    [expenses, groups],
+  )
+  const [checkedIds, setCheckedIds] = useState<string[]>([])
+  const [extras, setExtras] = useState<ExtraDraft[]>([])
   const [baseline, setBaseline] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const options = useMemo(() => linkableExpenses(expenses), [expenses])
 
   useEffect(() => {
     if (!open) return
-    const next = categories.map((item) => ({
-      id: item.id,
-      name: item.name,
-      expenseId: item.expenseId ?? '',
-    }))
-    setDrafts(next)
-    setBaseline(snapshotCategories(next))
+    const nextChecked = categories
+      .filter(
+        (item) => item.expenseId && isActiveSpendingCategory(item),
+      )
+      .map((item) => item.expenseId as string)
+    const nextExtras = categories
+      .filter((item) => !item.expenseId)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        enabled: isActiveSpendingCategory(item),
+      }))
+    setCheckedIds(nextChecked)
+    setExtras(nextExtras)
+    setBaseline(snapshotCategoryPicks(nextChecked, nextExtras))
     setConfirmOpen(false)
   }, [categories, open])
 
-  const dirty = snapshotCategories(drafts) !== baseline
-  const usedExpenseIds = new Set(
-    drafts.map((item) => item.expenseId).filter(Boolean),
-  )
-  const unusedExpenses = options.filter((item) => !usedExpenseIds.has(item.id))
-  const canSubmit = dirty
+  const dirty = snapshotCategoryPicks(checkedIds, extras) !== baseline
+  const checked = new Set(checkedIds)
 
   function closeClean() {
     setConfirmOpen(false)
@@ -842,22 +879,50 @@ function EditCategoriesDialog({
     closeClean()
   }
 
+  function toggleExpense(id: string) {
+    setCheckedIds((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    )
+  }
+
   function addBlank() {
-    setDrafts((current) => [
+    setExtras((current) => [
       ...current,
-      { id: crypto.randomUUID(), name: '', expenseId: '' },
+      { id: crypto.randomUUID(), name: '', enabled: true },
     ])
   }
 
-  function addFromExpense(expense: RecurringExpense) {
-    setDrafts((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        name: toSentenceCase(expense.name),
-        expenseId: expense.id,
-      },
-    ])
+  function handleSave() {
+    const next: SpendingCategory[] = []
+    for (const expense of lines) {
+      const existing = categories.find((item) => item.expenseId === expense.id)
+      if (checked.has(expense.id)) {
+        next.push({
+          id: existing?.id ?? crypto.randomUUID(),
+          name: toSentenceCase(expense.name),
+          expenseId: expense.id,
+        })
+      } else if (existing) {
+        next.push({
+          id: existing.id,
+          name: toSentenceCase(expense.name),
+          expenseId: expense.id,
+          enabled: false,
+        })
+      }
+    }
+    for (const extra of extras) {
+      const name = toSentenceCase(extra.name)
+      if (!name) continue
+      next.push({
+        id: extra.id,
+        name,
+        ...(extra.enabled ? {} : { enabled: false }),
+      })
+    }
+    onSave(next)
   }
 
   return (
@@ -869,7 +934,7 @@ function EditCategoriesDialog({
         }}
       >
         <DialogContent
-          className="w-max max-w-[calc(100%-2rem)] gap-0 p-4 sm:max-w-lg"
+          className="w-max max-w-[calc(100%-2rem)] gap-0 p-4 sm:max-w-md"
           showCloseButton={false}
           onEscapeKeyDown={(event) => {
             event.preventDefault()
@@ -899,77 +964,82 @@ function EditCategoriesDialog({
             </div>
           </div>
 
-          <div className="no-scrollbar max-h-[min(70vh,40rem)] space-y-4 overflow-y-auto py-5">
-            {drafts.length === 0 ? (
-              <p className="text-muted-foreground px-2.5 text-sm">
-                No categories yet. Add one, or pick a line from monthly expenses.
-              </p>
-            ) : (
-              <ul className="grid gap-2">
-                {drafts.map((draft) => (
+          <div className="no-scrollbar max-h-[min(70vh,40rem)] overflow-y-auto py-3">
+            <ul className="grid gap-0.5">
+              {lines.map((expense) => {
+                const on = checked.has(expense.id)
+                return (
+                  <li key={expense.id}>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={on}
+                      onClick={() => toggleExpense(expense.id)}
+                      className="hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-4 rounded-lg py-2 pr-2.5 pl-2.5 text-left"
+                    >
+                      <span className={on ? 'font-medium' : undefined}>
+                        {toSentenceCase(expense.name)}
+                      </span>
+                      <span className="flex size-5 items-center justify-center">
+                        {on ? (
+                          <Check className="size-4 text-neutral-500" />
+                        ) : null}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+
+            {extras.length > 0 ? (
+              <ul className="mt-3 grid gap-1.5 border-t pt-3">
+                {extras.map((extra) => (
                   <li
-                    key={draft.id}
-                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 px-2.5"
+                    key={extra.id}
+                    className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 px-2.5"
                   >
                     <Input
-                      value={draft.name}
+                      value={extra.name}
                       placeholder="Name"
                       aria-label="Category name"
                       onChange={(event) =>
-                        setDrafts((current) =>
+                        setExtras((current) =>
                           current.map((item) =>
-                            item.id === draft.id
+                            item.id === extra.id
                               ? { ...item, name: event.target.value }
                               : item,
                           ),
                         )
                       }
                     />
-                    <Select
-                      value={draft.expenseId || NONE}
-                      onValueChange={(value) =>
-                        setDrafts((current) =>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={extra.enabled}
+                      aria-label={`Show ${extra.name || 'category'} on the pie`}
+                      className="flex size-8 cursor-pointer items-center justify-center"
+                      onClick={() =>
+                        setExtras((current) =>
                           current.map((item) =>
-                            item.id === draft.id
-                              ? {
-                                  ...item,
-                                  expenseId: value === NONE ? '' : value,
-                                }
+                            item.id === extra.id
+                              ? { ...item, enabled: !item.enabled }
                               : item,
                           ),
                         )
                       }
                     >
-                      <SelectTrigger
-                        className="w-full"
-                        aria-label={`Budget for ${draft.name || 'category'}`}
-                      >
-                        <SelectValue placeholder="No expense" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NONE}>No expense</SelectItem>
-                        {options.map((expense) => (
-                          <SelectItem
-                            key={expense.id}
-                            value={expense.id}
-                            disabled={
-                              usedExpenseIds.has(expense.id) &&
-                              draft.expenseId !== expense.id
-                            }
-                          >
-                            {toSentenceCase(expense.name)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      {extra.enabled ? (
+                        <Check className="size-4 text-neutral-500" />
+                      ) : null}
+                    </button>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={`Remove ${draft.name || 'category'}`}
+                      aria-label={`Remove ${extra.name || 'category'}`}
                       onClick={() =>
-                        setDrafts((current) =>
-                          current.filter((item) => item.id !== draft.id),
+                        setExtras((current) =>
+                          current.filter((item) => item.id !== extra.id),
                         )
                       }
                     >
@@ -978,27 +1048,6 @@ function EditCategoriesDialog({
                   </li>
                 ))}
               </ul>
-            )}
-
-            {unusedExpenses.length > 0 ? (
-              <div className="px-2.5">
-                <p className="text-muted-foreground mb-2 text-xs font-medium">
-                  From monthly expenses
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {unusedExpenses.map((expense) => (
-                    <Button
-                      key={expense.id}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addFromExpense(expense)}
-                    >
-                      {toSentenceCase(expense.name)}
-                    </Button>
-                  ))}
-                </div>
-              </div>
             ) : null}
           </div>
 
@@ -1011,21 +1060,7 @@ function EditCategoriesDialog({
             >
               Cancel
             </Button>
-            <Button
-              type="button"
-              disabled={!canSubmit}
-              onClick={() =>
-                onSave(
-                  drafts
-                    .filter((item) => item.name.trim())
-                    .map((item) => ({
-                      id: item.id,
-                      name: toSentenceCase(item.name),
-                      ...(item.expenseId ? { expenseId: item.expenseId } : {}),
-                    })),
-                )
-              }
-            >
+            <Button type="button" disabled={!dirty} onClick={handleSave}>
               Save
             </Button>
           </DialogFooter>
