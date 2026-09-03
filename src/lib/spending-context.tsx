@@ -14,6 +14,7 @@ import {
   loadSpending,
   mergeSpending,
   saveSpending,
+  toSentenceCase,
   type NewSpendingTxn,
   type SpendingCategory,
   type SpendingRule,
@@ -42,7 +43,8 @@ type SpendingContextValue = {
     patch: Partial<Omit<SpendingTxn, 'id'>>,
   ) => void
   removeTransaction: (id: string) => void
-  addCategory: (name: string) => string | null
+  addCategory: (name: string, expenseId?: string) => string | null
+  replaceCategories: (categories: SpendingCategory[]) => void
   addRule: (input: {
     match: string
     merchant: string
@@ -63,7 +65,13 @@ function nowIso() {
 
 export function SpendingProvider({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
-  const [state, setState] = useState<SpendingState>(() => loadSpending())
+  const [state, setState] = useState<SpendingState>(() => {
+    const loaded = loadSpending()
+    return {
+      ...loaded,
+      transactions: applySpendingRules(loaded.transactions, loaded.rules),
+    }
+  })
 
   useEffect(() => {
     saveSpending(state)
@@ -82,7 +90,13 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const synced = await syncUserAppStateFromCloud()
       if (cancelled) return
-      setState((current) => mergeSpending(synced.spending, current))
+      setState((current) => {
+        const merged = mergeSpending(synced.spending, current)
+        return {
+          ...merged,
+          transactions: applySpendingRules(merged.transactions, merged.rules),
+        }
+      })
       markCloudReady()
     })()
     return () => {
@@ -114,22 +128,57 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
           transactions: current.transactions.filter((txn) => txn.id !== id),
         }))
       },
-      addCategory(name) {
-        const trimmed = name.trim()
+      addCategory(name, expenseId) {
+        const trimmed = toSentenceCase(name)
         if (!trimmed) return null
         const id = crypto.randomUUID()
+        const linked = expenseId?.trim()
         setState((current) => ({
           ...current,
           categories: [
             ...current.categories,
-            { id, name: trimmed, updatedAt: nowIso() },
+            {
+              id,
+              name: trimmed,
+              ...(linked ? { expenseId: linked } : {}),
+              updatedAt: nowIso(),
+            },
           ],
         }))
         return id
       },
+      replaceCategories(categories) {
+        const next: SpendingCategory[] = []
+        for (const item of categories) {
+          const name = toSentenceCase(item.name)
+          if (!name) continue
+          const expenseId = item.expenseId?.trim()
+          next.push({
+            id: item.id,
+            name,
+            ...(expenseId ? { expenseId } : {}),
+            updatedAt: nowIso(),
+          })
+        }
+        const ids = new Set(next.map((item) => item.id))
+        setState((current) => ({
+          ...current,
+          categories: next,
+          transactions: current.transactions.map((txn) =>
+            txn.categoryId && !ids.has(txn.categoryId)
+              ? {
+                  ...txn,
+                  categoryId: undefined,
+                  customCategory: true,
+                  updatedAt: nowIso(),
+                }
+              : txn,
+          ),
+        }))
+      },
       addRule(input) {
         const match = input.match.trim()
-        const merchant = input.merchant.trim()
+        const merchant = toSentenceCase(input.merchant)
         const categoryId = input.categoryId?.trim()
         if (!match || !merchant) return
         setState((current) => {
@@ -158,7 +207,9 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
                   ...rule,
                   ...patch,
                   match: patch.match?.trim() ?? rule.match,
-                  merchant: patch.merchant?.trim() ?? rule.merchant,
+                  merchant: patch.merchant
+                    ? toSentenceCase(patch.merchant)
+                    : rule.merchant,
                   updatedAt: nowIso(),
                 }
               : rule,

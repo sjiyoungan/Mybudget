@@ -1,13 +1,13 @@
 import type { BankAccount } from '@/lib/budget'
 import type { PdfTextItem } from '@/lib/paystub'
-import type { NewSpendingTxn } from '@/lib/spending'
+import { cleanMerchantName, type NewSpendingTxn } from '@/lib/spending'
 
 const ROW_TOLERANCE = 3
 const MONEY_RE =
   /\(?-?\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})\)?(?:\s*(?:CR|DR|Cr|Dr))?/g
 const DATE_RE = /\b(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/g
 const SKIP_DESC =
-  /^(beginning|ending) balance|^total\b|^page\b|statement period|continued on|average ledger|^date\b|^description\b|^amount\b|^balance\b|overdraft protection|^checks paid|^deposits and credits|^withdrawals and debits/i
+  /^(beginning|ending) balance|^total\b|^page\b|statement period|continued on|average ledger|^date\b|^description\b|^amount\b|^balance\b|overdraft protection|^checks paid|^deposits and credits|^withdrawals and debits|^interest charges?(?: and)?(?: purchases?)?$|^new balance|^posted date|^transaction date|^post date/i
 
 function pad2(value: number) {
   return String(value).padStart(2, '0')
@@ -180,11 +180,13 @@ function parsePdfLine(
   let description = line.slice(dateEnd, amountToken.index).trim()
   description = description.replace(/^[.\-–—]+\s*/, '').replace(/\s+/g, ' ')
   if (!description || SKIP_DESC.test(description)) return null
+  const merchant = cleanMerchantName(description)
+  if (!merchant) return null
 
   return {
     date,
     description,
-    merchant: description,
+    merchant,
     accountId,
     amount: signedPdfAmount(rawAmount, polarity),
     sourceFile,
@@ -315,6 +317,8 @@ function parseCsvRows(
     const date = parseAnyDate(row[dateIndex] ?? '', null)
     const description = (row[descIndex] ?? '').replace(/\s+/g, ' ').trim()
     if (!date || !description || SKIP_DESC.test(description)) continue
+    const merchant = cleanMerchantName(description)
+    if (!merchant) continue
 
     let amount: number | null = null
     if (debitIndex >= 0 || creditIndex >= 0) {
@@ -330,7 +334,7 @@ function parseCsvRows(
     parsed.push({
       date,
       description,
-      merchant: description,
+      merchant,
       accountId,
       amount,
       sourceFile,
@@ -358,13 +362,20 @@ function parseOfx(
       /\s+/g,
       ' ',
     )
-    if (!date || !description || !Number.isFinite(raw) || Math.abs(raw) < 0.005) {
+    const merchant = cleanMerchantName(description)
+    if (
+      !date ||
+      !description ||
+      !merchant ||
+      !Number.isFinite(raw) ||
+      Math.abs(raw) < 0.005
+    ) {
       continue
     }
     parsed.push({
       date,
       description,
-      merchant: description,
+      merchant,
       accountId,
       amount: -raw,
       sourceFile,

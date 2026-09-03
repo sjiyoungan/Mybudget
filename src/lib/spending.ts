@@ -20,6 +20,8 @@ export type SpendingTxn = {
 export type SpendingCategory = {
   id: string
   name: string
+  /** Recurring expense line this category is budgeted against. */
+  expenseId?: string
   updatedAt?: string
 }
 
@@ -39,6 +41,73 @@ export type SpendingState = {
 
 export function emptySpending(): SpendingState {
   return { transactions: [], rules: [], categories: [] }
+}
+
+export function toSentenceCase(text: string) {
+  const collapsed = text.replace(/\s+/g, ' ').trim()
+  if (!collapsed) return ''
+  return collapsed.toLowerCase().replace(/^\p{L}/u, (ch) => ch.toUpperCase())
+}
+
+const COLUMN_TAIL =
+  /\s+(?:new balance|total posted|posted date|post date|interest charge|payments? and credits?|previous balance|minimum payment|credit limit|available credit)\b[\s\S]*$/i
+
+export function cleanMerchantName(text: string) {
+  let value = text.replace(/\s+/g, ' ').trim()
+  value = value.replace(COLUMN_TAIL, '')
+  value = value.replace(
+    /\binterest charges?(?:,)?(?:\s+and)?(?:\s+purchases?)?\b/gi,
+    '',
+  )
+  value = value.replace(/\bpurchases?\s*$/i, '')
+  value = value.replace(/[.,;:]+$/g, '').replace(/\s+/g, ' ').trim()
+  return toSentenceCase(value)
+}
+
+function spendingHay(txn: Pick<SpendingTxn, 'description' | 'merchant'>) {
+  return `${txn.description} ${txn.merchant}`.toLowerCase()
+}
+
+export function isInterestTxn(txn: Pick<SpendingTxn, 'description' | 'merchant'>) {
+  return /\binterest\b|\bfinance charge\b|\bint(?:erest)?\s*chg\b|\bint charge\b/.test(
+    spendingHay(txn),
+  )
+}
+
+export function isTransferTxn(txn: Pick<SpendingTxn, 'description' | 'merchant'>) {
+  return /\btransfer\b|\bxfer\b|\btrnsfr\b|\bkeep the change\b|\bbetween (?:my )?accounts\b|\bfrom (?:checking|savings|brokerage)\b|\bto (?:checking|savings|brokerage)\b|\binternal transfer\b|\bfunds transfer\b|\baccount transfer\b/.test(
+    spendingHay(txn),
+  )
+}
+
+export function isDepositTxn(
+  txn: Pick<SpendingTxn, 'description' | 'merchant' | 'amount'>,
+) {
+  if (isTransferTxn(txn)) return false
+  if (txn.amount < 0) {
+    return /\bdeposit\b|\bdirect dep(?:osit)?\b|\bppayroll\b|\bach credit\b|\bpaycheck\b|\bsalary\b|\bincome\b/.test(
+      spendingHay(txn),
+    )
+  }
+  return /\bdeposit\b|\bdirect dep(?:osit)?\b/.test(spendingHay(txn))
+}
+
+/** Purchases that count toward spending totals (excludes interest, transfers, deposits). */
+export function isSpendingPurchase(
+  txn: Pick<SpendingTxn, 'description' | 'merchant' | 'amount'>,
+) {
+  if (txn.amount <= 0) return false
+  if (isInterestTxn(txn)) return false
+  if (isTransferTxn(txn)) return false
+  if (isDepositTxn(txn)) return false
+  return true
+}
+
+export function displayMerchant(txn: SpendingTxn, rules: SpendingRule[] = []) {
+  if (txn.customName) return toSentenceCase(txn.merchant)
+  const rule = matchingSpendingRule(txn.description, rules)
+  if (rule) return toSentenceCase(rule.merchant)
+  return cleanMerchantName(txn.description) || toSentenceCase(txn.merchant)
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -71,10 +140,14 @@ function normalizeTxn(value: unknown): SpendingTxn | null {
   const date = normalizeIsoDate(row.date)
   const description =
     typeof row.description === 'string' ? row.description.trim() : ''
-  const merchant =
+  const rawMerchant =
     typeof row.merchant === 'string' && row.merchant.trim()
       ? row.merchant.trim()
       : description
+  const customName = row.customName === true
+  const merchant = customName
+    ? toSentenceCase(rawMerchant)
+    : cleanMerchantName(rawMerchant) || toSentenceCase(rawMerchant)
   const accountId = typeof row.accountId === 'string' ? row.accountId : ''
   const amount =
     typeof row.amount === 'number' && Number.isFinite(row.amount) ? row.amount : null
@@ -97,7 +170,7 @@ function normalizeTxn(value: unknown): SpendingTxn | null {
     ...(typeof row.categoryId === 'string' && row.categoryId
       ? { categoryId: row.categoryId }
       : {}),
-    ...(row.customName === true ? { customName: true } : {}),
+    ...(customName ? { customName: true } : {}),
     ...(row.customCategory === true ? { customCategory: true } : {}),
     ...(updatedAt ? { updatedAt } : {}),
   }
@@ -107,11 +180,20 @@ function normalizeCategory(value: unknown): SpendingCategory | null {
   const row = asRecord(value)
   if (!row) return null
   const id = typeof row.id === 'string' && row.id ? row.id : null
-  const name = typeof row.name === 'string' ? row.name.trim() : ''
+  const name = typeof row.name === 'string' ? toSentenceCase(row.name) : ''
   if (!id || !name) return null
   const updatedAt =
     typeof row.updatedAt === 'string' && row.updatedAt ? row.updatedAt : undefined
-  return { id, name, ...(updatedAt ? { updatedAt } : {}) }
+  const expenseId =
+    typeof row.expenseId === 'string' && row.expenseId
+      ? row.expenseId
+      : undefined
+  return {
+    id,
+    name,
+    ...(expenseId ? { expenseId } : {}),
+    ...(updatedAt ? { updatedAt } : {}),
+  }
 }
 
 function normalizeRule(value: unknown): SpendingRule | null {
@@ -119,7 +201,8 @@ function normalizeRule(value: unknown): SpendingRule | null {
   if (!row) return null
   const id = typeof row.id === 'string' && row.id ? row.id : null
   const match = typeof row.match === 'string' ? row.match.trim() : ''
-  const merchant = typeof row.merchant === 'string' ? row.merchant.trim() : ''
+  const merchant =
+    typeof row.merchant === 'string' ? toSentenceCase(row.merchant) : ''
   if (!id || !match || !merchant) return null
   const updatedAt =
     typeof row.updatedAt === 'string' && row.updatedAt ? row.updatedAt : undefined
@@ -211,7 +294,9 @@ export function applySpendingRules(
     const rule = matchingSpendingRule(txn.description, rules)
     let next = txn
     if (!txn.customName) {
-      const merchant = rule?.merchant ?? txn.description
+      const merchant = rule
+        ? toSentenceCase(rule.merchant)
+        : cleanMerchantName(txn.description) || toSentenceCase(txn.merchant)
       if (merchant !== next.merchant) next = { ...next, merchant }
     }
     if (!txn.customCategory && rule?.categoryId && rule.categoryId !== next.categoryId) {

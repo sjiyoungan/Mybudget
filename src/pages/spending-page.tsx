@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, Pencil, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -25,12 +25,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  DEBT_CATEGORY_ID,
+  isHiddenExpense,
+  isLiveExpense,
+  monthlyAmount,
+  totalMonthlyExpensesExcluding,
+  type RecurringExpense,
+} from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
 import { formatDateWithoutYear, formatUsd } from '@/lib/format'
 import { monthName } from '@/lib/income'
 import { useSpending } from '@/lib/spending-context'
 import {
+  displayMerchant,
+  isSpendingPurchase,
   sortSpendingTxns,
+  toSentenceCase,
   type SpendingCategory,
   type SpendingTxn,
 } from '@/lib/spending'
@@ -58,6 +69,25 @@ function formatTxnAmount(amount: number) {
   return formatUsd(amount)
 }
 
+function budgetDeltaLabel(spent: number, budget: number) {
+  const delta = Math.round((spent - budget) * 100) / 100
+  if (Math.abs(delta) < 0.005) return `On budget · ${formatUsd(budget)}`
+  if (delta > 0) return `${formatUsd(delta)} over ${formatUsd(budget)}`
+  return `${formatUsd(-delta)} under ${formatUsd(budget)}`
+}
+
+function linkableExpenses(expenses: RecurringExpense[]) {
+  return expenses
+    .filter(
+      (expense) =>
+        !isHiddenExpense(expense) &&
+        isLiveExpense(expense) &&
+        expense.category !== DEBT_CATEGORY_ID,
+    )
+    .slice()
+    .sort((left, right) => left.name.localeCompare(right.name))
+}
+
 function accountName(
   accountId: string,
   accounts: { id: string; name: string }[],
@@ -70,7 +100,8 @@ function categoryName(
   categories: SpendingCategory[],
 ) {
   if (!categoryId) return 'Uncategorized'
-  return categories.find((item) => item.id === categoryId)?.name ?? 'Uncategorized'
+  const name = categories.find((item) => item.id === categoryId)?.name
+  return name ? toSentenceCase(name) : 'Uncategorized'
 }
 
 function defaultRuleMatch(description: string) {
@@ -84,6 +115,7 @@ function defaultRuleMatch(description: string) {
 function latestSpendingMonth(transactions: SpendingTxn[]) {
   let latest: string | null = null
   for (const txn of transactions) {
+    if (!isSpendingPurchase(txn)) continue
     const key = txn.date.slice(0, 7)
     if (!/^\d{4}-\d{2}$/.test(key)) continue
     if (!latest || key > latest) latest = key
@@ -97,7 +129,7 @@ function latestSpendingMonthInYear(transactions: SpendingTxn[], year: number) {
   let latest = -1
   const prefix = `${year}-`
   for (const txn of transactions) {
-    if (!txn.date.startsWith(prefix)) continue
+    if (!isSpendingPurchase(txn) || !txn.date.startsWith(prefix)) continue
     const month = Number.parseInt(txn.date.slice(5, 7), 10) - 1
     if (month > latest) latest = month
   }
@@ -120,7 +152,7 @@ function monthRowsForYear(
 ) {
   const totals = Array.from({ length: 12 }, () => 0)
   for (const txn of transactions) {
-    if (!txn.date.startsWith(`${year}-`) || txn.amount <= 0) continue
+    if (!txn.date.startsWith(`${year}-`) || !isSpendingPurchase(txn)) continue
     const month = Number.parseInt(txn.date.slice(5, 7), 10) - 1
     if (month >= 0 && month < 12) totals[month] += txn.amount
   }
@@ -142,10 +174,10 @@ export function SpendingPage() {
     categories,
     updateTransaction,
     removeTransaction,
-    addCategory,
+    replaceCategories,
     addRule,
   } = useSpending()
-  const { accounts } = useBudget()
+  const { accounts, expenses } = useBudget()
   const now = useMemo(() => new Date(), [])
   const years = useMemo(
     () => availableSpendingYears(transactions, now),
@@ -173,7 +205,7 @@ export function SpendingPage() {
       : defaultMonth
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
-  const [addCategoryOpen, setAddCategoryOpen] = useState(false)
+  const [editCategoriesOpen, setEditCategoriesOpen] = useState(false)
 
   const monthPrefix =
     activeMonth == null
@@ -189,10 +221,14 @@ export function SpendingPage() {
     [monthPrefix, transactions],
   )
   const spentTxns = useMemo(
-    () => monthTxns.filter((txn) => txn.amount > 0),
+    () => monthTxns.filter(isSpendingPurchase),
     [monthTxns],
   )
   const totalSpent = spentTxns.reduce((sum, txn) => sum + txn.amount, 0)
+  const monthBudget = useMemo(
+    () => totalMonthlyExpensesExcluding(expenses, [DEBT_CATEGORY_ID]),
+    [expenses],
+  )
   const slices = useMemo(() => {
     const totals = new Map(categories.map((category) => [category.id, 0]))
     let uncategorized = 0
@@ -204,17 +240,24 @@ export function SpendingPage() {
         uncategorized += txn.amount
       }
     }
-    const rows = categories.map((category, index) => ({
-      id: category.id,
-      name: category.name,
-      amount: totals.get(category.id) ?? 0,
-      color: SLICE_COLORS[index % SLICE_COLORS.length],
-    }))
+    const rows = categories.map((category, index) => {
+      const expense = category.expenseId
+        ? expenses.find((item) => item.id === category.expenseId)
+        : undefined
+      return {
+        id: category.id,
+        name: toSentenceCase(category.name),
+        amount: totals.get(category.id) ?? 0,
+        budget: expense ? monthlyAmount(expense) : null,
+        color: SLICE_COLORS[index % SLICE_COLORS.length],
+      }
+    })
     if (uncategorized > 0) {
       rows.push({
         id: '',
         name: 'Uncategorized',
         amount: uncategorized,
+        budget: null,
         color: 'var(--muted-foreground)',
       })
     }
@@ -222,10 +265,10 @@ export function SpendingPage() {
       (left, right) =>
         right.amount - left.amount || left.name.localeCompare(right.name),
     )
-  }, [categories, spentTxns])
+  }, [categories, expenses, spentTxns])
   const dayRows = useMemo(() => {
     const byDay = new Map<string, SpendingTxn[]>()
-    for (const txn of monthTxns) {
+    for (const txn of spentTxns) {
       const items = byDay.get(txn.date)
       if (items) items.push(txn)
       else byDay.set(txn.date, [txn])
@@ -235,12 +278,9 @@ export function SpendingPage() {
       .map(([date, items]) => ({
         date,
         items,
-        amount: items.reduce(
-          (sum, txn) => sum + (txn.amount > 0 ? txn.amount : 0),
-          0,
-        ),
+        amount: items.reduce((sum, txn) => sum + txn.amount, 0),
       }))
-  }, [monthTxns])
+  }, [spentTxns])
 
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
@@ -325,28 +365,45 @@ export function SpendingPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setAddCategoryOpen(true)}
+                onClick={() => setEditCategoriesOpen(true)}
               >
-                <Plus data-icon="inline-start" />
-                Category
+                Edit category
               </Button>
             </CardAction>
           </CardHeader>
           <CardContent className="grid gap-5">
-            <p className="text-2xl font-medium tabular-nums">{formatUsd(totalSpent)}</p>
+            <div>
+              <p className="text-2xl font-medium tabular-nums">
+                {formatUsd(totalSpent)}
+              </p>
+              {monthBudget > 0 ? (
+                <p className="text-muted-foreground mt-1 text-sm">
+                  {budgetDeltaLabel(totalSpent, monthBudget)}
+                </p>
+              ) : null}
+            </div>
             <div className="flex flex-wrap items-center gap-6">
               <CategoryPie slices={slices} total={totalSpent} />
               <ul className="grid min-w-[12rem] flex-1 gap-2">
                 {slices.map((slice) => (
                   <li
                     key={slice.id || 'uncategorized'}
-                    className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-sm"
+                    className="grid grid-cols-[auto_1fr_auto] items-start gap-x-2 gap-y-0.5 text-sm"
                   >
                     <span
-                      className="size-2.5 rounded-full"
+                      className="mt-1.5 size-2.5 shrink-0 rounded-full"
                       style={{ background: slice.color }}
                     />
-                    <span className="truncate">{slice.name}</span>
+                    <span className="min-w-0">
+                      <span className="break-words [overflow-wrap:anywhere]">
+                        {slice.name}
+                      </span>
+                      {slice.budget != null ? (
+                        <span className="text-muted-foreground block text-xs">
+                          {budgetDeltaLabel(slice.amount, slice.budget)}
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="tabular-nums">{formatUsd(slice.amount)}</span>
                   </li>
                 ))}
@@ -416,12 +473,14 @@ export function SpendingPage() {
         }}
       />
 
-      <AddCategoryDialog
-        open={addCategoryOpen}
-        onClose={() => setAddCategoryOpen(false)}
-        onAdd={(name) => {
-          addCategory(name)
-          setAddCategoryOpen(false)
+      <EditCategoriesDialog
+        open={editCategoriesOpen}
+        categories={categories}
+        expenses={expenses}
+        onClose={() => setEditCategoriesOpen(false)}
+        onSave={(next) => {
+          replaceCategories(next)
+          setEditCategoriesOpen(false)
         }}
       />
     </main>
@@ -476,27 +535,27 @@ function TransactionRow({
     <li>
       <button
         type="button"
-        className="hover-fill flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left"
+        className="hover-fill flex w-full items-start gap-3 rounded-lg px-2.5 py-2 text-left"
         onClick={onClick}
       >
-        <span className="min-w-0 flex-1 truncate">
-          {txn.merchant}
+        <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
+          {displayMerchant(txn)}
           <span className="text-muted-foreground ml-2 hidden text-xs sm:inline">
             {categoryName(txn.categoryId, categories)}
           </span>
         </span>
-        <span className="text-muted-foreground hidden w-24 shrink-0 truncate text-xs sm:block">
+        <span className="text-muted-foreground hidden w-24 shrink-0 pt-0.5 text-xs sm:block">
           {accountName(txn.accountId, accounts)}
         </span>
         <span
           className={cn(
-            'w-[5.5rem] shrink-0 text-right tabular-nums',
+            'w-[5.5rem] shrink-0 pt-0.5 text-right tabular-nums',
             txn.amount < 0 && 'text-muted-foreground',
           )}
         >
           {formatTxnAmount(txn.amount)}
         </span>
-        <Pencil className="text-muted-foreground size-3.5 shrink-0" />
+        <Pencil className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
       </button>
     </li>
   )
@@ -556,7 +615,7 @@ function EditTxnForm({
   ) => void
   onDelete: (id: string) => void
 }) {
-  const [merchant, setMerchant] = useState(txn.merchant)
+  const [merchant, setMerchant] = useState(() => displayMerchant(txn))
   const [amount, setAmount] = useState(Math.abs(txn.amount).toFixed(2))
   const [date, setDate] = useState(txn.date)
   const [accountId, setAccountId] = useState(txn.accountId)
@@ -598,7 +657,7 @@ function EditTxnForm({
               <SelectItem value={NONE}>Uncategorized</SelectItem>
               {categories.map((category) => (
                 <SelectItem key={category.id} value={category.id}>
-                  {category.name}
+                  {toSentenceCase(category.name)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -686,22 +745,23 @@ function EditTxnForm({
             if (parsedAmount == null) return
             const signed = deposit ? -parsedAmount : parsedAmount
             const nextCategory = categoryId || undefined
+            const nextName = toSentenceCase(merchant)
             onSave(
               txn.id,
               {
-                merchant: merchant.trim(),
+                merchant: nextName,
                 amount: signed,
                 date,
                 accountId,
                 categoryId: nextCategory,
-                customName: merchant.trim() !== txn.merchant ? true : txn.customName,
+                customName: nextName !== displayMerchant(txn) ? true : txn.customName,
                 customCategory:
                   nextCategory !== txn.categoryId ? true : txn.customCategory,
               },
               createRule
                 ? {
                     match: match.trim(),
-                    merchant: merchant.trim(),
+                    merchant: nextName,
                     categoryId: nextCategory,
                   }
                 : undefined,
@@ -715,62 +775,286 @@ function EditTxnForm({
   )
 }
 
-function AddCategoryDialog({
+type CategoryDraft = {
+  id: string
+  name: string
+  expenseId: string
+}
+
+function snapshotCategories(drafts: CategoryDraft[]) {
+  return JSON.stringify(
+    drafts.map((item) => ({
+      id: item.id,
+      name: item.name.trim(),
+      expenseId: item.expenseId,
+    })),
+  )
+}
+
+function EditCategoriesDialog({
   open,
+  categories,
+  expenses,
   onClose,
-  onAdd,
+  onSave,
 }: {
   open: boolean
+  categories: SpendingCategory[]
+  expenses: RecurringExpense[]
   onClose: () => void
-  onAdd: (name: string) => void
+  onSave: (categories: SpendingCategory[]) => void
 }) {
-  const [name, setName] = useState('')
+  const [drafts, setDrafts] = useState<CategoryDraft[]>([])
+  const [baseline, setBaseline] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const options = useMemo(() => linkableExpenses(expenses), [expenses])
+
+  useEffect(() => {
+    if (!open) return
+    const next = categories.map((item) => ({
+      id: item.id,
+      name: item.name,
+      expenseId: item.expenseId ?? '',
+    }))
+    setDrafts(next)
+    setBaseline(snapshotCategories(next))
+    setConfirmOpen(false)
+  }, [categories, open])
+
+  const dirty = snapshotCategories(drafts) !== baseline
+  const usedExpenseIds = new Set(
+    drafts.map((item) => item.expenseId).filter(Boolean),
+  )
+  const unusedExpenses = options.filter((item) => !usedExpenseIds.has(item.id))
+  const canSubmit = dirty
+
+  function closeClean() {
+    setConfirmOpen(false)
+    onClose()
+  }
+
+  function requestClose() {
+    if (confirmOpen) return
+    if (dirty) {
+      setConfirmOpen(true)
+      return
+    }
+    closeClean()
+  }
+
+  function addBlank() {
+    setDrafts((current) => [
+      ...current,
+      { id: crypto.randomUUID(), name: '', expenseId: '' },
+    ])
+  }
+
+  function addFromExpense(expense: RecurringExpense) {
+    setDrafts((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        name: toSentenceCase(expense.name),
+        expenseId: expense.id,
+      },
+    ])
+  }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) {
-          setName('')
-          onClose()
-        }
-      }}
-    >
-      <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
-        <form
-          id="add-spending-category-form"
-          onSubmit={(event) => {
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) requestClose()
+        }}
+      >
+        <DialogContent
+          className="w-max max-w-[calc(100%-2rem)] gap-0 p-4 sm:max-w-lg"
+          showCloseButton={false}
+          onEscapeKeyDown={(event) => {
             event.preventDefault()
-            if (!name.trim()) return
-            onAdd(name.trim())
-            setName('')
+            if (confirmOpen) {
+              setConfirmOpen(false)
+              return
+            }
+            requestClose()
           }}
         >
+          <div className="-mx-4 border-b px-4 pb-4">
+            <div className="flex items-center justify-between gap-3">
+              <DialogHeader>
+                <DialogTitle className="pl-2.5 text-2xl tracking-tight">
+                  Edit categories
+                </DialogTitle>
+              </DialogHeader>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="bg-white"
+                onClick={addBlank}
+              >
+                Add category
+              </Button>
+            </div>
+          </div>
+
+          <div className="no-scrollbar max-h-[min(70vh,40rem)] space-y-4 overflow-y-auto py-5">
+            {drafts.length === 0 ? (
+              <p className="text-muted-foreground px-2.5 text-sm">
+                No categories yet. Add one, or pick a line from monthly expenses.
+              </p>
+            ) : (
+              <ul className="grid gap-2">
+                {drafts.map((draft) => (
+                  <li
+                    key={draft.id}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 px-2.5"
+                  >
+                    <Input
+                      value={draft.name}
+                      placeholder="Name"
+                      aria-label="Category name"
+                      onChange={(event) =>
+                        setDrafts((current) =>
+                          current.map((item) =>
+                            item.id === draft.id
+                              ? { ...item, name: event.target.value }
+                              : item,
+                          ),
+                        )
+                      }
+                    />
+                    <Select
+                      value={draft.expenseId || NONE}
+                      onValueChange={(value) =>
+                        setDrafts((current) =>
+                          current.map((item) =>
+                            item.id === draft.id
+                              ? {
+                                  ...item,
+                                  expenseId: value === NONE ? '' : value,
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                    >
+                      <SelectTrigger
+                        className="w-full"
+                        aria-label={`Budget for ${draft.name || 'category'}`}
+                      >
+                        <SelectValue placeholder="No expense" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>No expense</SelectItem>
+                        {options.map((expense) => (
+                          <SelectItem
+                            key={expense.id}
+                            value={expense.id}
+                            disabled={
+                              usedExpenseIds.has(expense.id) &&
+                              draft.expenseId !== expense.id
+                            }
+                          >
+                            {toSentenceCase(expense.name)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Remove ${draft.name || 'category'}`}
+                      onClick={() =>
+                        setDrafts((current) =>
+                          current.filter((item) => item.id !== draft.id),
+                        )
+                      }
+                    >
+                      <Trash2 />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {unusedExpenses.length > 0 ? (
+              <div className="px-2.5">
+                <p className="text-muted-foreground mb-2 text-xs font-medium">
+                  From monthly expenses
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {unusedExpenses.map((expense) => (
+                    <Button
+                      key={expense.id}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addFromExpense(expense)}
+                    >
+                      {toSentenceCase(expense.name)}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter className="relative z-20 items-center sm:justify-end sm:gap-4">
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={requestClose}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!canSubmit}
+              onClick={() =>
+                onSave(
+                  drafts
+                    .filter((item) => item.name.trim())
+                    .map((item) => ({
+                      id: item.id,
+                      name: toSentenceCase(item.name),
+                      ...(item.expenseId ? { expenseId: item.expenseId } : {}),
+                    })),
+                )
+              }
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Add category</DialogTitle>
+            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogDescription>
+              You have unsaved edits. If you cancel, that information will be
+              lost.
+            </DialogDescription>
           </DialogHeader>
-          <Input
-            autoFocus
-            className="mt-4"
-            placeholder="Name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            aria-label="Category name"
-          />
-        </form>
-        <DialogFooter className="sm:justify-end">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            form="add-spending-category-form"
-            type="submit"
-            disabled={!name.trim()}
-          >
-            Add
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+            >
+              Keep editing
+            </Button>
+            <Button type="button" variant="destructive" onClick={closeClean}>
+              Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
