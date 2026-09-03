@@ -345,8 +345,8 @@
   background-image: linear-gradient(to bottom right, #f5f5f5, #ffffff) !important;
 }
 .hover-fill-active {
-  background-color: #f0f0f0;
-  background-image: none;
+  background-color: #f0f0f0 !important;
+  background-image: none !important;
 }
 .hover-fill-active:hover,
 .hover-fill-active:focus-visible,
@@ -369,8 +369,8 @@
   background-image: linear-gradient(to bottom right, #333333, #1a1a1a) !important;
 }
 .dark .hover-fill-active {
-  background-color: #2a2a2a;
-  background-image: none;
+  background-color: #2a2a2a !important;
+  background-image: none !important;
 }
 .dark .hover-fill-active:hover,
 .dark .hover-fill-active:focus-visible,

@@ -155,14 +155,22 @@ export function SpendingPage() {
     () => latestSpendingMonth(transactions),
     [transactions],
   )
-  const [pickedYear, setPickedYear] = useState<number | null>(null)
-  const [pickedMonth, setPickedMonth] = useState<number | null>(null)
-  const selectedYear = pickedYear ?? latest?.year ?? now.getFullYear()
+  const [year, setYear] = useState<number | null>(null)
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
+  const selectedYear = year ?? latest?.year ?? now.getFullYear()
   const monthRows = useMemo(
     () => monthRowsForYear(transactions, selectedYear, now),
     [now, selectedYear, transactions],
   )
-  const activeMonth = pickedMonth ?? latest?.month ?? now.getMonth()
+  const defaultMonth =
+    monthRows.find((row) => row.amount > 0)?.month ??
+    latestSpendingMonthInYear(transactions, selectedYear) ??
+    monthRows[0]?.month ??
+    null
+  const activeMonth =
+    selectedMonth != null && monthRows.some((row) => row.month === selectedMonth)
+      ? selectedMonth
+      : defaultMonth
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
   const [addCategoryOpen, setAddCategoryOpen] = useState(false)
@@ -242,12 +250,8 @@ export function SpendingPage() {
           value={String(selectedYear)}
           onValueChange={(value) => {
             const next = Number(value)
-            if (next === selectedYear) return
-            setPickedYear(next)
-            setPickedMonth(
-              latestSpendingMonthInYear(transactions, next) ??
-                (next === now.getFullYear() ? now.getMonth() : 11),
-            )
+            setYear(next)
+            setSelectedMonth(null)
             setExpandedDay(null)
           }}
         >
@@ -288,13 +292,12 @@ export function SpendingPage() {
                   type="button"
                   aria-current={selected ? 'true' : undefined}
                   onClick={() => {
-                    setPickedYear(selectedYear)
-                    setPickedMonth(row.month)
+                    setSelectedMonth(row.month)
                     setExpandedDay(null)
                   }}
                   className={cn(
                     'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
-                    selected && 'hover-fill-active font-medium',
+                    selected && 'hover-fill-active',
                   )}
                 >
                   <span className={selected ? 'font-medium' : undefined}>
