@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -155,27 +155,14 @@ export function SpendingPage() {
     () => latestSpendingMonth(transactions),
     [transactions],
   )
-  const [year, setYear] = useState(
-    () => latest?.year ?? now.getFullYear(),
-  )
-  const [month, setMonth] = useState(
-    () => latest?.month ?? now.getMonth(),
-  )
-  const [touched, setTouched] = useState(false)
-  const selectedYear = years.includes(year) ? year : (years[0] ?? now.getFullYear())
+  const [pickedYear, setPickedYear] = useState<number | null>(null)
+  const [pickedMonth, setPickedMonth] = useState<number | null>(null)
+  const selectedYear = pickedYear ?? latest?.year ?? now.getFullYear()
   const monthRows = useMemo(
     () => monthRowsForYear(transactions, selectedYear, now),
     [now, selectedYear, transactions],
   )
-  const activeMonth = monthRows.some((row) => row.month === month)
-    ? month
-    : (monthRows[0]?.month ?? null)
-
-  useEffect(() => {
-    if (touched || !latest) return
-    setYear(latest.year)
-    setMonth(latest.month)
-  }, [latest, touched])
+  const activeMonth = pickedMonth ?? latest?.month ?? now.getMonth()
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
   const [addCategoryOpen, setAddCategoryOpen] = useState(false)
@@ -255,9 +242,9 @@ export function SpendingPage() {
           value={String(selectedYear)}
           onValueChange={(value) => {
             const next = Number(value)
-            setTouched(true)
-            setYear(next)
-            setMonth(
+            if (next === selectedYear) return
+            setPickedYear(next)
+            setPickedMonth(
               latestSpendingMonthInYear(transactions, next) ??
                 (next === now.getFullYear() ? now.getMonth() : 11),
             )
@@ -301,8 +288,8 @@ export function SpendingPage() {
                   type="button"
                   aria-current={selected ? 'true' : undefined}
                   onClick={() => {
-                    setTouched(true)
-                    setMonth(row.month)
+                    setPickedYear(selectedYear)
+                    setPickedMonth(row.month)
                     setExpandedDay(null)
                   }}
                   className={cn(
