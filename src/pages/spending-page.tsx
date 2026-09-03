@@ -81,6 +81,29 @@ function defaultRuleMatch(description: string) {
   return tokens[0] ?? description.trim()
 }
 
+function latestSpendingMonth(transactions: SpendingTxn[]) {
+  let latest: string | null = null
+  for (const txn of transactions) {
+    const key = txn.date.slice(0, 7)
+    if (!/^\d{4}-\d{2}$/.test(key)) continue
+    if (!latest || key > latest) latest = key
+  }
+  if (!latest) return null
+  const [year, month] = latest.split('-').map(Number)
+  return { year, month: month - 1 }
+}
+
+function latestSpendingMonthInYear(transactions: SpendingTxn[], year: number) {
+  let latest = -1
+  const prefix = `${year}-`
+  for (const txn of transactions) {
+    if (!txn.date.startsWith(prefix)) continue
+    const month = Number.parseInt(txn.date.slice(5, 7), 10) - 1
+    if (month > latest) latest = month
+  }
+  return latest >= 0 ? latest : null
+}
+
 function availableSpendingYears(transactions: SpendingTxn[], now = new Date()) {
   const years = new Set<number>([now.getFullYear()])
   for (const txn of transactions) {
@@ -128,21 +151,34 @@ export function SpendingPage() {
     () => availableSpendingYears(transactions, now),
     [now, transactions],
   )
-  const [year, setYear] = useState(() =>
-    years.includes(now.getFullYear()) ? now.getFullYear() : (years[0] ?? now.getFullYear()),
+  const fallbackMonth = useMemo(
+    () =>
+      latestSpendingMonth(transactions) ?? {
+        year: now.getFullYear(),
+        month: now.getMonth(),
+      },
+    [now, transactions],
   )
-  const selectedYear = years.includes(year) ? year : (years[0] ?? now.getFullYear())
+  const [pickedYear, setPickedYear] = useState<number | null>(null)
+  const [pickedMonth, setPickedMonth] = useState<number | null>(null)
+  const selectedYear =
+    pickedYear != null && years.includes(pickedYear)
+      ? pickedYear
+      : years.includes(fallbackMonth.year)
+        ? fallbackMonth.year
+        : (years[0] ?? now.getFullYear())
   const monthRows = useMemo(
     () => monthRowsForYear(transactions, selectedYear, now),
     [now, selectedYear, transactions],
   )
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(() =>
-    now.getMonth(),
-  )
   const activeMonth =
-    selectedMonth != null && monthRows.some((row) => row.month === selectedMonth)
-      ? selectedMonth
-      : (monthRows[0]?.month ?? null)
+    pickedMonth != null && monthRows.some((row) => row.month === pickedMonth)
+      ? pickedMonth
+      : selectedYear === fallbackMonth.year
+        ? fallbackMonth.month
+        : (latestSpendingMonthInYear(transactions, selectedYear) ??
+          monthRows[0]?.month ??
+          null)
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
   const [addCategoryOpen, setAddCategoryOpen] = useState(false)
@@ -222,8 +258,11 @@ export function SpendingPage() {
           value={String(selectedYear)}
           onValueChange={(value) => {
             const next = Number(value)
-            setYear(next)
-            setSelectedMonth(next === now.getFullYear() ? now.getMonth() : null)
+            setPickedYear(next)
+            setPickedMonth(
+              latestSpendingMonthInYear(transactions, next) ??
+                (next === now.getFullYear() ? now.getMonth() : 11),
+            )
             setExpandedDay(null)
           }}
         >
@@ -263,7 +302,8 @@ export function SpendingPage() {
                   key={row.month}
                   type="button"
                   onClick={() => {
-                    setSelectedMonth(row.month)
+                    setPickedYear(selectedYear)
+                    setPickedMonth(row.month)
                     setExpandedDay(null)
                   }}
                   className={cn(
