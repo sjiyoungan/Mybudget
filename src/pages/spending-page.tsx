@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -17,12 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -32,11 +26,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useBudget } from '@/lib/budget-context'
-import {
-  formatDateWithoutYear,
-  formatLongDate,
-  formatUsd,
-} from '@/lib/format'
+import { formatDateWithoutYear, formatUsd } from '@/lib/format'
+import { monthName } from '@/lib/income'
 import { useSpending } from '@/lib/spending-context'
 import {
   sortSpendingTxns,
@@ -67,22 +58,6 @@ function formatTxnAmount(amount: number) {
   return formatUsd(amount)
 }
 
-function padMonth(month: number) {
-  return String(month).padStart(2, '0')
-}
-
-function monthKey(year: number, month: number) {
-  return `${year}-${padMonth(month + 1)}`
-}
-
-function monthLabel(key: string) {
-  const [year, month] = key.split('-').map(Number)
-  return new Date(year, month - 1, 1).toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  })
-}
-
 function accountName(
   accountId: string,
   accounts: { id: string; name: string }[],
@@ -106,10 +81,36 @@ function defaultRuleMatch(description: string) {
   return tokens[0] ?? description.trim()
 }
 
-function availableMonthKeys(transactions: SpendingTxn[], now = new Date()) {
-  const keys = new Set(transactions.map((txn) => txn.date.slice(0, 7)))
-  keys.add(monthKey(now.getFullYear(), now.getMonth()))
-  return [...keys].sort((left, right) => right.localeCompare(left))
+function availableSpendingYears(transactions: SpendingTxn[], now = new Date()) {
+  const years = new Set<number>([now.getFullYear()])
+  for (const txn of transactions) {
+    const year = Number.parseInt(txn.date.slice(0, 4), 10)
+    if (Number.isFinite(year) && year >= 1990 && year <= 2100) years.add(year)
+  }
+  return [...years].sort((left, right) => right - left)
+}
+
+function monthRowsForYear(
+  transactions: SpendingTxn[],
+  year: number,
+  now = new Date(),
+) {
+  const totals = Array.from({ length: 12 }, () => 0)
+  for (const txn of transactions) {
+    if (!txn.date.startsWith(`${year}-`) || txn.amount <= 0) continue
+    const month = Number.parseInt(txn.date.slice(5, 7), 10) - 1
+    if (month >= 0 && month < 12) totals[month] += txn.amount
+  }
+  const currentYear = now.getFullYear()
+  const lastMonth = year === currentYear ? now.getMonth() : 11
+  return totals
+    .map((amount, month) => ({ month, amount }))
+    .filter(({ month, amount }) => {
+      if (year > currentYear) return amount > 0
+      if (year === currentYear) return month <= lastMonth
+      return true
+    })
+    .toReversed()
 }
 
 export function SpendingPage() {
@@ -122,22 +123,42 @@ export function SpendingPage() {
     addRule,
   } = useSpending()
   const { accounts } = useBudget()
-  const months = useMemo(
-    () => availableMonthKeys(transactions),
-    [transactions],
+  const now = useMemo(() => new Date(), [])
+  const years = useMemo(
+    () => availableSpendingYears(transactions, now),
+    [now, transactions],
   )
-  const [month, setMonth] = useState(() => months[0])
-  const selectedMonth = months.includes(month) ? month : (months[0] ?? month)
+  const [year, setYear] = useState(() =>
+    years.includes(now.getFullYear()) ? now.getFullYear() : (years[0] ?? now.getFullYear()),
+  )
+  const selectedYear = years.includes(year) ? year : (years[0] ?? now.getFullYear())
+  const monthRows = useMemo(
+    () => monthRowsForYear(transactions, selectedYear, now),
+    [now, selectedYear, transactions],
+  )
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(() =>
+    now.getMonth(),
+  )
+  const activeMonth =
+    selectedMonth != null && monthRows.some((row) => row.month === selectedMonth)
+      ? selectedMonth
+      : (monthRows[0]?.month ?? null)
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
-  const [dayKey, setDayKey] = useState<string | null>(null)
+  const [expandedDay, setExpandedDay] = useState<string | null>(null)
   const [addCategoryOpen, setAddCategoryOpen] = useState(false)
 
+  const monthPrefix =
+    activeMonth == null
+      ? ''
+      : `${selectedYear}-${String(activeMonth + 1).padStart(2, '0')}-`
   const monthTxns = useMemo(
     () =>
       sortSpendingTxns(
-        transactions.filter((txn) => txn.date.startsWith(`${selectedMonth}-`)),
+        monthPrefix
+          ? transactions.filter((txn) => txn.date.startsWith(monthPrefix))
+          : [],
       ),
-    [selectedMonth, transactions],
+    [monthPrefix, transactions],
   )
   const spentTxns = useMemo(
     () => monthTxns.filter((txn) => txn.amount > 0),
@@ -175,30 +196,43 @@ export function SpendingPage() {
     )
   }, [categories, spentTxns])
   const dayRows = useMemo(() => {
-    const byDay = new Map<string, number>()
-    for (const txn of spentTxns) {
-      byDay.set(txn.date, (byDay.get(txn.date) ?? 0) + txn.amount)
+    const byDay = new Map<string, SpendingTxn[]>()
+    for (const txn of monthTxns) {
+      const items = byDay.get(txn.date)
+      if (items) items.push(txn)
+      else byDay.set(txn.date, [txn])
     }
     return [...byDay.entries()]
       .sort((left, right) => right[0].localeCompare(left[0]))
-      .map(([date, amount]) => ({ date, amount }))
-  }, [spentTxns])
-  const dayTxns = useMemo(
-    () => (dayKey ? monthTxns.filter((txn) => txn.date === dayKey) : []),
-    [dayKey, monthTxns],
-  )
+      .map(([date, items]) => ({
+        date,
+        items,
+        amount: items.reduce(
+          (sum, txn) => sum + (txn.amount > 0 ? txn.amount : 0),
+          0,
+        ),
+      }))
+  }, [monthTxns])
 
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="font-heading text-3xl font-medium">Spending</h1>
-        <Select value={selectedMonth} onValueChange={setMonth}>
+        <Select
+          value={String(selectedYear)}
+          onValueChange={(value) => {
+            const next = Number(value)
+            setYear(next)
+            setSelectedMonth(next === now.getFullYear() ? now.getMonth() : null)
+            setExpandedDay(null)
+          }}
+        >
           <SelectTrigger
-            aria-label="Spending month"
+            aria-label="Spending year"
             size="sm"
             className="h-8 text-base"
           >
-            <SelectValue placeholder="Month" />
+            <SelectValue placeholder="Year" />
           </SelectTrigger>
           <SelectContent
             position="popper"
@@ -207,140 +241,135 @@ export function SpendingPage() {
             sideOffset={4}
             className="w-(--radix-select-trigger-width) min-w-(--radix-select-trigger-width) rounded-md"
           >
-            {months.map((key) => (
-              <SelectItem key={key} value={key} className="text-base">
-                {monthLabel(key)}
+            {years.map((option) => (
+              <SelectItem key={option} value={String(option)} className="text-base">
+                {option}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
-      <Card>
-        <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
-          <CardTitle>Total expense</CardTitle>
-          <CardAction>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setAddCategoryOpen(true)}
-            >
-              <Plus data-icon="inline-start" />
-              Category
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="grid gap-5">
-          <p className="text-2xl font-medium tabular-nums">{formatUsd(totalSpent)}</p>
-          <div className="flex flex-wrap items-center gap-6">
-            <CategoryPie slices={slices} total={totalSpent} />
-            <ul className="grid min-w-[12rem] flex-1 gap-2">
-              {slices.map((slice) => (
-                <li
-                  key={slice.id || 'uncategorized'}
-                  className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-sm"
+      <section className="grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Monthly expenses</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-1 pl-3">
+            {monthRows.map((row) => {
+              const selected = row.month === activeMonth
+              return (
+                <button
+                  key={row.month}
+                  type="button"
+                  onClick={() => {
+                    setSelectedMonth(row.month)
+                    setExpandedDay(null)
+                  }}
+                  className={cn(
+                    'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
+                    selected && 'hover-fill-active',
+                  )}
                 >
+                  <span className={selected ? 'font-medium' : undefined}>
+                    {monthName(row.month)}
+                  </span>
                   <span
-                    className="size-2.5 rounded-full"
-                    style={{ background: slice.color }}
-                  />
-                  <span className="truncate">{slice.name}</span>
-                  <span className="tabular-nums">{formatUsd(slice.amount)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>By day</CardTitle>
-        </CardHeader>
-        <CardContent className="px-0">
-          {dayRows.length === 0 ? (
-            <p className="text-muted-foreground px-4 pb-2 text-sm">
-              No purchase days in this month.
-            </p>
-          ) : (
-            <ul>
-              {dayRows.map((row) => (
-                <li key={row.date} className="border-b last:border-b-0">
-                  <button
-                    type="button"
-                    className="hover:bg-muted/50 flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left"
-                    onClick={() => setDayKey(row.date)}
+                    className={cn(
+                      'tabular-nums',
+                      row.amount === 0 && 'text-muted-foreground',
+                    )}
                   >
-                    <span>{formatDateWithoutYear(row.date, 'short')}</span>
-                    <span className="tabular-nums">{formatUsd(row.amount)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+                    {formatUsd(row.amount)}
+                  </span>
+                </button>
+              )
+            })}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
+            <CardTitle>Total expense</CardTitle>
+            <CardAction>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAddCategoryOpen(true)}
+              >
+                <Plus data-icon="inline-start" />
+                Category
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="grid gap-5">
+            <p className="text-2xl font-medium tabular-nums">{formatUsd(totalSpent)}</p>
+            <div className="flex flex-wrap items-center gap-6">
+              <CategoryPie slices={slices} total={totalSpent} />
+              <ul className="grid min-w-[12rem] flex-1 gap-2">
+                {slices.map((slice) => (
+                  <li
+                    key={slice.id || 'uncategorized'}
+                    className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-sm"
+                  >
+                    <span
+                      className="size-2.5 rounded-full"
+                      style={{ background: slice.color }}
+                    />
+                    <span className="truncate">{slice.name}</span>
+                    <span className="tabular-nums">{formatUsd(slice.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
 
       <Card>
         <CardHeader>
           <CardTitle>Transactions</CardTitle>
         </CardHeader>
-        <CardContent className="px-0">
-          {monthTxns.length === 0 ? (
-            <p className="text-muted-foreground px-4 pb-2 text-sm">
-              Upload a statement from the Upload menu to log purchases.
-            </p>
-          ) : (
-            <ul>
-              {monthTxns.map((txn) => (
-                <TransactionRow
-                  key={txn.id}
-                  txn={txn}
-                  accounts={accounts}
-                  categories={categories}
-                  onClick={() => setEditing(txn)}
-                />
-              ))}
-            </ul>
-          )}
+        <CardContent className="grid gap-1">
+          {dayRows.map((row) => {
+            const expanded = expandedDay === row.date
+            return (
+              <div key={row.date}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedDay(expanded ? null : row.date)}
+                  className="hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left"
+                >
+                  <span className={expanded ? 'font-medium' : undefined}>
+                    {formatDateWithoutYear(row.date, 'short')}
+                  </span>
+                  <span className="tabular-nums">{formatUsd(row.amount)}</span>
+                  <ChevronDown
+                    className={cn(
+                      'size-4 text-muted-foreground transition-transform',
+                      expanded && 'rotate-180',
+                    )}
+                  />
+                </button>
+                {expanded ? (
+                  <ul className="grid gap-0.5 py-1 pr-8 pl-[22px]">
+                    {row.items.map((txn) => (
+                      <TransactionRow
+                        key={txn.id}
+                        txn={txn}
+                        accounts={accounts}
+                        categories={categories}
+                        onClick={() => setEditing(txn)}
+                      />
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            )
+          })}
         </CardContent>
       </Card>
-
-      <Drawer
-        direction="right"
-        open={dayKey != null}
-        onOpenChange={(open) => {
-          if (!open) setDayKey(null)
-        }}
-      >
-        <DrawerContent className="data-[vaul-drawer-direction=right]:h-full sm:max-w-md">
-          <DrawerHeader>
-            <DrawerTitle>
-              {dayKey ? formatLongDate(dayKey) : 'Day'}
-            </DrawerTitle>
-          </DrawerHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-6">
-            {dayTxns.length === 0 ? (
-              <p className="text-muted-foreground px-2 text-sm">
-                No transactions on this day.
-              </p>
-            ) : (
-              <ul>
-                {dayTxns.map((txn) => (
-                  <TransactionRow
-                    key={txn.id}
-                    txn={txn}
-                    accounts={accounts}
-                    categories={categories}
-                    onClick={() => setEditing(txn)}
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
-        </DrawerContent>
-      </Drawer>
 
       <EditTxnDialog
         txn={editing}
@@ -415,15 +444,12 @@ function TransactionRow({
   onClick: () => void
 }) {
   return (
-    <li className="border-b last:border-b-0">
+    <li>
       <button
         type="button"
-        className="hover:bg-muted/50 flex w-full items-center gap-3 px-4 py-2.5 text-left"
+        className="hover-fill flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left"
         onClick={onClick}
       >
-        <span className="text-muted-foreground w-[4.5rem] shrink-0 text-xs">
-          {formatDateWithoutYear(txn.date, 'short')}
-        </span>
         <span className="min-w-0 flex-1 truncate">
           {txn.merchant}
           <span className="text-muted-foreground ml-2 hidden text-xs sm:inline">
