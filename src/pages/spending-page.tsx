@@ -1245,6 +1245,68 @@ function CategoryCheck({ checked }: { checked: boolean }) {
   )
 }
 
+function ExpenseSelectDropdown({
+  className,
+  count,
+  lines,
+  isSelected,
+  onToggle,
+}: {
+  className?: string
+  count: number
+  lines: RecurringExpense[]
+  isSelected: (id: string) => boolean
+  onToggle: (id: string) => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn('shrink-0 justify-between bg-white', className)}
+        >
+          <span className="truncate">{expenseCountLabel(count)}</span>
+          <ChevronDown className="size-4 shrink-0" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="z-[60] max-h-72 min-w-64 overflow-y-auto"
+      >
+        {lines.length === 0 ? (
+          <DropdownMenuItem
+            className="text-muted-foreground"
+            onSelect={(event) => event.preventDefault()}
+          >
+            No expenses
+          </DropdownMenuItem>
+        ) : (
+          lines.map((expense) => {
+            const on = isSelected(expense.id)
+            return (
+              <DropdownMenuItem
+                key={expense.id}
+                className="grid cursor-pointer grid-cols-[1fr_auto] items-center gap-3"
+                onSelect={(event) => {
+                  event.preventDefault()
+                  onToggle(expense.id)
+                }}
+              >
+                <span className={on ? 'font-medium' : undefined}>
+                  {toSentenceCase(expense.name)}
+                </span>
+                <CategoryCheck checked={on} />
+              </DropdownMenuItem>
+            )
+          })
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function EditCategoriesDialog({
   open,
   categories,
@@ -1305,6 +1367,8 @@ function EditCategoriesDialog({
 
   const dirty = snapshotCategoryPicks(checkedIds, extras) !== baseline
   const checked = new Set(checkedIds)
+  const assignedIds = new Set(extras.flatMap((item) => item.expenseIds))
+  const standaloneCount = checkedIds.filter((id) => !assignedIds.has(id)).length
 
   function closeClean() {
     setConfirmOpen(false)
@@ -1321,6 +1385,7 @@ function EditCategoriesDialog({
   }
 
   function toggleExpense(id: string) {
+    if (assignedIds.has(id)) return
     setCheckedIds((current) =>
       current.includes(id)
         ? current.filter((item) => item !== id)
@@ -1436,41 +1501,18 @@ function EditCategoriesDialog({
             ref={listRef}
             className="no-scrollbar max-h-[min(70vh,40rem)] overflow-y-auto py-3"
           >
-            <ul className="grid gap-0.5">
-              {lines.map((expense) => {
-                const groupedIn = extras.find((item) =>
-                  item.expenseIds.includes(expense.id),
-                )
-                const on = !groupedIn && checked.has(expense.id)
-                return (
-                  <li key={expense.id}>
-                    <button
-                      type="button"
-                      role="checkbox"
-                      aria-checked={on}
-                      aria-label={
-                        groupedIn
-                          ? `${toSentenceCase(expense.name)} is under ${toSentenceCase(groupedIn.name) || 'a category'}`
-                          : toSentenceCase(expense.name)
-                      }
-                      onClick={() => {
-                        if (groupedIn) return
-                        toggleExpense(expense.id)
-                      }}
-                      className="hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-4 rounded-lg py-2 pr-2.5 pl-2.5 text-left"
-                    >
-                      <span className={on ? 'font-medium' : undefined}>
-                        {toSentenceCase(expense.name)}
-                      </span>
-                      <CategoryCheck checked={on} />
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+            <div className="px-2.5 py-1.5">
+              <ExpenseSelectDropdown
+                className="w-full"
+                count={standaloneCount}
+                lines={lines}
+                isSelected={(id) => !assignedIds.has(id) && checked.has(id)}
+                onToggle={toggleExpense}
+              />
+            </div>
 
             {extras.length > 0 ? (
-              <ul className="mt-3 grid gap-0.5 border-t pt-3">
+              <ul className="mt-1 grid gap-0.5">
                 {extras.map((extra) => (
                   <li
                     key={extra.id}
@@ -1493,44 +1535,13 @@ function EditCategoriesDialog({
                           )
                         }
                       />
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="w-[13.5rem] shrink-0 justify-between bg-white"
-                          >
-                            <span className="truncate">
-                              {expenseCountLabel(extra.expenseIds.length)}
-                            </span>
-                            <ChevronDown className="size-4 shrink-0" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="start"
-                          className="z-[60] max-h-72 min-w-64 overflow-y-auto"
-                        >
-                          {lines.map((expense) => {
-                            const on = extra.expenseIds.includes(expense.id)
-                            return (
-                              <DropdownMenuItem
-                                key={expense.id}
-                                className="grid cursor-pointer grid-cols-[1fr_auto] items-center gap-3"
-                                onSelect={(event) => {
-                                  event.preventDefault()
-                                  toggleExtraExpense(extra.id, expense.id)
-                                }}
-                              >
-                                <span className={on ? 'font-medium' : undefined}>
-                                  {toSentenceCase(expense.name)}
-                                </span>
-                                <CategoryCheck checked={on} />
-                              </DropdownMenuItem>
-                            )
-                          })}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <ExpenseSelectDropdown
+                        className="w-[13.5rem]"
+                        count={extra.expenseIds.length}
+                        lines={lines}
+                        isSelected={(id) => extra.expenseIds.includes(id)}
+                        onToggle={(id) => toggleExtraExpense(extra.id, id)}
+                      />
                     </div>
                     <Button
                       type="button"
