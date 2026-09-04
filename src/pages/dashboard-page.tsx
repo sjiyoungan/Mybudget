@@ -139,7 +139,7 @@ export function DashboardPage() {
           <SelectTrigger
             aria-label="Dashboard month"
             size="sm"
-            className="h-8 text-base"
+            className="h-8 pr-8 text-base"
           >
             {showYearLabels
               ? `${monthName(selected.month)} ${selected.year}`
