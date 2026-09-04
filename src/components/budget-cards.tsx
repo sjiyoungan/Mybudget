@@ -104,6 +104,13 @@ import {
   type RecurringExpense,
 } from '@/lib/budget'
 import { useDebtPlan } from '@/lib/debt-plan-context'
+import { useSpending } from '@/lib/spending-context'
+import {
+  applyExpenseSpendingBuckets,
+  spendingBucketIdForExpense,
+  toSentenceCase,
+  visibleSpendingCategories,
+} from '@/lib/spending'
 import {
   AFFIRM_DEBT_ID,
   payoffMonth,
@@ -797,10 +804,13 @@ type ExpenseDraft = {
   category: string
   accountId: string
   hidden: boolean
+  spendingBucket: string
 }
 
+const NONE_BUCKET = 'none'
+
 const EXPENSE_ROW =
-  'grid-cols-[minmax(7rem,12rem)_5.75rem_6.75rem_4.75rem_minmax(7rem,1fr)_28px_28px]' as const
+  'grid-cols-[minmax(7rem,12rem)_5.75rem_6.75rem_4.75rem_minmax(6.5rem,1fr)_minmax(7rem,9rem)_28px_28px]' as const
 
 function ExpenseColumnLabels() {
   return (
@@ -810,6 +820,7 @@ function ExpenseColumnLabels() {
       <span className={cn(DEBT_LABEL_LEFT, 'w-full')}>Frequency</span>
       <span className={cn(DEBT_LABEL_RIGHT, 'w-full')}>Due day</span>
       <span className={cn(DEBT_LABEL_LEFT, 'w-full')}>Bank</span>
+      <span className={cn(DEBT_LABEL_LEFT, 'w-full')}>Spending</span>
       <span />
       <span />
     </>
@@ -826,6 +837,7 @@ function newExpenseDraft(accountId: string, category = ''): ExpenseDraft {
     category,
     accountId,
     hidden: false,
+    spendingBucket: '',
   }
 }
 
@@ -839,6 +851,7 @@ function expenseToDraft(item: RecurringExpense): ExpenseDraft {
     category: item.category,
     accountId: item.accountId,
     hidden: item.hidden === true,
+    spendingBucket: '',
   }
 }
 
@@ -895,6 +908,7 @@ function editorSnapshot(
       category: draft.category,
       accountId: draft.accountId,
       hidden: draft.hidden,
+      spendingBucket: draft.spendingBucket,
     })),
   })
 }
@@ -1082,9 +1096,52 @@ function FrequencySelect({
   )
 }
 
+function SpendingBucketSelect({
+  value,
+  buckets,
+  onChange,
+  disabled = false,
+}: {
+  value: string
+  buckets: { id: string; name: string }[]
+  onChange: (id: string) => void
+  disabled?: boolean
+}) {
+  const options = buckets.some((item) => item.id === value)
+    ? buckets
+    : value
+      ? [{ id: value, name: value }, ...buckets]
+      : buckets
+  return (
+    <Select
+      value={value || NONE_BUCKET}
+      onValueChange={(next) => onChange(next === NONE_BUCKET ? '' : next)}
+      disabled={disabled}
+    >
+      <SelectTrigger
+        className={cn('w-full', EDIT_GHOST_FIELD)}
+        chevron="hover"
+        aria-label="Spending"
+      >
+        <SelectValue placeholder="None" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={NONE_BUCKET}>None</SelectItem>
+        {options.map((item) => (
+          <SelectItem key={item.id} value={item.id}>
+            {toSentenceCase(item.name)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
 function ExpenseDraftRow({
   draft,
   accounts,
+  spendingBuckets,
+  disableSpending = false,
   dragging,
   dueDayError,
   drafts,
@@ -1098,6 +1155,8 @@ function ExpenseDraftRow({
 }: {
   draft: ExpenseDraft
   accounts: { id: string; name: string }[]
+  spendingBuckets: { id: string; name: string }[]
+  disableSpending?: boolean
   dragging: boolean
   dueDayError: boolean
   drafts: ExpenseDraft[]
@@ -1179,6 +1238,12 @@ function ExpenseDraftRow({
         quiet
         hideLastFour
       />
+      <SpendingBucketSelect
+        value={draft.spendingBucket}
+        buckets={spendingBuckets}
+        onChange={(spendingBucket) => onUpdate(draft.id, { spendingBucket })}
+        disabled={disableSpending}
+      />
       <Button
         type="button"
         variant="ghost"
@@ -1214,6 +1279,12 @@ function EditExpensesDialog({
 }) {
   const { accounts, categories, expenses, debts, replaceCategories, replaceExpenses } =
     useBudget()
+  const { categories: spendingCategories, replaceCategories: replaceSpendingCategories } =
+    useSpending()
+  const spendingBuckets = useMemo(
+    () => visibleSpendingCategories(spendingCategories),
+    [spendingCategories],
+  )
   const defaultAccountId = accounts[0]?.id ?? ''
   const linkedDebtIds = useMemo(
     () => new Set(debts.map((debt) => debt.id)),
@@ -1242,9 +1313,10 @@ function EditExpensesDialog({
     const nextCategories = categories.map((item) => ({ ...item }))
     const nextDrafts = expenses
       .filter((item) => isLiveExpense(item))
-      .map((item) =>
-      expenseToEditorDraft(item, expenses, debts),
-    )
+      .map((item) => ({
+        ...expenseToEditorDraft(item, expenses, debts),
+        spendingBucket: spendingBucketIdForExpense(item.id, spendingCategories),
+      }))
     setCategoryDrafts(nextCategories)
     setDrafts(nextDrafts)
     setBaseline(editorSnapshot(nextCategories, nextDrafts))
@@ -1417,6 +1489,14 @@ function EditExpensesDialog({
           hidden: draft.hidden,
         })),
     )
+    const assignments = new Map(
+      drafts
+        .filter((draft) => draftIsComplete(draft, allowed))
+        .map((draft) => [draft.id, draft.spendingBucket]),
+    )
+    replaceSpendingCategories(
+      applyExpenseSpendingBuckets(spendingCategories, assignments),
+    )
     closeClean()
   }
 
@@ -1583,6 +1663,7 @@ function EditExpensesDialog({
                     key={draft.id}
                     draft={draft}
                     accounts={accounts}
+                    spendingBuckets={spendingBuckets}
                     dragging={draggingId === draft.id}
                     dueDayError={dueDayError}
                     drafts={drafts}
@@ -1631,6 +1712,8 @@ function EditExpensesDialog({
                       key={draft.id}
                       draft={draft}
                       accounts={accounts}
+                      spendingBuckets={spendingBuckets}
+                      disableSpending={linkedDebtIds.has(draft.id)}
                       dragging={draggingId === draft.id}
                       dueDayError={dueDayError}
                       drafts={drafts}
@@ -1799,6 +1882,7 @@ function oneExpenseSnapshot(draft: ExpenseDraft) {
     category: draft.category,
     accountId: draft.accountId,
     hidden: draft.hidden,
+    spendingBucket: draft.spendingBucket,
   })
 }
 
@@ -1811,6 +1895,12 @@ function EditOneExpenseDialog({
 }) {
   const { accounts, categories, expenses, debts, updateExpense, removeExpense } =
     useBudget()
+  const { categories: spendingCategories, replaceCategories: replaceSpendingCategories } =
+    useSpending()
+  const spendingBuckets = useMemo(
+    () => visibleSpendingCategories(spendingCategories),
+    [spendingCategories],
+  )
   const expense = expenses.find((item) => item.id === expenseId)
   const linkedDebt = expense?.category === DEBT_CATEGORY_ID
   const [draft, setDraft] = useState<ExpenseDraft | null>(null)
@@ -1828,7 +1918,10 @@ function EditOneExpenseDialog({
       setDueDayError(false)
       return
     }
-    const next = expenseToEditorDraft(expense, expenses, debts)
+    const next = {
+      ...expenseToEditorDraft(expense, expenses, debts),
+      spendingBucket: spendingBucketIdForExpense(expense.id, spendingCategories),
+    }
     setDraft(next)
     setBaseline(oneExpenseSnapshot(next))
     setConfirmOpen(false)
@@ -1879,6 +1972,14 @@ function EditOneExpenseDialog({
       category: draft.category,
       hidden: draft.hidden,
     })
+    if (!linkedDebt) {
+      replaceSpendingCategories(
+        applyExpenseSpendingBuckets(
+          spendingCategories,
+          new Map([[draft.id, draft.spendingBucket]]),
+        ),
+      )
+    }
     closeClean()
   }
 
@@ -1961,6 +2062,8 @@ function EditOneExpenseDialog({
               <ExpenseDraftRow
                 draft={draft}
                 accounts={accounts}
+                spendingBuckets={spendingBuckets}
+                disableSpending={linkedDebt}
                 dragging={false}
                 dueDayError={dueDayError}
                 drafts={[draft]}

@@ -69,6 +69,57 @@ export function visibleSpendingCategories(categories: SpendingCategory[]) {
   })
 }
 
+export function spendingBucketIdForExpense(
+  expenseId: string,
+  categories: SpendingCategory[],
+) {
+  const grouped = categories.find(
+    (item) =>
+      isActiveSpendingCategory(item) &&
+      isGroupedSpendingCategory(item) &&
+      categoryExpenseIds(item).includes(expenseId),
+  )
+  if (grouped) return grouped.id
+  const match = categories.find(
+    (item) =>
+      isActiveSpendingCategory(item) &&
+      categoryExpenseIds(item).includes(expenseId),
+  )
+  return match?.id ?? ''
+}
+
+export function applyExpenseSpendingBuckets(
+  categories: SpendingCategory[],
+  assignments: ReadonlyMap<string, string>,
+): SpendingCategory[] {
+  const assignedBucketIds = new Set(
+    [...assignments.values()].filter((id) => id.length > 0),
+  )
+  return categories.map((item) => {
+    const remaining = categoryExpenseIds(item).filter((id) => {
+      if (!assignments.has(id)) return true
+      return assignments.get(id) === item.id
+    })
+    const added = [...assignments.entries()]
+      .filter(([, bucketId]) => bucketId === item.id)
+      .map(([expenseId]) => expenseId)
+    const ids = [...new Set([...remaining, ...added])]
+    const enabled = assignedBucketIds.has(item.id)
+      ? true
+      : ids.length === 0 && item.grouped !== true
+        ? false
+        : item.enabled !== false
+    return {
+      id: item.id,
+      name: item.name,
+      ...(ids.length > 0 ? { expenseIds: ids } : {}),
+      ...(item.grouped ? { grouped: true } : {}),
+      ...(enabled ? {} : { enabled: false }),
+      ...(item.updatedAt ? { updatedAt: item.updatedAt } : {}),
+    }
+  })
+}
+
 export function rolledSpendingCategoryId(
   categoryId: string | undefined,
   categories: SpendingCategory[],
