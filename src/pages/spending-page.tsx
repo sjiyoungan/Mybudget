@@ -507,9 +507,16 @@ export function SpendingPage() {
                           overBy > 0 && OVER_BUDGET_TEXT,
                         )}
                       >
-                        {slice.budget != null
-                          ? `${formatUsd(slice.amount)} / ${formatUsd(slice.budget)}`
-                          : formatUsd(slice.amount)}
+                        {slice.budget != null ? (
+                          <>
+                            {formatUsd(slice.amount)}
+                            <span className="text-muted-foreground ml-1 text-xs">
+                              / {formatUsd(slice.budget)}
+                            </span>
+                          </>
+                        ) : (
+                          formatUsd(slice.amount)
+                        )}
                       </span>
                     </li>
                   )
@@ -1676,7 +1683,7 @@ function EditCategoriesDialog({
                           >
                             <Input
                               className={cn(
-                                'h-8 min-w-0 flex-1 ml-2',
+                                'h-8 min-w-0 flex-1 ml-4',
                                 GHOST_FIELD,
                               )}
                               value={child.name}
@@ -1716,7 +1723,7 @@ function EditCategoriesDialog({
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="text-muted-foreground ml-2 h-8 justify-start px-2.5 hover:bg-transparent hover:text-foreground"
+                            className="text-muted-foreground ml-4 h-8 justify-start px-2.5 hover:bg-transparent hover:text-foreground"
                             onClick={() => addCategory(group.id)}
                           >
                             <Plus className="size-3.5" />
