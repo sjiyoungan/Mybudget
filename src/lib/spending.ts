@@ -272,6 +272,52 @@ export function isSpendingPurchase(
   return true
 }
 
+function isChimeSource(
+  txn: Pick<SpendingTxn, 'sourceFile' | 'accountId' | 'description'>,
+) {
+  return (
+    /\bchime\b/i.test(txn.sourceFile ?? '') ||
+    txn.accountId === 'sheet-chime' ||
+    /\bchime\b/i.test(txn.description)
+  )
+}
+
+function yearFromUploadName(name: string) {
+  const match = name.match(/\b(20\d{2})\b/)
+  return match ? Number(match[1]) : null
+}
+
+function repairImportedTxn(txn: SpendingTxn, uploads: SpendingUpload[]) {
+  const upload =
+    uploads.find((item) => item.id === txn.uploadId) ??
+    uploads.find((item) => item.name === txn.sourceFile)
+  let next = txn
+  const namedYear = upload ? yearFromUploadName(upload.name) : null
+  const uploadedYear = upload
+    ? new Date(upload.uploadedAt).getFullYear()
+    : Number.NaN
+  const targetYear = namedYear ?? (Number.isFinite(uploadedYear) ? uploadedYear : null)
+  const txnYear = Number(txn.date.slice(0, 4))
+  if (
+    targetYear != null &&
+    Number.isFinite(txnYear) &&
+    txnYear <= targetYear - 2
+  ) {
+    next = { ...next, date: `${targetYear}${txn.date.slice(4)}` }
+  }
+  if (
+    next.amount < 0 &&
+    isChimeSource(next) &&
+    !isJunkStatementTxn(next) &&
+    !isInterestTxn(next) &&
+    !isTransferTxn(next) &&
+    !isDepositTxn(next)
+  ) {
+    next = { ...next, amount: -next.amount }
+  }
+  return next
+}
+
 export function displayMerchant(txn: SpendingTxn, rules: SpendingRule[] = []) {
   if (txn.customName) return toSentenceCase(txn.merchant)
   const rule = matchingSpendingRule(txn.description, rules)
@@ -429,7 +475,17 @@ export function parseSpendingState(value: unknown): SpendingState | null {
   return {
     transactions: row.transactions
       .map(normalizeTxn)
-      .filter((item): item is SpendingTxn => item != null),
+      .filter((item): item is SpendingTxn => item != null)
+      .map((item) =>
+        repairImportedTxn(
+          item,
+          Array.isArray(row.uploads)
+            ? row.uploads
+                .map(normalizeUpload)
+                .filter((upload): upload is SpendingUpload => upload != null)
+            : [],
+        ),
+      ),
     rules: row.rules
       .map(normalizeRule)
       .filter((item): item is SpendingRule => item != null),
@@ -581,13 +637,18 @@ export function importSpendingTxns(
     const uploadId = crypto.randomUUID()
     uploads.push({ id: uploadId, name, uploadedAt: now })
     for (const item of batch.transactions) {
-      added.push({
-        ...item,
-        sourceFile: name,
-        uploadId,
-        id: crypto.randomUUID(),
-        updatedAt: now,
-      })
+      added.push(
+        repairImportedTxn(
+          {
+            ...item,
+            sourceFile: name,
+            uploadId,
+            id: crypto.randomUUID(),
+            updatedAt: now,
+          },
+          uploads,
+        ),
+      )
     }
   }
 

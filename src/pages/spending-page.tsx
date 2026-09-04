@@ -715,7 +715,7 @@ export function SpendingPage() {
                                   </Button>
                                 </div>
                                 {expanded ? (
-                                  <ul className="grid min-w-0 gap-0.5 py-1 pl-2">
+                                  <ul className="grid min-w-0 gap-0.5 py-1 pl-4">
                                     {items.length === 0 ? (
                                       <li className="text-muted-foreground px-2.5 py-2 text-sm">
                                         No purchases from this file.
@@ -1275,13 +1275,19 @@ function uploadMonthKey(
       month: namedMonth,
     }
   }
-  const dated = transactionsForUpload(transactions, upload, uploads).find(
+  const dated = transactionsForUpload(transactions, upload, uploads).filter(
     (txn) => /^\d{4}-\d{2}/.test(txn.date),
   )
-  if (dated) {
-    return {
-      year: Number(dated.date.slice(0, 4)),
-      month: Number(dated.date.slice(5, 7)) - 1,
+  if (dated.length > 0) {
+    const counts = new Map<string, number>()
+    for (const txn of dated) {
+      const key = txn.date.slice(0, 7)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    const top = [...counts.entries()].sort((left, right) => right[1] - left[1])[0]
+    if (top) {
+      const [year, month] = top[0].split('-').map(Number)
+      return { year, month: month - 1 }
     }
   }
   const uploaded = new Date(upload.uploadedAt)

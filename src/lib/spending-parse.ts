@@ -127,6 +127,12 @@ export function guessSpendingAccountId(
       fallbackAccountId(accounts)
     )
   }
+  if (/\bchime\b/.test(hay)) {
+    return (
+      accounts.find((account) => account.id === 'sheet-chime')?.id ??
+      fallbackAccountId(accounts)
+    )
+  }
   return fallbackAccountId(accounts)
 }
 
@@ -140,11 +146,25 @@ function fallbackAccountId(accounts: BankAccount[]) {
 }
 
 function statementYear(lines: { text: string }[]) {
-  const head = lines.slice(0, 40).map((line) => line.text).join(' ')
-  const years = [...head.matchAll(/\b(20\d{2})\b/g)].map((match) =>
-    Number(match[1]),
+  const head = lines.slice(0, 80).map((line) => line.text).join(' ')
+  const period = head.match(
+    /(?:statement period|period|from)\s*[:\s].{0,80}?(20\d{2}).{0,48}?(20\d{2})/i,
   )
-  return years[0] ?? null
+  if (period) return Number(period[2])
+  const monthYear = head.match(
+    /(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2},?\s+(20\d{2})/i,
+  )
+  if (monthYear) return Number(monthYear[1])
+  const years = [...head.matchAll(/\b(20\d{2})\b/g)]
+    .filter((match) => {
+      const before = head
+        .slice(Math.max(0, (match.index ?? 0) - 16), match.index)
+        .toLowerCase()
+      return !/since|copyright|©|member/.test(before)
+    })
+    .map((match) => Number(match[1]))
+  if (years.length === 0) return null
+  return Math.max(...years)
 }
 
 type Polarity = 'debit' | 'credit' | 'unknown'
@@ -167,9 +187,16 @@ function sectionPolarity(line: string): Polarity | null {
   return null
 }
 
-function signedPdfAmount(raw: number, polarity: Polarity) {
+function signedPdfAmount(
+  raw: number,
+  polarity: Polarity,
+  sourceFile = '',
+) {
   const abs = Math.abs(raw)
-  if (raw < 0 || polarity === 'credit') return -abs
+  if (polarity === 'credit') return -abs
+  if (polarity === 'debit') return abs
+  if (raw < 0 && /\bchime\b/i.test(sourceFile)) return abs
+  if (raw < 0) return -abs
   return abs
 }
 
@@ -191,6 +218,7 @@ function pickPdfAmount(
   money: { text: string; index: number; value: number }[],
   polarity: Polarity,
   creditsDebits: boolean,
+  sourceFile = '',
 ) {
   if (money.length === 0) return null
   if (money.length >= 3) {
@@ -209,7 +237,7 @@ function pickPdfAmount(
     }
   }
   const token = money.length >= 2 ? money[money.length - 2] : money[money.length - 1]
-  return { token, amount: signedPdfAmount(token.value, polarity) }
+  return { token, amount: signedPdfAmount(token.value, polarity, sourceFile) }
 }
 
 function isMerchantContinuation(
@@ -240,7 +268,7 @@ function parsePdfLine(
   if (!date) return null
 
   const money = lineMoney(line)
-  const picked = pickPdfAmount(money, polarity, creditsDebits)
+  const picked = pickPdfAmount(money, polarity, creditsDebits, sourceFile)
   if (!picked || Math.abs(picked.amount) < 0.005) return null
 
   const dateEnd = (dateMatches[0].index ?? 0) + dateMatches[0][0].length
