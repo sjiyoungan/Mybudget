@@ -17,6 +17,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -836,6 +842,12 @@ function standaloneCategoryForExpense(
   })
 }
 
+function expenseCountLabel(count: number) {
+  if (count === 0) return 'No expenses selected'
+  if (count === 1) return '1 expense selected'
+  return `${count} expenses selected`
+}
+
 function CategoryCheck({ checked }: { checked: boolean }) {
   return (
     <span
@@ -873,6 +885,8 @@ function EditCategoriesDialog({
   const [extras, setExtras] = useState<ExtraDraft[]>([])
   const [baseline, setBaseline] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [editingExtraId, setEditingExtraId] = useState<string | null>(null)
+  const [editPicks, setEditPicks] = useState<string[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -894,22 +908,30 @@ function EditCategoriesDialog({
     setExtras(nextExtras)
     setBaseline(snapshotCategoryPicks(nextChecked, nextExtras))
     setConfirmOpen(false)
+    setEditingExtraId(null)
+    setEditPicks([])
   }, [categories, open])
 
   const dirty = snapshotCategoryPicks(checkedIds, extras) !== baseline
   const checked = new Set(checkedIds)
   const assignedIds = new Set(extras.flatMap((item) => item.expenseIds))
   const standaloneLines = lines.filter((item) => !assignedIds.has(item.id))
-  const addableLines = standaloneLines
+  const editingExtra = extras.find((item) => item.id === editingExtraId)
+  const editDirty =
+    editingExtra != null &&
+    [...editPicks].sort().join('|') !==
+      [...editingExtra.expenseIds].sort().join('|')
 
   function closeClean() {
     setConfirmOpen(false)
+    setEditingExtraId(null)
+    setEditPicks([])
     onClose()
   }
 
   function requestClose() {
     if (confirmOpen) return
-    if (dirty) {
+    if (dirty || editDirty) {
       setConfirmOpen(true)
       return
     }
@@ -931,28 +953,40 @@ function EditCategoriesDialog({
     ])
   }
 
-  function addExpenseToGroup(groupId: string, expenseId: string) {
-    if (!expenseId || expenseId === NONE) return
-    setCheckedIds((current) => current.filter((id) => id !== expenseId))
-    setExtras((current) =>
-      current.map((item) =>
-        item.id === groupId && !item.expenseIds.includes(expenseId)
-          ? { ...item, expenseIds: [...item.expenseIds, expenseId] }
-          : item,
-      ),
-    )
+  function openExtraEditor(id: string) {
+    const extra = extras.find((item) => item.id === id)
+    if (!extra) return
+    setEditingExtraId(id)
+    setEditPicks(extra.expenseIds)
   }
 
-  function removeExpenseFromGroup(groupId: string, expenseId: string) {
+  function cancelExtraEditor() {
+    setEditingExtraId(null)
+    setEditPicks([])
+  }
+
+  function saveExtraEditor() {
+    if (!editingExtraId) return
+    const picks = editPicks
+    setCheckedIds((current) => current.filter((id) => !picks.includes(id)))
     setExtras((current) =>
-      current.map((item) =>
-        item.id === groupId
-          ? {
-              ...item,
-              expenseIds: item.expenseIds.filter((id) => id !== expenseId),
-            }
-          : item,
-      ),
+      current.map((item) => {
+        if (item.id === editingExtraId) return { ...item, expenseIds: picks }
+        return {
+          ...item,
+          expenseIds: item.expenseIds.filter((id) => !picks.includes(id)),
+        }
+      }),
+    )
+    setEditingExtraId(null)
+    setEditPicks([])
+  }
+
+  function toggleEditPick(id: string) {
+    setEditPicks((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
     )
   }
 
@@ -1008,6 +1042,10 @@ function EditCategoriesDialog({
               setConfirmOpen(false)
               return
             }
+            if (editingExtraId) {
+              cancelExtraEditor()
+              return
+            }
             requestClose()
           }}
         >
@@ -1015,21 +1053,70 @@ function EditCategoriesDialog({
             <div className="flex items-center justify-between gap-3">
               <DialogHeader>
                 <DialogTitle className="pl-2.5 text-2xl tracking-tight">
-                  Edit categories
+                  {editingExtra
+                    ? `Edit ${toSentenceCase(editingExtra.name) || 'category'}`
+                    : 'Edit categories'}
                 </DialogTitle>
               </DialogHeader>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="bg-white"
-                onClick={addBlank}
-              >
-                Add category
-              </Button>
+              {editingExtra ? null : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="bg-white"
+                  onClick={addBlank}
+                >
+                  Add category
+                </Button>
+              )}
             </div>
           </div>
 
+          {editingExtra ? (
+            <>
+              <div className="no-scrollbar max-h-[min(70vh,40rem)] overflow-y-auto py-3">
+                <ul className="grid gap-0.5">
+                  {lines.map((expense) => {
+                    const on = editPicks.includes(expense.id)
+                    return (
+                      <li key={expense.id}>
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={on}
+                          onClick={() => toggleEditPick(expense.id)}
+                          className="hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-4 rounded-lg py-2 pr-2.5 pl-2.5 text-left"
+                        >
+                          <span className={on ? 'font-medium' : undefined}>
+                            {toSentenceCase(expense.name)}
+                          </span>
+                          <CategoryCheck checked={on} />
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+              <DialogFooter className="relative z-20 items-center sm:justify-end sm:gap-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-muted-foreground hover:bg-transparent hover:text-foreground"
+                  onClick={cancelExtraEditor}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={!editDirty}
+                  onClick={saveExtraEditor}
+                >
+                  Save
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
           <div className="no-scrollbar max-h-[min(70vh,40rem)] overflow-y-auto py-3">
             <ul className="grid gap-0.5">
               {standaloneLines.map((expense) => {
@@ -1054,7 +1141,7 @@ function EditCategoriesDialog({
             </ul>
 
             {extras.length > 0 ? (
-              <ul className="mt-3 grid gap-4 border-t pt-3">
+              <ul className="mt-3 grid gap-2 border-t pt-3">
                 {extras.map((extra) => (
                   <li
                     key={extra.id}
@@ -1075,52 +1162,53 @@ function EditCategoriesDialog({
                         )
                       }
                     />
-                    <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
-                      {extra.expenseIds.map((expenseId) => {
-                        const expense = lines.find((item) => item.id === expenseId)
-                        return (
-                          <span
-                            key={expenseId}
-                            className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-sm"
-                          >
-                            {toSentenceCase(expense?.name ?? 'Removed expense')}
-                            <button
-                              type="button"
-                              className="text-muted-foreground hover:text-foreground cursor-pointer"
-                              aria-label={`Remove ${expense?.name ?? 'expense'}`}
-                              onClick={() =>
-                                removeExpenseFromGroup(extra.id, expenseId)
-                              }
-                            >
-                              <Trash2 className="size-3" />
-                            </button>
-                          </span>
-                        )
-                      })}
-                      {addableLines.length > 0 ? (
-                        <Select
-                          key={extra.expenseIds.join('|')}
-                          onValueChange={(value) =>
-                            addExpenseToGroup(extra.id, value)
-                          }
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="min-w-0 flex-1 justify-between bg-white"
                         >
-                          <SelectTrigger
-                            size="sm"
-                            className="w-auto shrink-0"
-                            aria-label={`Add expense to ${extra.name || 'category'}`}
+                          <span className="truncate">
+                            {expenseCountLabel(extra.expenseIds.length)}
+                          </span>
+                          <ChevronDown className="size-4 shrink-0" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="min-w-56">
+                        {extra.expenseIds.length === 0 ? (
+                          <DropdownMenuItem
+                            className="text-muted-foreground"
+                            onSelect={(event) => event.preventDefault()}
                           >
-                            <SelectValue placeholder="Add expense" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {addableLines.map((expense) => (
-                              <SelectItem key={expense.id} value={expense.id}>
-                                {toSentenceCase(expense.name)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : null}
-                    </div>
+                            No expenses selected
+                          </DropdownMenuItem>
+                        ) : (
+                          extra.expenseIds.map((expenseId) => {
+                            const expense = lines.find(
+                              (item) => item.id === expenseId,
+                            )
+                            return (
+                              <DropdownMenuItem
+                                key={expenseId}
+                                onSelect={(event) => event.preventDefault()}
+                              >
+                                {toSentenceCase(
+                                  expense?.name ?? 'Removed expense',
+                                )}
+                              </DropdownMenuItem>
+                            )
+                          })
+                        )}
+                        <DropdownMenuItem
+                          className="text-muted-foreground mt-1 border-t"
+                          onSelect={() => openExtraEditor(extra.id)}
+                        >
+                          Edit
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <button
                       type="button"
                       role="checkbox"
@@ -1172,6 +1260,8 @@ function EditCategoriesDialog({
               Save
             </Button>
           </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
