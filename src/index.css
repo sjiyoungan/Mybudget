@@ -269,6 +269,22 @@
   opacity: 1;
 }
 
+.edit-ghost-field[data-slot='button'] svg,
+.edit-ghost-field[data-slot='dropdown-menu-trigger'] svg {
+  opacity: 0;
+}
+
+.edit-ghost-field[data-slot='button']:hover svg,
+.edit-ghost-field[data-slot='button']:focus-visible svg,
+.edit-ghost-field[data-slot='button'][data-state='open'] svg,
+.edit-ghost-field[data-slot='button'][aria-expanded='true'] svg,
+.edit-ghost-field[data-slot='dropdown-menu-trigger']:hover svg,
+.edit-ghost-field[data-slot='dropdown-menu-trigger']:focus-visible svg,
+.edit-ghost-field[data-slot='dropdown-menu-trigger'][data-state='open'] svg,
+.edit-ghost-field[data-slot='dropdown-menu-trigger'][aria-expanded='true'] svg {
+  opacity: 1;
+}
+
 .planner-scroll table tr:has(.month-label:hover):not(:has(.month-editing)) > td,
 .planner-scroll table tr:has(.month-label:hover):not(:has(.month-editing)) + tr > td {
   background-color: #f6f6f6 !important;

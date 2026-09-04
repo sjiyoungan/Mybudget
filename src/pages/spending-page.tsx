@@ -1158,14 +1158,22 @@ function snapshotCategoryPicks(groups: GroupDraft[]) {
   )
 }
 
+const GHOST_FIELD =
+  'edit-ghost-field border-transparent bg-transparent shadow-none transition-colors hover:bg-transparent focus-visible:ring-0 focus-visible:ring-transparent dark:bg-transparent dark:hover:bg-transparent'
+
 function allotExpenseLabel(ids: string[], expenses: RecurringExpense[]) {
   if (ids.length === 0) return 'Allot expense'
+  const total = ids.reduce((sum, id) => {
+    const expense = expenses.find((item) => item.id === id)
+    return sum + (expense ? monthlyAmount(expense) : 0)
+  }, 0)
+  const amount = formatUsdWholeUp(total)
   if (ids.length === 1) {
     const expense = expenses.find((item) => item.id === ids[0])
     if (!expense) return 'Allot expense'
-    return `${toSentenceCase(expense.name)} · ${formatUsdWholeUp(monthlyAmount(expense))}`
+    return `${toSentenceCase(expense.name)} · ${amount}`
   }
-  return `${ids.length} expenses`
+  return `${ids.length} expenses · ${amount}`
 }
 
 function expenseCountLabel(count: number) {
@@ -1305,7 +1313,11 @@ function ExpenseSelectDropdown({
           type="button"
           variant="outline"
           size="sm"
-          className={cn('shrink-0 justify-between bg-white', className)}
+          className={cn(
+            'h-8 shrink-0 justify-between',
+            GHOST_FIELD,
+            className,
+          )}
         >
           <span className="truncate">{label ?? expenseCountLabel(count)}</span>
           <ChevronDown className="size-4 shrink-0" />
@@ -1572,17 +1584,17 @@ function EditCategoriesDialog({
                 add categories like eating out or hobbies.
               </p>
             ) : (
-              <ul className="grid gap-1">
+              <ul className="divide-y divide-black/10">
                 {drafts.map((group) => (
                   <li
                     key={group.id}
                     data-scroll-id={group.id}
-                    className="rounded-lg"
+                    className="py-1"
                   >
-                    <div className="hover-fill grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg py-1.5 pr-2.5 pl-2.5">
+                    <div className="grid grid-cols-[minmax(0,1fr)_28px_28px] items-center gap-2 py-1.5 pr-2.5 pl-2.5">
                       <div className="flex min-w-0 items-center gap-2">
                         <Input
-                          className="h-8 min-w-0 flex-1"
+                          className={cn('h-8 min-w-0 flex-1', GHOST_FIELD)}
                           value={group.name}
                           placeholder="Group"
                           aria-label="Group name"
@@ -1635,15 +1647,18 @@ function EditCategoriesDialog({
                       </Button>
                     </div>
                     {group.open ? (
-                      <div className="mt-0.5 mb-1 grid gap-0.5 pr-2.5 pl-2.5">
+                      <div className="mb-1 grid gap-0.5">
                         {group.categories.map((child) => (
                           <div
                             key={child.id}
                             data-scroll-id={child.id}
-                            className="hover-fill flex items-center gap-2 rounded-lg py-1 pr-1 pl-2.5"
+                            className="grid grid-cols-[minmax(0,1fr)_28px_28px] items-center gap-2 py-1 pr-2.5 pl-2.5"
                           >
                             <Input
-                              className="h-8 min-w-0 flex-1"
+                              className={cn(
+                                'h-8 min-w-0 flex-1 ml-2',
+                                GHOST_FIELD,
+                              )}
                               value={child.name}
                               placeholder="Category"
                               aria-label="Category name"
@@ -1657,6 +1672,7 @@ function EditCategoriesDialog({
                                 })
                               }
                             />
+                            <span />
                             <Button
                               type="button"
                               variant="ghost"
@@ -1675,16 +1691,18 @@ function EditCategoriesDialog({
                             </Button>
                           </div>
                         ))}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-muted-foreground h-8 justify-start px-2.5 hover:bg-transparent hover:text-foreground"
-                          onClick={() => addCategory(group.id)}
-                        >
-                          <Plus className="size-3.5" />
-                          Add category
-                        </Button>
+                        <div className="grid grid-cols-[minmax(0,1fr)_28px_28px] items-center gap-2 pr-2.5 pl-2.5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-muted-foreground ml-2 h-8 justify-start px-2.5 hover:bg-transparent hover:text-foreground"
+                            onClick={() => addCategory(group.id)}
+                          >
+                            <Plus className="size-3.5" />
+                            Add category
+                          </Button>
+                        </div>
                       </div>
                     ) : null}
                   </li>
