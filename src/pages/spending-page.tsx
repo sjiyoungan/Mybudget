@@ -506,11 +506,18 @@ export function SpendingPage() {
           {dayRows.map((row) => {
             const expanded = expandedDay === row.date
             return (
-              <div key={row.date}>
+              <div
+                key={row.date}
+                className={cn(expanded && 'hover-fill-active rounded-lg')}
+              >
                 <button
                   type="button"
+                  aria-expanded={expanded}
                   onClick={() => setExpandedDay(expanded ? null : row.date)}
-                  className="hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left"
+                  className={cn(
+                    'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left',
+                    expanded && 'hover-fill-active',
+                  )}
                 >
                   <span className={expanded ? 'font-medium' : undefined}>
                     {formatDateWithoutYear(row.date, 'short')}
@@ -524,7 +531,7 @@ export function SpendingPage() {
                   />
                 </button>
                 {expanded ? (
-                  <ul className="grid gap-0.5 py-1 pr-8 pl-[22px]">
+                  <ul className="grid gap-0.5 px-1 pb-1">
                     {row.items.map((txn) => (
                       <TransactionRow
                         key={txn.id}
@@ -816,20 +823,22 @@ function TransactionRow({
         type="button"
         className={cn(
           'hover-fill grid w-full min-w-0 items-start gap-x-3 rounded-lg px-2.5 py-2 text-left',
-          showAccount && showDate && 'grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]',
-          showAccount && !showDate && 'grid-cols-[minmax(0,1fr)_auto_auto_auto]',
-          !showAccount && showDate && 'grid-cols-[minmax(0,1fr)_auto_auto_auto]',
-          !showAccount && !showDate && 'grid-cols-[minmax(0,1fr)_auto_auto]',
+          showAccount && showDate &&
+            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto_auto_auto_auto]',
+          showAccount && !showDate &&
+            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto_auto_auto]',
+          !showAccount && showDate &&
+            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto_auto_auto]',
+          !showAccount && !showDate &&
+            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto_auto]',
         )}
         onClick={onClick}
       >
-        <span className="min-w-0">
-          <span className="block break-words [overflow-wrap:anywhere]">
-            {displayMerchant(txn)}
-          </span>
-          <span className="text-muted-foreground mt-0.5 block text-xs">
-            {category}
-          </span>
+        <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+          {displayMerchant(txn)}
+        </span>
+        <span className="text-muted-foreground min-w-0 break-words pt-0.5 text-xs [overflow-wrap:anywhere]">
+          {category}
         </span>
         {showAccount ? (
           <span className="text-muted-foreground hidden w-24 shrink-0 pt-0.5 text-xs sm:block">
