@@ -205,6 +205,7 @@ export function SpendingPage() {
     removeTransaction,
     replaceCategories,
     addRule,
+    uploads,
   } = useSpending()
   const { accounts, expenses, categories: expenseGroups } = useBudget()
   const activeCategories = useMemo(
@@ -492,6 +493,33 @@ export function SpendingPage() {
           })}
         </CardContent>
       </Card>
+
+      {uploads.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Statements</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-1">
+            {[...uploads]
+              .sort((left, right) =>
+                right.uploadedAt.localeCompare(left.uploadedAt),
+              )
+              .map((upload) => (
+                <div
+                  key={upload.id}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4 px-2.5 py-2"
+                >
+                  <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                    {upload.name}
+                  </span>
+                  <span className="text-muted-foreground shrink-0 text-sm">
+                    {formatUploadWhen(upload.uploadedAt)}
+                  </span>
+                </div>
+              ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <EditTxnDialog
         txn={editing}
@@ -852,6 +880,16 @@ function expenseCountLabel(count: number) {
   if (count === 0) return 'No expenses selected'
   if (count === 1) return '1 expense selected'
   return `${count} expenses selected`
+}
+
+function formatUploadWhen(iso: string) {
+  const parsed = new Date(iso)
+  if (!Number.isFinite(parsed.getTime())) return ''
+  return parsed.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 }
 
 function CategoryCheck({ checked }: { checked: boolean }) {

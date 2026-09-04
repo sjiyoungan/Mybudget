@@ -20,6 +20,7 @@ import {
   type SpendingRule,
   type SpendingState,
   type SpendingTxn,
+  type SpendingUpload,
 } from '@/lib/spending'
 import { supabase } from '@/lib/supabase'
 import {
@@ -34,9 +35,12 @@ type SpendingContextValue = {
   transactions: SpendingTxn[]
   rules: SpendingRule[]
   categories: SpendingCategory[]
-  importTransactions: (incoming: NewSpendingTxn[]) => {
+  uploads: SpendingUpload[]
+  importTransactions: (
+    incoming: NewSpendingTxn[],
+    fileNames?: string[],
+  ) => {
     added: number
-    skipped: number
   }
   updateTransaction: (
     id: string,
@@ -109,10 +113,11 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
       transactions: state.transactions,
       rules: state.rules,
       categories: state.categories,
-      importTransactions(incoming) {
-        const next = importSpendingTxns(state, incoming)
+      uploads: state.uploads ?? [],
+      importTransactions(incoming, fileNames = []) {
+        const next = importSpendingTxns(state, incoming, fileNames)
         setState(next.state)
-        return { added: next.added, skipped: next.skipped }
+        return { added: next.added }
       },
       updateTransaction(id, patch) {
         setState((current) => ({

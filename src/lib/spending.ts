@@ -91,14 +91,21 @@ export type SpendingRule = {
   updatedAt?: string
 }
 
+export type SpendingUpload = {
+  id: string
+  name: string
+  uploadedAt: string
+}
+
 export type SpendingState = {
   transactions: SpendingTxn[]
   rules: SpendingRule[]
   categories: SpendingCategory[]
+  uploads: SpendingUpload[]
 }
 
 export function emptySpending(): SpendingState {
-  return { transactions: [], rules: [], categories: [] }
+  return { transactions: [], rules: [], categories: [], uploads: [] }
 }
 
 export function toSentenceCase(text: string) {
@@ -286,6 +293,19 @@ function normalizeRule(value: unknown): SpendingRule | null {
   }
 }
 
+function normalizeUpload(value: unknown): SpendingUpload | null {
+  const row = asRecord(value)
+  if (!row) return null
+  const id = typeof row.id === 'string' && row.id ? row.id : null
+  const name = typeof row.name === 'string' ? row.name.trim() : ''
+  if (!id || !name) return null
+  const uploadedAt =
+    typeof row.uploadedAt === 'string' && row.uploadedAt
+      ? row.uploadedAt
+      : new Date().toISOString()
+  return { id, name, uploadedAt }
+}
+
 export function parseSpendingState(value: unknown): SpendingState | null {
   const row = asRecord(value)
   if (!row || !Array.isArray(row.transactions) || !Array.isArray(row.rules)) {
@@ -303,6 +323,11 @@ export function parseSpendingState(value: unknown): SpendingState | null {
           .map(normalizeCategory)
           .filter((item): item is SpendingCategory => item != null)
       : [],
+    uploads: Array.isArray(row.uploads)
+      ? row.uploads
+          .map(normalizeUpload)
+          .filter((item): item is SpendingUpload => item != null)
+      : [],
   }
 }
 
@@ -318,20 +343,6 @@ export function loadSpending(): SpendingState {
 
 export function saveSpending(state: SpendingState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-}
-
-export function spendingFingerprint(txn: {
-  date: string
-  amount: number
-  description: string
-  accountId: string
-}) {
-  return [
-    txn.date,
-    txn.amount.toFixed(2),
-    txn.description.replace(/\s+/g, ' ').trim().toLowerCase(),
-    txn.accountId,
-  ].join('|')
 }
 
 export function descriptionMatchesRule(description: string, match: string) {
@@ -395,6 +406,7 @@ export function mergeSpending(
     transactions: mergeById(remote.transactions, local.transactions),
     rules: mergeById(remote.rules, local.rules),
     categories: mergeById(remote.categories ?? [], local.categories ?? []),
+    uploads: mergeById(remote.uploads ?? [], local.uploads ?? []),
   }
 }
 
@@ -413,28 +425,25 @@ export type NewSpendingTxn = Omit<SpendingTxn, 'id' | 'updatedAt'>
 export function importSpendingTxns(
   current: SpendingState,
   incoming: NewSpendingTxn[],
+  fileNames: string[] = [],
 ) {
-  const known = new Set(
-    current.transactions.map((txn) => spendingFingerprint(txn)),
-  )
-  const added: SpendingTxn[] = []
-  let skipped = 0
   const now = new Date().toISOString()
-
-  for (const item of incoming) {
-    const next: SpendingTxn = {
-      ...item,
-      id: crypto.randomUUID(),
-      updatedAt: now,
-    }
-    const key = spendingFingerprint(next)
-    if (known.has(key)) {
-      skipped += 1
-      continue
-    }
-    known.add(key)
-    added.push(next)
-  }
+  const added: SpendingTxn[] = incoming.map((item) => ({
+    ...item,
+    id: crypto.randomUUID(),
+    updatedAt: now,
+  }))
+  const uploads: SpendingUpload[] = [
+    ...(current.uploads ?? []),
+    ...fileNames
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .map((name) => ({
+        id: crypto.randomUUID(),
+        name,
+        uploadedAt: now,
+      })),
+  ]
 
   return {
     state: {
@@ -443,8 +452,8 @@ export function importSpendingTxns(
         [...current.transactions, ...added],
         current.rules,
       ),
+      uploads,
     },
     added: added.length,
-    skipped,
   }
 }

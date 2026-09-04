@@ -62,15 +62,10 @@ function summaryMessage(saved: number, skipped: number, failed: string[]) {
   return parts.join(' ')
 }
 
-function spendingSummary(saved: number, skipped: number, failed: string[]) {
+function spendingSummary(saved: number, failed: string[]) {
   const parts: string[] = []
   if (saved > 0) {
     parts.push(`Logged ${saved} purchase${saved === 1 ? '' : 's'}.`)
-  }
-  if (skipped > 0) {
-    parts.push(
-      `Skipped ${skipped} already logged.`,
-    )
   }
   if (failed.length > 0) {
     parts.push(`Could not read ${failed.join(', ')}.`)
@@ -196,13 +191,16 @@ export function PaystubUploadButton({
       }
     }
 
-    const { added, skipped } = importTransactions(incoming)
+    const { added } = importTransactions(
+      incoming,
+      files.map((file) => file.name),
+    )
     setProgress(null)
 
     if (added > 0) navigate('/spending')
-    if (added > 0 || skipped > 0 || failed.length > 0) {
+    if (added > 0 || failed.length > 0) {
       setMessage(
-        spendingSummary(added, skipped, failed) ||
+        spendingSummary(added, failed) ||
           'None of those files could be added.',
       )
     }
