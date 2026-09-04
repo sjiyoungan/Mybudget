@@ -12,9 +12,10 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select'
 import {
   DEBT_CATEGORY_ID,
@@ -36,7 +37,7 @@ function monthKey(year: number, month: number) {
 }
 
 function dashboardMonths(now: Date) {
-  const rows: { year: number; month: number; key: string; label: string }[] = []
+  const rows: { year: number; month: number; key: string }[] = []
   for (let year = now.getFullYear(); year >= INCOME_START_YEAR; year -= 1) {
     const last = year === now.getFullYear() ? now.getMonth() : 11
     for (let month = last; month >= 0; month -= 1) {
@@ -44,11 +45,20 @@ function dashboardMonths(now: Date) {
         year,
         month,
         key: monthKey(year, month),
-        label: `${monthName(month)} ${year}`,
       })
     }
   }
   return rows
+}
+
+function monthsByYear(months: { year: number; month: number; key: string }[]) {
+  const groups: { year: number; items: typeof months }[] = []
+  for (const item of months) {
+    const last = groups.at(-1)
+    if (last?.year === item.year) last.items.push(item)
+    else groups.push({ year: item.year, items: [item] })
+  }
+  return groups
 }
 
 function expensesInMonth(
@@ -81,6 +91,8 @@ export function DashboardPage() {
   const { transactions } = useSpending()
   const now = useMemo(() => new Date(), [])
   const months = useMemo(() => dashboardMonths(now), [now])
+  const yearGroups = useMemo(() => monthsByYear(months), [months])
+  const showYearLabels = yearGroups.length > 1
   const [selectedKey, setSelectedKey] = useState(() =>
     monthKey(now.getFullYear(), now.getMonth()),
   )
@@ -89,7 +101,6 @@ export function DashboardPage() {
       year: now.getFullYear(),
       month: now.getMonth(),
       key: monthKey(now.getFullYear(), now.getMonth()),
-      label: `${monthName(now.getMonth())} ${now.getFullYear()}`,
     }
 
   const income = useMemo(
@@ -130,7 +141,9 @@ export function DashboardPage() {
             size="sm"
             className="h-8 text-base"
           >
-            <SelectValue placeholder="Month" />
+            {showYearLabels
+              ? `${monthName(selected.month)} ${selected.year}`
+              : monthName(selected.month)}
           </SelectTrigger>
           <SelectContent
             position="popper"
@@ -139,10 +152,21 @@ export function DashboardPage() {
             sideOffset={4}
             className="w-(--radix-select-trigger-width) min-w-(--radix-select-trigger-width) rounded-md"
           >
-            {months.map((item) => (
-              <SelectItem key={item.key} value={item.key} className="text-base">
-                {item.label}
-              </SelectItem>
+            {yearGroups.map((group) => (
+              <SelectGroup key={group.year}>
+                {showYearLabels ? (
+                  <SelectLabel>{group.year}</SelectLabel>
+                ) : null}
+                {group.items.map((item) => (
+                  <SelectItem
+                    key={item.key}
+                    value={item.key}
+                    className="text-base"
+                  >
+                    {monthName(item.month)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             ))}
           </SelectContent>
         </Select>
