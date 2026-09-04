@@ -65,15 +65,16 @@ import { cn } from '@/lib/utils'
 
 const NONE = 'none'
 const SLICE_COLORS = [
-  'var(--chart-2)',
-  'var(--chart-3)',
-  'var(--chart-4)',
-  'var(--chart-5)',
-  'oklch(0.58 0.12 250)',
-  'oklch(0.6 0.11 145)',
-  'oklch(0.62 0.1 55)',
-  'oklch(0.55 0.1 20)',
+  'oklch(0.62 0.07 250)',
+  'oklch(0.64 0.065 155)',
+  'oklch(0.66 0.07 70)',
+  'oklch(0.60 0.065 30)',
+  'oklch(0.62 0.06 320)',
+  'oklch(0.58 0.055 200)',
+  'oklch(0.65 0.065 50)',
+  'oklch(0.58 0.055 280)',
 ]
+const UNCATEGORIZED_COLOR = '#f4f4f4'
 
 function parseAmount(value: string) {
   const parsed = Number.parseFloat(value.replace(/[$,\s]/g, ''))
@@ -334,7 +335,7 @@ export function SpendingPage() {
         name: 'Uncategorized',
         amount: uncategorized,
         budget: null,
-        color: 'var(--muted-foreground)',
+        color: UNCATEGORIZED_COLOR,
       })
     }
     return rows.sort(
