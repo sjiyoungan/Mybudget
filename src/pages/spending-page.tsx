@@ -836,6 +836,20 @@ function standaloneCategoryForExpense(
   })
 }
 
+function CategoryCheck({ checked }: { checked: boolean }) {
+  return (
+    <span
+      className={cn(
+        'flex size-5 shrink-0 items-center justify-center rounded-[5px] border',
+        checked ? 'border-neutral-400' : 'border-neutral-300',
+      )}
+      aria-hidden
+    >
+      {checked ? <Check className="size-3.5 text-neutral-600" /> : null}
+    </span>
+  )
+}
+
 function EditCategoriesDialog({
   open,
   categories,
@@ -986,7 +1000,7 @@ function EditCategoriesDialog({
         }}
       >
         <DialogContent
-          className="w-max max-w-[calc(100%-2rem)] gap-0 p-4 sm:max-w-md"
+          className="w-[min(42rem,calc(100%-2rem))] max-w-[calc(100%-2rem)] gap-0 p-4 sm:max-w-2xl"
           showCloseButton={false}
           onEscapeKeyDown={(event) => {
             event.preventDefault()
@@ -1032,11 +1046,7 @@ function EditCategoriesDialog({
                       <span className={on ? 'font-medium' : undefined}>
                         {toSentenceCase(expense.name)}
                       </span>
-                      <span className="flex size-5 items-center justify-center">
-                        {on ? (
-                          <Check className="size-4 text-neutral-500" />
-                        ) : null}
-                      </span>
+                      <CategoryCheck checked={on} />
                     </button>
                   </li>
                 )
@@ -1046,84 +1056,48 @@ function EditCategoriesDialog({
             {extras.length > 0 ? (
               <ul className="mt-3 grid gap-4 border-t pt-3">
                 {extras.map((extra) => (
-                  <li key={extra.id} className="grid gap-1">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 px-2.5">
-                      <Input
-                        value={extra.name}
-                        placeholder="Name"
-                        aria-label="Category name"
-                        onChange={(event) =>
-                          setExtras((current) =>
-                            current.map((item) =>
-                              item.id === extra.id
-                                ? { ...item, name: event.target.value }
-                                : item,
-                            ),
-                          )
-                        }
-                      />
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={extra.enabled}
-                        aria-label={`Show ${extra.name || 'category'} on the pie`}
-                        className="flex size-8 cursor-pointer items-center justify-center"
-                        onClick={() =>
-                          setExtras((current) =>
-                            current.map((item) =>
-                              item.id === extra.id
-                                ? { ...item, enabled: !item.enabled }
-                                : item,
-                            ),
-                          )
-                        }
-                      >
-                        {extra.enabled ? (
-                          <Check className="size-4 text-neutral-500" />
-                        ) : null}
-                      </button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Remove ${extra.name || 'category'}`}
-                        onClick={() =>
-                          setExtras((current) =>
-                            current.filter((item) => item.id !== extra.id),
-                          )
-                        }
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                    <ul className="grid gap-0.5 pl-5">
+                  <li
+                    key={extra.id}
+                    className="flex min-w-0 items-center gap-2 px-2.5"
+                  >
+                    <Input
+                      className="w-36 shrink-0 sm:w-44"
+                      value={extra.name}
+                      placeholder="Name"
+                      aria-label="Category name"
+                      onChange={(event) =>
+                        setExtras((current) =>
+                          current.map((item) =>
+                            item.id === extra.id
+                              ? { ...item, name: event.target.value }
+                              : item,
+                          ),
+                        )
+                      }
+                    />
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
                       {extra.expenseIds.map((expenseId) => {
                         const expense = lines.find((item) => item.id === expenseId)
                         return (
-                          <li
+                          <span
                             key={expenseId}
-                            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-1"
+                            className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-sm"
                           >
-                            <span className="text-sm">
-                              {toSentenceCase(expense?.name ?? 'Removed expense')}
-                            </span>
-                            <Button
+                            {toSentenceCase(expense?.name ?? 'Removed expense')}
+                            <button
                               type="button"
-                              variant="ghost"
-                              size="icon-sm"
+                              className="text-muted-foreground hover:text-foreground cursor-pointer"
                               aria-label={`Remove ${expense?.name ?? 'expense'}`}
                               onClick={() =>
                                 removeExpenseFromGroup(extra.id, expenseId)
                               }
                             >
-                              <Trash2 />
-                            </Button>
-                          </li>
+                              <Trash2 className="size-3" />
+                            </button>
+                          </span>
                         )
                       })}
-                    </ul>
-                    {addableLines.length > 0 ? (
-                      <div className="px-2.5">
+                      {addableLines.length > 0 ? (
                         <Select
                           key={extra.expenseIds.join('|')}
                           onValueChange={(value) =>
@@ -1132,7 +1106,7 @@ function EditCategoriesDialog({
                         >
                           <SelectTrigger
                             size="sm"
-                            className="w-full"
+                            className="w-auto shrink-0"
                             aria-label={`Add expense to ${extra.name || 'category'}`}
                           >
                             <SelectValue placeholder="Add expense" />
@@ -1145,8 +1119,40 @@ function EditCategoriesDialog({
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-                    ) : null}
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={extra.enabled}
+                      aria-label={`Show ${extra.name || 'category'} on the pie`}
+                      className="flex size-8 shrink-0 cursor-pointer items-center justify-center"
+                      onClick={() =>
+                        setExtras((current) =>
+                          current.map((item) =>
+                            item.id === extra.id
+                              ? { ...item, enabled: !item.enabled }
+                              : item,
+                          ),
+                        )
+                      }
+                    >
+                      <CategoryCheck checked={extra.enabled} />
+                    </button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="shrink-0"
+                      aria-label={`Remove ${extra.name || 'category'}`}
+                      onClick={() =>
+                        setExtras((current) =>
+                          current.filter((item) => item.id !== extra.id),
+                        )
+                      }
+                    >
+                      <Trash2 />
+                    </Button>
                   </li>
                 ))}
               </ul>
