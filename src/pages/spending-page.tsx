@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Pencil, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -1117,7 +1117,6 @@ function EditTxnForm({
 type ExtraDraft = {
   id: string
   name: string
-  enabled: boolean
   expenseIds: string[]
 }
 
@@ -1130,7 +1129,6 @@ function snapshotCategoryPicks(
     extras: extras.map((item) => ({
       id: item.id,
       name: item.name.trim(),
-      enabled: item.enabled,
       expenseIds: [...item.expenseIds].sort(),
     })),
   })
@@ -1266,12 +1264,12 @@ function EditCategoriesDialog({
     () => orderedExpenseLines(expenses, groups),
     [expenses, groups],
   )
+  const listRef = useRef<HTMLDivElement>(null)
+  const pendingScrollExtraId = useRef<string | null>(null)
   const [checkedIds, setCheckedIds] = useState<string[]>([])
   const [extras, setExtras] = useState<ExtraDraft[]>([])
   const [baseline, setBaseline] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [editingExtraId, setEditingExtraId] = useState<string | null>(null)
-  const [editPicks, setEditPicks] = useState<string[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -1286,35 +1284,36 @@ function EditCategoriesDialog({
       .map((item) => ({
         id: item.id,
         name: item.name,
-        enabled: isActiveSpendingCategory(item),
         expenseIds: categoryExpenseIds(item),
       }))
     setCheckedIds(nextChecked)
     setExtras(nextExtras)
     setBaseline(snapshotCategoryPicks(nextChecked, nextExtras))
     setConfirmOpen(false)
-    setEditingExtraId(null)
-    setEditPicks([])
+    pendingScrollExtraId.current = null
   }, [categories, open])
+
+  useLayoutEffect(() => {
+    const id = pendingScrollExtraId.current
+    if (!id) return
+    pendingScrollExtraId.current = null
+    const node = listRef.current?.querySelector(`[data-extra-id="${id}"]`)
+    if (!(node instanceof HTMLElement)) return
+    node.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    node.querySelector('input')?.focus()
+  }, [extras])
 
   const dirty = snapshotCategoryPicks(checkedIds, extras) !== baseline
   const checked = new Set(checkedIds)
-  const editingExtra = extras.find((item) => item.id === editingExtraId)
-  const editDirty =
-    editingExtra != null &&
-    [...editPicks].sort().join('|') !==
-      [...editingExtra.expenseIds].sort().join('|')
 
   function closeClean() {
     setConfirmOpen(false)
-    setEditingExtraId(null)
-    setEditPicks([])
     onClose()
   }
 
   function requestClose() {
     if (confirmOpen) return
-    if (dirty || editDirty) {
+    if (dirty) {
       setConfirmOpen(true)
       return
     }
@@ -1330,47 +1329,34 @@ function EditCategoriesDialog({
   }
 
   function addBlank() {
-    setExtras((current) => [
-      ...current,
-      { id: crypto.randomUUID(), name: '', enabled: true, expenseIds: [] },
-    ])
+    const id = crypto.randomUUID()
+    pendingScrollExtraId.current = id
+    setExtras((current) => [...current, { id, name: '', expenseIds: [] }])
   }
 
-  function openExtraEditor(id: string) {
-    const extra = extras.find((item) => item.id === id)
-    if (!extra) return
-    setEditingExtraId(id)
-    setEditPicks(extra.expenseIds)
-  }
-
-  function cancelExtraEditor() {
-    setEditingExtraId(null)
-    setEditPicks([])
-  }
-
-  function saveExtraEditor() {
-    if (!editingExtraId) return
-    const picks = editPicks
-    setCheckedIds((current) => current.filter((id) => !picks.includes(id)))
-    setExtras((current) =>
-      current.map((item) => {
-        if (item.id === editingExtraId) return { ...item, expenseIds: picks }
-        return {
-          ...item,
-          expenseIds: item.expenseIds.filter((id) => !picks.includes(id)),
+  function toggleExtraExpense(extraId: string, expenseId: string) {
+    setExtras((current) => {
+      const extra = current.find((item) => item.id === extraId)
+      const adding = extra != null && !extra.expenseIds.includes(expenseId)
+      return current.map((item) => {
+        if (item.id === extraId) {
+          return {
+            ...item,
+            expenseIds: item.expenseIds.includes(expenseId)
+              ? item.expenseIds.filter((id) => id !== expenseId)
+              : [...item.expenseIds, expenseId],
+          }
         }
-      }),
-    )
-    setEditingExtraId(null)
-    setEditPicks([])
-  }
-
-  function toggleEditPick(id: string) {
-    setEditPicks((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id],
-    )
+        if (adding) {
+          return {
+            ...item,
+            expenseIds: item.expenseIds.filter((id) => id !== expenseId),
+          }
+        }
+        return item
+      })
+    })
+    setCheckedIds((current) => current.filter((id) => id !== expenseId))
   }
 
   function handleSave() {
@@ -1402,7 +1388,6 @@ function EditCategoriesDialog({
         name,
         grouped: true,
         ...(extra.expenseIds.length > 0 ? { expenseIds: extra.expenseIds } : {}),
-        ...(extra.enabled ? {} : { enabled: false }),
       })
     }
     onSave(next)
@@ -1425,10 +1410,6 @@ function EditCategoriesDialog({
               setConfirmOpen(false)
               return
             }
-            if (editingExtraId) {
-              cancelExtraEditor()
-              return
-            }
             requestClose()
           }}
         >
@@ -1436,71 +1417,25 @@ function EditCategoriesDialog({
             <div className="flex items-center justify-between gap-3">
               <DialogHeader>
                 <DialogTitle className="pl-2.5 text-2xl tracking-tight">
-                  {editingExtra
-                    ? `Edit ${toSentenceCase(editingExtra.name) || 'category'}`
-                    : 'Edit categories'}
+                  Edit categories
                 </DialogTitle>
               </DialogHeader>
-              {editingExtra ? null : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="bg-white"
-                  onClick={addBlank}
-                >
-                  Add category
-                </Button>
-              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="bg-white"
+                onClick={addBlank}
+              >
+                Add category
+              </Button>
             </div>
           </div>
 
-          {editingExtra ? (
-            <>
-              <div className="no-scrollbar max-h-[min(70vh,40rem)] overflow-y-auto py-3">
-                <ul className="grid gap-0.5">
-                  {lines.map((expense) => {
-                    const on = editPicks.includes(expense.id)
-                    return (
-                      <li key={expense.id}>
-                        <button
-                          type="button"
-                          role="checkbox"
-                          aria-checked={on}
-                          onClick={() => toggleEditPick(expense.id)}
-                          className="hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-4 rounded-lg py-2 pr-2.5 pl-2.5 text-left"
-                        >
-                          <span className={on ? 'font-medium' : undefined}>
-                            {toSentenceCase(expense.name)}
-                          </span>
-                          <CategoryCheck checked={on} />
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-              <DialogFooter className="relative z-20 items-center sm:justify-end sm:gap-4">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="text-muted-foreground hover:bg-transparent hover:text-foreground"
-                  onClick={cancelExtraEditor}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  disabled={!editDirty}
-                  onClick={saveExtraEditor}
-                >
-                  Save
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-          <div className="no-scrollbar max-h-[min(70vh,40rem)] overflow-y-auto py-3">
+          <div
+            ref={listRef}
+            className="no-scrollbar max-h-[min(70vh,40rem)] overflow-y-auto py-3"
+          >
             <ul className="grid gap-0.5">
               {lines.map((expense) => {
                 const groupedIn = extras.find((item) =>
@@ -1539,7 +1474,8 @@ function EditCategoriesDialog({
                 {extras.map((extra) => (
                   <li
                     key={extra.id}
-                    className="hover-fill grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg py-1.5 pr-2.5 pl-2.5"
+                    data-extra-id={extra.id}
+                    className="hover-fill grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg py-1.5 pr-2.5 pl-2.5"
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       <Input
@@ -1571,58 +1507,31 @@ function EditCategoriesDialog({
                             <ChevronDown className="size-4 shrink-0" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="min-w-56">
-                          {extra.expenseIds.length === 0 ? (
-                            <DropdownMenuItem
-                              className="text-muted-foreground"
-                              onSelect={(event) => event.preventDefault()}
-                            >
-                              No expenses selected
-                            </DropdownMenuItem>
-                          ) : (
-                            extra.expenseIds.map((expenseId) => {
-                              const expense = lines.find(
-                                (item) => item.id === expenseId,
-                              )
-                              return (
-                                <DropdownMenuItem
-                                  key={expenseId}
-                                  onSelect={(event) => event.preventDefault()}
-                                >
-                                  {toSentenceCase(
-                                    expense?.name ?? 'Removed expense',
-                                  )}
-                                </DropdownMenuItem>
-                              )
-                            })
-                          )}
-                          <DropdownMenuItem
-                            className="text-muted-foreground mt-1 border-t"
-                            onSelect={() => openExtraEditor(extra.id)}
-                          >
-                            Edit
-                          </DropdownMenuItem>
+                        <DropdownMenuContent
+                          align="start"
+                          className="z-[60] max-h-72 min-w-64 overflow-y-auto"
+                        >
+                          {lines.map((expense) => {
+                            const on = extra.expenseIds.includes(expense.id)
+                            return (
+                              <DropdownMenuItem
+                                key={expense.id}
+                                className="grid cursor-pointer grid-cols-[1fr_auto] items-center gap-3"
+                                onSelect={(event) => {
+                                  event.preventDefault()
+                                  toggleExtraExpense(extra.id, expense.id)
+                                }}
+                              >
+                                <span className={on ? 'font-medium' : undefined}>
+                                  {toSentenceCase(expense.name)}
+                                </span>
+                                <CategoryCheck checked={on} />
+                              </DropdownMenuItem>
+                            )
+                          })}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <button
-                      type="button"
-                      role="checkbox"
-                      aria-checked={extra.enabled}
-                      aria-label={`Show ${extra.name || 'category'} on the pie`}
-                      className="flex size-8 shrink-0 cursor-pointer items-center justify-center"
-                      onClick={() =>
-                        setExtras((current) =>
-                          current.map((item) =>
-                            item.id === extra.id
-                              ? { ...item, enabled: !item.enabled }
-                              : item,
-                          ),
-                        )
-                      }
-                    >
-                      <CategoryCheck checked={extra.enabled} />
-                    </button>
                     <Button
                       type="button"
                       variant="ghost"
@@ -1656,8 +1565,6 @@ function EditCategoriesDialog({
               Save
             </Button>
           </DialogFooter>
-            </>
-          )}
         </DialogContent>
       </Dialog>
 

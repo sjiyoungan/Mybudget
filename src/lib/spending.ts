@@ -34,6 +34,7 @@ export type SpendingCategory = {
 }
 
 export function isActiveSpendingCategory(category: SpendingCategory) {
+  if (category.grouped) return true
   return category.enabled !== false
 }
 
