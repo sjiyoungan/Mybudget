@@ -10,6 +10,12 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer'
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -245,6 +251,7 @@ export function SpendingPage() {
   const [expandedUpload, setExpandedUpload] = useState<string | null>(null)
   const [removeUploadId, setRemoveUploadId] = useState<string | null>(null)
   const [editCategoriesOpen, setEditCategoriesOpen] = useState(false)
+  const [statementsOpen, setStatementsOpen] = useState(false)
 
   const monthPrefix =
     activeMonth == null
@@ -259,6 +266,20 @@ export function SpendingPage() {
       ),
     [monthPrefix, transactions],
   )
+  const monthUploads = useMemo(() => {
+    if (activeMonth == null) return []
+    return [...uploads]
+      .filter((upload) =>
+        uploadBelongsToMonth(
+          upload,
+          selectedYear,
+          activeMonth,
+          transactions,
+          uploads,
+        ),
+      )
+      .sort((left, right) => right.uploadedAt.localeCompare(left.uploadedAt))
+  }, [activeMonth, selectedYear, transactions, uploads])
   const spentTxns = useMemo(
     () => monthTxns.filter(isSpendingPurchase),
     [monthTxns],
@@ -403,14 +424,25 @@ export function SpendingPage() {
           <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
             <CardTitle>Total expense</CardTitle>
             <CardAction>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setEditCategoriesOpen(true)}
-              >
-                Edit category
-              </Button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={activeMonth == null}
+                  onClick={() => setStatementsOpen(true)}
+                >
+                  Statement
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditCategoriesOpen(true)}
+                >
+                  Edit category
+                </Button>
+              </div>
             </CardAction>
           </CardHeader>
           <CardContent className="grid gap-5">
@@ -499,89 +531,98 @@ export function SpendingPage() {
         </CardContent>
       </Card>
 
-      {uploads.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Statements</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-1">
-            {[...uploads]
-              .sort((left, right) =>
-                right.uploadedAt.localeCompare(left.uploadedAt),
-              )
-              .map((upload) => {
-                const items = sortSpendingTxns(
-                  transactionsForUpload(transactions, upload, uploads),
-                )
-                const expanded = expandedUpload === upload.id
-                return (
-                  <div key={upload.id}>
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedUpload(expanded ? null : upload.id)
-                        }
-                        className="hover-fill grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left"
-                      >
-                        <span
-                          className={cn(
-                            'min-w-0 break-words [overflow-wrap:anywhere]',
-                            expanded && 'font-medium',
-                          )}
+      <Drawer
+        direction="right"
+        open={statementsOpen}
+        onOpenChange={(open) => {
+          setStatementsOpen(open)
+          if (!open) setExpandedUpload(null)
+        }}
+      >
+        <DrawerContent className="data-[vaul-drawer-direction=right]:h-full sm:max-w-md">
+          <DrawerHeader>
+            <DrawerTitle>
+              {activeMonth == null
+                ? 'Statements'
+                : `${monthName(activeMonth)} statements`}
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+            {monthUploads.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                {activeMonth == null
+                  ? 'No statements to show yet.'
+                  : `No statements for ${monthName(activeMonth)}.`}
+              </p>
+            ) : (
+              <div className="grid gap-1">
+                {monthUploads.map((upload) => {
+                  const items = sortSpendingTxns(
+                    transactionsForUpload(transactions, upload, uploads),
+                  )
+                  const expanded = expandedUpload === upload.id
+                  return (
+                    <div key={upload.id}>
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedUpload(expanded ? null : upload.id)
+                          }
+                          className="hover-fill grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left"
                         >
-                          {upload.name}
-                        </span>
-                        <span className="text-muted-foreground shrink-0 text-sm">
-                          {items.length === 1
-                            ? '1 purchase'
-                            : `${items.length} purchases`}
-                          {formatUploadWhen(upload.uploadedAt)
-                            ? ` · ${formatUploadWhen(upload.uploadedAt)}`
-                            : ''}
-                        </span>
-                        <ChevronDown
-                          className={cn(
-                            'size-4 shrink-0 text-muted-foreground transition-transform',
-                            expanded && 'rotate-180',
+                          <span
+                            className={cn(
+                              'min-w-0 break-words [overflow-wrap:anywhere]',
+                              expanded && 'font-medium',
+                            )}
+                          >
+                            {upload.name}
+                          </span>
+                          <ChevronDown
+                            className={cn(
+                              'size-4 shrink-0 text-muted-foreground transition-transform',
+                              expanded && 'rotate-180',
+                            )}
+                          />
+                        </button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Remove ${upload.name}`}
+                          onClick={() => setRemoveUploadId(upload.id)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                      {expanded ? (
+                        <ul className="grid gap-0.5 py-1 pr-8 pl-[22px]">
+                          {items.length === 0 ? (
+                            <li className="text-muted-foreground px-2.5 py-2 text-sm">
+                              No purchases from this file.
+                            </li>
+                          ) : (
+                            items.map((txn) => (
+                              <TransactionRow
+                                key={txn.id}
+                                txn={txn}
+                                accounts={accounts}
+                                categories={categories}
+                                onClick={() => setEditing(txn)}
+                              />
+                            ))
                           )}
-                        />
-                      </button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Remove ${upload.name}`}
-                        onClick={() => setRemoveUploadId(upload.id)}
-                      >
-                        <Trash2 />
-                      </Button>
+                        </ul>
+                      ) : null}
                     </div>
-                    {expanded ? (
-                      <ul className="grid gap-0.5 py-1 pr-8 pl-[22px]">
-                        {items.length === 0 ? (
-                          <li className="text-muted-foreground px-2.5 py-2 text-sm">
-                            No purchases from this file.
-                          </li>
-                        ) : (
-                          items.map((txn) => (
-                            <TransactionRow
-                              key={txn.id}
-                              txn={txn}
-                              accounts={accounts}
-                              categories={categories}
-                              onClick={() => setEditing(txn)}
-                            />
-                          ))
-                        )}
-                      </ul>
-                    ) : null}
-                  </div>
-                )
-              })}
-          </CardContent>
-        </Card>
-      ) : null}
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       <EditTxnDialog
         txn={editing}
@@ -1000,14 +1041,57 @@ function expenseCountLabel(count: number) {
   return `${count} expenses selected`
 }
 
-function formatUploadWhen(iso: string) {
-  const parsed = new Date(iso)
-  if (!Number.isFinite(parsed.getTime())) return ''
-  return parsed.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+const MONTH_ALIASES = [
+  ['january', 'jan'],
+  ['february', 'feb'],
+  ['march', 'mar'],
+  ['april', 'apr'],
+  ['may', 'may'],
+  ['june', 'jun'],
+  ['july', 'jul'],
+  ['august', 'aug'],
+  ['september', 'sep'],
+  ['october', 'oct'],
+  ['november', 'nov'],
+  ['december', 'dec'],
+] as const
+
+function monthFromStatementName(name: string) {
+  const hay = name.toLowerCase().replace(/[_./]+/g, ' ')
+  for (let month = 0; month < MONTH_ALIASES.length; month += 1) {
+    const [full, short] = MONTH_ALIASES[month]
+    if (new RegExp(`\\b${full}\\b`).test(hay)) return month
+    if (new RegExp(`\\b${short}\\b`).test(hay)) return month
+  }
+  const iso = name.match(/(20\d{2})[-_./ ](0?[1-9]|1[0-2])/)
+  if (iso) return Number(iso[2]) - 1
+  const us = name.match(/(0?[1-9]|1[0-2])[-_./ ](20\d{2})/)
+  if (us) return Number(us[1]) - 1
+  return null
+}
+
+function yearFromStatementName(name: string) {
+  const match = name.match(/\b(20\d{2})\b/)
+  return match ? Number(match[1]) : null
+}
+
+function uploadBelongsToMonth(
+  upload: SpendingUpload,
+  year: number,
+  month: number,
+  transactions: SpendingTxn[],
+  uploads: SpendingUpload[],
+) {
+  const namedMonth = monthFromStatementName(upload.name)
+  if (namedMonth != null) {
+    const namedYear = yearFromStatementName(upload.name)
+    if (namedYear != null) return namedYear === year && namedMonth === month
+    return namedMonth === month
+  }
+  const prefix = `${year}-${String(month + 1).padStart(2, '0')}-`
+  return transactionsForUpload(transactions, upload, uploads).some((txn) =>
+    txn.date.startsWith(prefix),
+  )
 }
 
 function statementName(txn: SpendingTxn, uploads: SpendingUpload[]) {
