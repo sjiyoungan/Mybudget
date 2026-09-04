@@ -366,7 +366,7 @@ export function SpendingPage() {
         ? 'On budget'
         : monthOver
           ? `${formatUsd(monthDelta)} over`
-          : `${formatUsd(-monthDelta)} under`
+          : `${formatUsd(-monthDelta)} left`
 
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
@@ -485,7 +485,7 @@ export function SpendingPage() {
               <div className="pl-2">
                 <CategoryPie slices={slices} total={totalSpent} />
               </div>
-              <ul className="grid min-w-[12rem] flex-1 gap-2">
+              <ul className="grid min-w-[12rem] flex-1 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-baseline gap-x-2 gap-y-2 text-sm">
                 {slices.map((slice) => {
                   const delta =
                     slice.budget != null
@@ -495,38 +495,35 @@ export function SpendingPage() {
                   return (
                     <li
                       key={slice.id || 'uncategorized'}
-                      className="grid grid-cols-[auto_auto_1fr_auto] items-start gap-x-2 text-sm"
+                      className="contents"
                     >
                       <span
-                        className="mt-1.5 size-2.5 shrink-0 rounded-full"
+                        className="size-2.5 shrink-0 self-center rounded-full"
                         style={{ background: slice.color }}
                       />
                       <span className="min-w-0 break-words [overflow-wrap:anywhere]">
                         {slice.name}
                         {slice.budget != null ? (
-                          <span className="text-muted-foreground">
+                          <span className="text-muted-foreground text-xs">
                             {' · '}
                             {formatUsd(slice.budget)}
                           </span>
                         ) : null}
                       </span>
-                      <span />
-                      <span className="tabular-nums whitespace-nowrap">
+                      <span className="text-right tabular-nums whitespace-nowrap">
                         {formatUsd(slice.amount)}
-                        {delta != null ? (
-                          <span
-                            className={cn(
-                              'ml-1 text-xs',
-                              over
-                                ? OVER_BUDGET_TEXT
-                                : 'text-muted-foreground',
-                            )}
-                          >
-                            {over
-                              ? `${formatUsd(delta)} over`
-                              : `${formatUsd(Math.abs(delta))} left`}
-                          </span>
-                        ) : null}
+                      </span>
+                      <span
+                        className={cn(
+                          'text-right text-xs tabular-nums whitespace-nowrap',
+                          over ? OVER_BUDGET_TEXT : 'text-muted-foreground',
+                        )}
+                      >
+                        {delta == null
+                          ? null
+                          : over
+                            ? `${formatUsd(delta)} over`
+                            : `${formatUsd(Math.abs(delta))} left`}
                       </span>
                     </li>
                   )
