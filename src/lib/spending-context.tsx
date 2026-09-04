@@ -10,6 +10,7 @@ import {
 import { useAuth } from '@/lib/auth-context'
 import {
   applySpendingRules,
+  emptySpending,
   importSpendingTxns,
   loadSpending,
   mergeSpending,
@@ -26,11 +27,31 @@ import {
 import { supabase } from '@/lib/supabase'
 import {
   markCloudReady,
+  pushUserAppStateNow,
   rememberSpending,
   resetUserAppStateSync,
   scheduleUserAppStatePush,
   syncUserAppStateFromCloud,
 } from '@/lib/user-app-state'
+
+const SPENDING_WIPE_KEY = 'mybudget.spending.wiped'
+const SPENDING_WIPE_TOKEN = '2026-09-04-all'
+
+function spendingNeedsWipe() {
+  try {
+    return localStorage.getItem(SPENDING_WIPE_KEY) !== SPENDING_WIPE_TOKEN
+  } catch {
+    return false
+  }
+}
+
+function markSpendingWiped() {
+  try {
+    localStorage.setItem(SPENDING_WIPE_KEY, SPENDING_WIPE_TOKEN)
+  } catch {
+    // ignore
+  }
+}
 
 type SpendingContextValue = {
   transactions: SpendingTxn[]
@@ -85,6 +106,13 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (loading) return
     if (!supabase || !user) {
+      if (spendingNeedsWipe()) {
+        markSpendingWiped()
+        const empty = emptySpending()
+        saveSpending(empty)
+        rememberSpending(empty)
+        setState(empty)
+      }
       if (!supabase) markCloudReady()
       else resetUserAppStateSync()
       return
@@ -93,6 +121,16 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const synced = await syncUserAppStateFromCloud()
       if (cancelled) return
+      if (spendingNeedsWipe()) {
+        const empty = emptySpending()
+        saveSpending(empty)
+        rememberSpending(empty)
+        setState(empty)
+        await pushUserAppStateNow()
+        markSpendingWiped()
+        markCloudReady()
+        return
+      }
       setState((current) => {
         const merged = mergeSpending(synced.spending, current)
         return {

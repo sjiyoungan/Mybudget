@@ -397,3 +397,8 @@ export function scheduleUserAppStatePush() {
     void upsertUserAppState(localAppState())
   }, 400)
 }
+
+export async function pushUserAppStateNow() {
+  ready = true
+  await upsertUserAppState(localAppState())
+}
