@@ -85,16 +85,8 @@ function formatTxnAmount(amount: number) {
   return formatUsd(amount)
 }
 
-function budgetDeltaLabel(spent: number, budget: number) {
-  const delta = Math.round((spent - budget) * 100) / 100
-  if (Math.abs(delta) < 0.005) return `On budget · ${formatUsd(budget)}`
-  if (delta > 0) return `${formatUsd(delta)} over ${formatUsd(budget)}`
-  return `${formatUsd(-delta)} under ${formatUsd(budget)}`
-}
-
-function overBudgetBy(spent: number, budget: number) {
-  const delta = Math.round((spent - budget) * 100) / 100
-  return delta > 0.005 ? delta : 0
+function budgetDelta(spent: number, budget: number) {
+  return Math.round((spent - budget) * 100) / 100
 }
 
 const OVER_BUDGET_TEXT = 'text-[#7a2e2e]'
@@ -365,6 +357,16 @@ export function SpendingPage() {
         amount: items.reduce((sum, txn) => sum + txn.amount, 0),
       }))
   }, [spentTxns])
+  const monthDelta = monthBudget > 0 ? budgetDelta(totalSpent, monthBudget) : null
+  const monthOver = monthDelta != null && monthDelta > 0.005
+  const monthStatus =
+    monthDelta == null
+      ? null
+      : Math.abs(monthDelta) < 0.005
+        ? 'On budget'
+        : monthOver
+          ? `${formatUsd(monthDelta)} over`
+          : `${formatUsd(-monthDelta)} under`
 
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
@@ -466,28 +468,34 @@ export function SpendingPage() {
             </CardAction>
           </CardHeader>
           <CardContent className="grid gap-5">
-            <div>
-              <p className="text-2xl font-medium tabular-nums">
-                {formatUsd(totalSpent)}
-              </p>
-              {monthBudget > 0 ? (
-                <p className="text-muted-foreground mt-1 text-sm">
-                  {budgetDeltaLabel(totalSpent, monthBudget)}
-                </p>
+            <p className="flex flex-wrap items-baseline gap-1.5 text-2xl font-medium tabular-nums">
+              <span>{formatUsd(totalSpent)}</span>
+              {monthStatus ? (
+                <span
+                  className={cn(
+                    'text-sm font-normal',
+                    monthOver ? OVER_BUDGET_TEXT : 'text-muted-foreground',
+                  )}
+                >
+                  {monthStatus}
+                </span>
               ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-6">
-              <CategoryPie slices={slices} total={totalSpent} />
+            </p>
+            <div className="flex flex-wrap items-center gap-12">
+              <div className="pl-2">
+                <CategoryPie slices={slices} total={totalSpent} />
+              </div>
               <ul className="grid min-w-[12rem] flex-1 gap-2">
                 {slices.map((slice) => {
-                  const overBy =
+                  const delta =
                     slice.budget != null
-                      ? overBudgetBy(slice.amount, slice.budget)
-                      : 0
+                      ? budgetDelta(slice.amount, slice.budget)
+                      : null
+                  const over = delta != null && delta > 0.005
                   return (
                     <li
                       key={slice.id || 'uncategorized'}
-                      className="grid grid-cols-[auto_1fr_auto] items-start gap-x-2 gap-y-0.5 text-sm"
+                      className="grid grid-cols-[auto_auto_1fr_auto] items-start gap-x-2 text-sm"
                     >
                       <span
                         className="mt-1.5 size-2.5 shrink-0 rounded-full"
@@ -495,28 +503,30 @@ export function SpendingPage() {
                       />
                       <span className="min-w-0 break-words [overflow-wrap:anywhere]">
                         {slice.name}
-                        {overBy > 0 ? (
-                          <span className={OVER_BUDGET_TEXT}>
-                            {' · '}over by {formatUsd(overBy)}
+                        {slice.budget != null ? (
+                          <span className="text-muted-foreground">
+                            {' · '}
+                            {formatUsd(slice.budget)}
                           </span>
                         ) : null}
                       </span>
-                      <span
-                        className={cn(
-                          'tabular-nums whitespace-nowrap',
-                          overBy > 0 && OVER_BUDGET_TEXT,
-                        )}
-                      >
-                        {slice.budget != null ? (
-                          <>
-                            {formatUsd(slice.amount)}
-                            <span className="text-muted-foreground ml-1 text-xs">
-                              / {formatUsd(slice.budget)}
-                            </span>
-                          </>
-                        ) : (
-                          formatUsd(slice.amount)
-                        )}
+                      <span />
+                      <span className="tabular-nums whitespace-nowrap">
+                        {formatUsd(slice.amount)}
+                        {delta != null ? (
+                          <span
+                            className={cn(
+                              'ml-1 text-xs',
+                              over
+                                ? OVER_BUDGET_TEXT
+                                : 'text-muted-foreground',
+                            )}
+                          >
+                            {over
+                              ? `${formatUsd(delta)} over`
+                              : `${formatUsd(Math.abs(delta))} left`}
+                          </span>
+                        ) : null}
                       </span>
                     </li>
                   )
