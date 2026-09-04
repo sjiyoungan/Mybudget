@@ -53,9 +53,11 @@ import {
   rolledSpendingCategoryId,
   sortSpendingTxns,
   toSentenceCase,
+  transactionsForUpload,
   visibleSpendingCategories,
   type SpendingCategory,
   type SpendingTxn,
+  type SpendingUpload,
 } from '@/lib/spending'
 import { cn } from '@/lib/utils'
 
@@ -206,6 +208,7 @@ export function SpendingPage() {
     replaceCategories,
     addRule,
     uploads,
+    removeUpload,
   } = useSpending()
   const { accounts, expenses, categories: expenseGroups } = useBudget()
   const activeCategories = useMemo(
@@ -239,6 +242,8 @@ export function SpendingPage() {
       : defaultMonth
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
+  const [expandedUpload, setExpandedUpload] = useState<string | null>(null)
+  const [removeUploadId, setRemoveUploadId] = useState<string | null>(null)
   const [editCategoriesOpen, setEditCategoriesOpen] = useState(false)
 
   const monthPrefix =
@@ -504,19 +509,76 @@ export function SpendingPage() {
               .sort((left, right) =>
                 right.uploadedAt.localeCompare(left.uploadedAt),
               )
-              .map((upload) => (
-                <div
-                  key={upload.id}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4 px-2.5 py-2"
-                >
-                  <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-                    {upload.name}
-                  </span>
-                  <span className="text-muted-foreground shrink-0 text-sm">
-                    {formatUploadWhen(upload.uploadedAt)}
-                  </span>
-                </div>
-              ))}
+              .map((upload) => {
+                const items = sortSpendingTxns(
+                  transactionsForUpload(transactions, upload, uploads),
+                )
+                const expanded = expandedUpload === upload.id
+                return (
+                  <div key={upload.id}>
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedUpload(expanded ? null : upload.id)
+                        }
+                        className="hover-fill grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left"
+                      >
+                        <span
+                          className={cn(
+                            'min-w-0 break-words [overflow-wrap:anywhere]',
+                            expanded && 'font-medium',
+                          )}
+                        >
+                          {upload.name}
+                        </span>
+                        <span className="text-muted-foreground shrink-0 text-sm">
+                          {items.length === 1
+                            ? '1 purchase'
+                            : `${items.length} purchases`}
+                          {formatUploadWhen(upload.uploadedAt)
+                            ? ` · ${formatUploadWhen(upload.uploadedAt)}`
+                            : ''}
+                        </span>
+                        <ChevronDown
+                          className={cn(
+                            'size-4 shrink-0 text-muted-foreground transition-transform',
+                            expanded && 'rotate-180',
+                          )}
+                        />
+                      </button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Remove ${upload.name}`}
+                        onClick={() => setRemoveUploadId(upload.id)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                    {expanded ? (
+                      <ul className="grid gap-0.5 py-1 pr-8 pl-[22px]">
+                        {items.length === 0 ? (
+                          <li className="text-muted-foreground px-2.5 py-2 text-sm">
+                            No purchases from this file.
+                          </li>
+                        ) : (
+                          items.map((txn) => (
+                            <TransactionRow
+                              key={txn.id}
+                              txn={txn}
+                              accounts={accounts}
+                              categories={categories}
+                              onClick={() => setEditing(txn)}
+                            />
+                          ))
+                        )}
+                      </ul>
+                    ) : null}
+                  </div>
+                )
+              })}
           </CardContent>
         </Card>
       ) : null}
@@ -525,6 +587,7 @@ export function SpendingPage() {
         txn={editing}
         accounts={accounts}
         categories={categories}
+        uploads={uploads}
         onClose={() => setEditing(null)}
         onSave={(id, patch, rule) => {
           updateTransaction(id, patch)
@@ -548,6 +611,53 @@ export function SpendingPage() {
           setEditCategoriesOpen(false)
         }}
       />
+
+      <Dialog
+        open={removeUploadId != null}
+        onOpenChange={(next) => {
+          if (!next) setRemoveUploadId(null)
+        }}
+      >
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Remove statement?</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const upload = uploads.find((item) => item.id === removeUploadId)
+                if (!upload) return 'This removes the statement and its purchases.'
+                const count = transactionsForUpload(
+                  transactions,
+                  upload,
+                  uploads,
+                ).length
+                const noun =
+                  count === 1 ? '1 purchase' : `${count} purchases`
+                return `Removing “${upload.name}” also deletes ${noun} from this file.`
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRemoveUploadId(null)}
+            >
+              Keep statement
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (removeUploadId) removeUpload(removeUploadId)
+                if (expandedUpload === removeUploadId) setExpandedUpload(null)
+                setRemoveUploadId(null)
+              }}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }
@@ -630,6 +740,7 @@ function EditTxnDialog({
   txn,
   accounts,
   categories,
+  uploads,
   onClose,
   onSave,
   onDelete,
@@ -637,6 +748,7 @@ function EditTxnDialog({
   txn: SpendingTxn | null
   accounts: { id: string; name: string }[]
   categories: SpendingCategory[]
+  uploads: SpendingUpload[]
   onClose: () => void
   onSave: (
     id: string,
@@ -654,6 +766,7 @@ function EditTxnDialog({
             txn={txn}
             accounts={accounts}
             categories={categories}
+            uploads={uploads}
             onSave={onSave}
             onDelete={onDelete}
           />
@@ -667,12 +780,14 @@ function EditTxnForm({
   txn,
   accounts,
   categories,
+  uploads,
   onSave,
   onDelete,
 }: {
   txn: SpendingTxn
   accounts: { id: string; name: string }[]
   categories: SpendingCategory[]
+  uploads: SpendingUpload[]
   onSave: (
     id: string,
     patch: Partial<Omit<SpendingTxn, 'id'>>,
@@ -690,6 +805,7 @@ function EditTxnForm({
   const categoryOptions = visibleSpendingCategories(categories)
   const [createRule, setCreateRule] = useState(false)
   const [match, setMatch] = useState(() => defaultRuleMatch(txn.description))
+  const fromStatement = statementName(txn, uploads)
   const parsedAmount = parseAmount(amount)
   const deposit = txn.amount < 0
   const accountOptions =
@@ -702,9 +818,11 @@ function EditTxnForm({
       <DialogHeader>
         <DialogTitle>Edit purchase</DialogTitle>
         <DialogDescription>
-          {txn.description !== txn.merchant
-            ? txn.description
-            : 'Change the name, category, or amount.'}
+          {fromStatement
+            ? `From ${fromStatement}`
+            : txn.description !== txn.merchant
+              ? txn.description
+              : 'Change the name, category, or amount.'}
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
@@ -890,6 +1008,14 @@ function formatUploadWhen(iso: string) {
     day: 'numeric',
     year: 'numeric',
   })
+}
+
+function statementName(txn: SpendingTxn, uploads: SpendingUpload[]) {
+  if (txn.uploadId) {
+    const upload = uploads.find((item) => item.id === txn.uploadId)
+    if (upload) return upload.name
+  }
+  return txn.sourceFile ?? ''
 }
 
 function CategoryCheck({ checked }: { checked: boolean }) {

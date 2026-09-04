@@ -25,7 +25,7 @@ import { parseAdpPaystub, type Paystub } from '@/lib/paystub'
 import { usePaystubs } from '@/lib/paystub-context'
 import { parseStatementFile } from '@/lib/spending-parse'
 import { useSpending } from '@/lib/spending-context'
-import type { NewSpendingTxn } from '@/lib/spending'
+import type { SpendingUploadBatch } from '@/lib/spending'
 import { cn } from '@/lib/utils'
 
 async function readPaystubFile(file: File): Promise<Paystub> {
@@ -177,24 +177,25 @@ export function PaystubUploadButton({
 
     setMessage(null)
     setProgress({ current: 0, total: files.length })
-    const incoming: NewSpendingTxn[] = []
+    const batches: SpendingUploadBatch[] = []
     const failed: string[] = []
 
     for (const [index, file] of files.entries()) {
       setProgress({ current: index + 1, total: files.length })
       try {
-        incoming.push(...(await parseStatementFile(file, accounts)))
+        batches.push({
+          name: file.name,
+          transactions: await parseStatementFile(file, accounts),
+        })
       } catch (caught) {
         failed.push(
           caught instanceof Error ? caught.message : file.name || 'one file',
         )
+        batches.push({ name: file.name, transactions: [] })
       }
     }
 
-    const { added } = importTransactions(
-      incoming,
-      files.map((file) => file.name),
-    )
+    const { added } = importTransactions(batches)
     setProgress(null)
 
     if (added > 0) navigate('/spending')

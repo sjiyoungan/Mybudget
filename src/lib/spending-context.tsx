@@ -13,14 +13,15 @@ import {
   importSpendingTxns,
   loadSpending,
   mergeSpending,
+  removeSpendingUpload,
   saveSpending,
   toSentenceCase,
-  type NewSpendingTxn,
   type SpendingCategory,
   type SpendingRule,
   type SpendingState,
   type SpendingTxn,
   type SpendingUpload,
+  type SpendingUploadBatch,
 } from '@/lib/spending'
 import { supabase } from '@/lib/supabase'
 import {
@@ -36,10 +37,7 @@ type SpendingContextValue = {
   rules: SpendingRule[]
   categories: SpendingCategory[]
   uploads: SpendingUpload[]
-  importTransactions: (
-    incoming: NewSpendingTxn[],
-    fileNames?: string[],
-  ) => {
+  importTransactions: (batches: SpendingUploadBatch[]) => {
     added: number
   }
   updateTransaction: (
@@ -47,6 +45,7 @@ type SpendingContextValue = {
     patch: Partial<Omit<SpendingTxn, 'id'>>,
   ) => void
   removeTransaction: (id: string) => void
+  removeUpload: (id: string) => void
   addCategory: (name: string, expenseIds?: string[]) => string | null
   replaceCategories: (categories: SpendingCategory[]) => void
   addRule: (input: {
@@ -114,8 +113,8 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
       rules: state.rules,
       categories: state.categories,
       uploads: state.uploads ?? [],
-      importTransactions(incoming, fileNames = []) {
-        const next = importSpendingTxns(state, incoming, fileNames)
+      importTransactions(batches) {
+        const next = importSpendingTxns(state, batches)
         setState(next.state)
         return { added: next.added }
       },
@@ -132,6 +131,9 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
           ...current,
           transactions: current.transactions.filter((txn) => txn.id !== id),
         }))
+      },
+      removeUpload(id) {
+        setState((current) => removeSpendingUpload(current, id))
       },
       addCategory(name, expenseIds) {
         const trimmed = toSentenceCase(name)

@@ -9,6 +9,8 @@ export type SpendingTxn = {
   /** Money out is positive; deposits/credits are negative. */
   amount: number
   sourceFile?: string
+  /** Statement upload that created this row. */
+  uploadId?: string
   categoryId?: string
   /** When true, rename rules leave `merchant` alone. */
   customName?: boolean
@@ -224,6 +226,8 @@ function normalizeTxn(value: unknown): SpendingTxn | null {
     typeof row.sourceFile === 'string' && row.sourceFile
       ? row.sourceFile
       : undefined
+  const uploadId =
+    typeof row.uploadId === 'string' && row.uploadId ? row.uploadId : undefined
   return {
     id,
     date,
@@ -232,6 +236,7 @@ function normalizeTxn(value: unknown): SpendingTxn | null {
     accountId,
     amount,
     ...(sourceFile ? { sourceFile } : {}),
+    ...(uploadId ? { uploadId } : {}),
     ...(typeof row.categoryId === 'string' && row.categoryId
       ? { categoryId: row.categoryId }
       : {}),
@@ -422,28 +427,67 @@ export function sortSpendingTxns(transactions: SpendingTxn[]) {
 
 export type NewSpendingTxn = Omit<SpendingTxn, 'id' | 'updatedAt'>
 
+export type SpendingUploadBatch = {
+  name: string
+  transactions: NewSpendingTxn[]
+}
+
+export function transactionsForUpload(
+  transactions: SpendingTxn[],
+  upload: SpendingUpload,
+  uploads: SpendingUpload[],
+) {
+  const othersWithName = uploads.some(
+    (item) => item.id !== upload.id && item.name === upload.name,
+  )
+  return transactions.filter((txn) => {
+    if (txn.uploadId) return txn.uploadId === upload.id
+    return !othersWithName && txn.sourceFile === upload.name
+  })
+}
+
+export function removeSpendingUpload(
+  current: SpendingState,
+  uploadId: string,
+): SpendingState {
+  const uploads = current.uploads ?? []
+  const upload = uploads.find((item) => item.id === uploadId)
+  if (!upload) return current
+  const removeIds = new Set(
+    transactionsForUpload(current.transactions, upload, uploads).map(
+      (txn) => txn.id,
+    ),
+  )
+  return {
+    ...current,
+    uploads: uploads.filter((item) => item.id !== uploadId),
+    transactions: current.transactions.filter((txn) => !removeIds.has(txn.id)),
+  }
+}
+
 export function importSpendingTxns(
   current: SpendingState,
-  incoming: NewSpendingTxn[],
-  fileNames: string[] = [],
+  batches: SpendingUploadBatch[],
 ) {
   const now = new Date().toISOString()
-  const added: SpendingTxn[] = incoming.map((item) => ({
-    ...item,
-    id: crypto.randomUUID(),
-    updatedAt: now,
-  }))
-  const uploads: SpendingUpload[] = [
-    ...(current.uploads ?? []),
-    ...fileNames
-      .map((name) => name.trim())
-      .filter(Boolean)
-      .map((name) => ({
+  const added: SpendingTxn[] = []
+  const uploads: SpendingUpload[] = [...(current.uploads ?? [])]
+
+  for (const batch of batches) {
+    const name = batch.name.trim()
+    if (!name) continue
+    const uploadId = crypto.randomUUID()
+    uploads.push({ id: uploadId, name, uploadedAt: now })
+    for (const item of batch.transactions) {
+      added.push({
+        ...item,
+        sourceFile: name,
+        uploadId,
         id: crypto.randomUUID(),
-        name,
-        uploadedAt: now,
-      })),
-  ]
+        updatedAt: now,
+      })
+    }
+  }
 
   return {
     state: {
