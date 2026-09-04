@@ -105,6 +105,7 @@ export type SpendingState = {
   rules: SpendingRule[]
   categories: SpendingCategory[]
   uploads: SpendingUpload[]
+  updatedAt?: string
 }
 
 export function emptySpending(): SpendingState {
@@ -351,6 +352,9 @@ export function parseSpendingState(value: unknown): SpendingState | null {
           .map(normalizeUpload)
           .filter((item): item is SpendingUpload => item != null)
       : [],
+    ...(typeof row.updatedAt === 'string' && row.updatedAt
+      ? { updatedAt: row.updatedAt }
+      : {}),
   }
 }
 
@@ -407,30 +411,19 @@ export function applySpendingRules(
   })
 }
 
-function mergeById<T extends { id: string; updatedAt?: string }>(
-  left: T[],
-  right: T[],
-) {
-  const merged = new Map<string, T>()
-  for (const item of [...left, ...right]) {
-    const existing = merged.get(item.id)
-    if (!existing || stamp(item.updatedAt) >= stamp(existing.updatedAt)) {
-      merged.set(item.id, item)
-    }
-  }
-  return [...merged.values()]
-}
-
+/** Pick one spending document. Unioning lists revives deleted statements. */
 export function mergeSpending(
   remote: SpendingState,
   local: SpendingState,
 ): SpendingState {
-  return {
-    transactions: mergeById(remote.transactions, local.transactions),
-    rules: mergeById(remote.rules, local.rules),
-    categories: mergeById(remote.categories ?? [], local.categories ?? []),
-    uploads: mergeById(remote.uploads ?? [], local.uploads ?? []),
-  }
+  const remoteAt = stamp(remote.updatedAt)
+  const localAt = stamp(local.updatedAt)
+  if (localAt !== remoteAt) return localAt > remoteAt ? local : remote
+  return local
+}
+
+export function touchSpending(state: SpendingState): SpendingState {
+  return { ...state, updatedAt: new Date().toISOString() }
 }
 
 export function sortSpendingTxns(transactions: SpendingTxn[]) {

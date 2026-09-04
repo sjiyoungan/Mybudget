@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -17,6 +18,7 @@ import {
   removeSpendingUpload,
   saveSpending,
   toSentenceCase,
+  touchSpending,
   type SpendingCategory,
   type SpendingRule,
   type SpendingState,
@@ -89,6 +91,8 @@ function nowIso() {
 
 export function SpendingProvider({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
+  const firstPersist = useRef(true)
+  const applyingCloud = useRef(false)
   const [state, setState] = useState<SpendingState>(() => {
     const loaded = loadSpending()
     return {
@@ -98,8 +102,12 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
   })
 
   useEffect(() => {
-    saveSpending(state)
-    rememberSpending(state)
+    const skipStamp = firstPersist.current || applyingCloud.current
+    firstPersist.current = false
+    applyingCloud.current = false
+    const next = skipStamp ? state : touchSpending(state)
+    saveSpending(next)
+    rememberSpending(next)
     scheduleUserAppStatePush()
   }, [state])
 
@@ -108,7 +116,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
     if (!supabase || !user) {
       if (spendingNeedsWipe()) {
         markSpendingWiped()
-        const empty = emptySpending()
+        const empty = touchSpending(emptySpending())
         saveSpending(empty)
         rememberSpending(empty)
         setState(empty)
@@ -122,7 +130,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
       const synced = await syncUserAppStateFromCloud()
       if (cancelled) return
       if (spendingNeedsWipe()) {
-        const empty = emptySpending()
+        const empty = touchSpending(emptySpending())
         saveSpending(empty)
         rememberSpending(empty)
         setState(empty)
@@ -131,6 +139,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
         markCloudReady()
         return
       }
+      applyingCloud.current = true
       setState((current) => {
         const merged = mergeSpending(synced.spending, current)
         return {

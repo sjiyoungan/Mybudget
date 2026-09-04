@@ -157,7 +157,7 @@ async function fetchUserAppState(): Promise<UserAppState | null> {
   return {
     budget: dedicated.budget,
     plan: dedicated.plan,
-    spending: mergeSpending(dedicated.spending, fromPaystub.spending),
+    spending: fromPaystub.spending,
   }
 }
 
