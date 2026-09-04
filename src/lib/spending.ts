@@ -164,11 +164,23 @@ export function isDepositTxn(
   return /\bdeposit\b|\bdirect dep(?:osit)?\b/.test(spendingHay(txn))
 }
 
+export function isJunkStatementTxn(
+  txn: Pick<SpendingTxn, 'description' | 'merchant'>,
+) {
+  const hay = spendingHay(txn)
+  return (
+    /suspected error|describe the error|dollar amount of the suspected|xxxxxx\d+|spending account check card|to receive prompt credit|regulatory requirement/.test(
+      hay,
+    )
+  )
+}
+
 /** Purchases that count toward spending totals (excludes interest, transfers, deposits). */
 export function isSpendingPurchase(
   txn: Pick<SpendingTxn, 'description' | 'merchant' | 'amount'>,
 ) {
   if (txn.amount <= 0) return false
+  if (isJunkStatementTxn(txn)) return false
   if (isInterestTxn(txn)) return false
   if (isTransferTxn(txn)) return false
   if (isDepositTxn(txn)) return false

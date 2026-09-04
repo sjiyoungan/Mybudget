@@ -241,7 +241,7 @@ export function SpendingPage() {
       ? selectedMonth
       : defaultMonth
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
-  const [expandedDay, setExpandedDay] = useState<string | null>(null)
+  const [expandedDays, setExpandedDays] = useState<string[]>([])
   const [expandedStatementMonth, setExpandedStatementMonth] = useState<
     string | null
   >(null)
@@ -368,7 +368,7 @@ export function SpendingPage() {
               const next = Number(value)
               setYear(next)
               setSelectedMonth(null)
-              setExpandedDay(null)
+              setExpandedDays([])
             }}
           >
             <SelectTrigger
@@ -418,7 +418,7 @@ export function SpendingPage() {
                   aria-current={selected ? 'true' : undefined}
                   onClick={() => {
                     setSelectedMonth(row.month)
-                    setExpandedDay(null)
+                    setExpandedDays([])
                   }}
                   className={cn(
                     'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
@@ -499,39 +499,62 @@ export function SpendingPage() {
       </section>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
           <CardTitle>Transactions</CardTitle>
+          {dayRows.length > 0 ? (
+            <CardAction>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const anyOpen = dayRows.some((row) =>
+                    expandedDays.includes(row.date),
+                  )
+                  setExpandedDays(anyOpen ? [] : dayRows.map((row) => row.date))
+                }}
+              >
+                {dayRows.some((row) => expandedDays.includes(row.date))
+                  ? 'Close all'
+                  : 'Expand all'}
+              </Button>
+            </CardAction>
+          ) : null}
         </CardHeader>
         <CardContent className="grid gap-1">
           {dayRows.map((row) => {
-            const expanded = expandedDay === row.date
+            const expanded = expandedDays.includes(row.date)
             return (
-              <div
-                key={row.date}
-                className={cn(expanded && 'hover-fill-active rounded-lg')}
-              >
+              <div key={row.date}>
                 <button
                   type="button"
                   aria-expanded={expanded}
-                  onClick={() => setExpandedDay(expanded ? null : row.date)}
-                  className={cn(
-                    'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left',
-                    expanded && 'hover-fill-active',
-                  )}
+                  onClick={() => {
+                    setExpandedDays((current) =>
+                      current.includes(row.date)
+                        ? current.filter((date) => date !== row.date)
+                        : [...current, row.date],
+                    )
+                  }}
+                  className="hover-fill hover-fill-plain grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_5.75rem_1rem] items-center gap-x-3 rounded-lg px-2.5 py-2 text-left"
                 >
                   <span className={expanded ? 'font-medium' : undefined}>
                     {formatDateWithoutYear(row.date, 'short')}
                   </span>
-                  <span className="tabular-nums">{formatUsd(row.amount)}</span>
-                  <ChevronDown
-                    className={cn(
-                      'size-4 text-muted-foreground transition-transform',
-                      expanded && 'rotate-180',
-                    )}
-                  />
+                  <span className="w-[5.75rem] shrink-0 text-right tabular-nums">
+                    {formatUsd(row.amount)}
+                  </span>
+                  <span className="flex size-4 shrink-0 items-center justify-center">
+                    <ChevronDown
+                      className={cn(
+                        'size-4 text-muted-foreground transition-transform',
+                        expanded && 'rotate-180',
+                      )}
+                    />
+                  </span>
                 </button>
                 {expanded ? (
-                  <ul className="grid gap-0.5 px-1 pb-1">
+                  <ul className="grid gap-0.5">
                     {row.items.map((txn) => (
                       <TransactionRow
                         key={txn.id}
@@ -824,13 +847,13 @@ function TransactionRow({
         className={cn(
           'hover-fill grid w-full min-w-0 items-start gap-x-3 rounded-lg px-2.5 py-2 text-left',
           showAccount && showDate &&
-            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto_auto_auto_auto]',
+            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_5.75rem_1rem] sm:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_6rem_auto_5.75rem_1rem]',
           showAccount && !showDate &&
-            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto_auto_auto]',
+            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_5.75rem_1rem] sm:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_6rem_5.75rem_1rem]',
           !showAccount && showDate &&
-            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto_auto_auto]',
+            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto_5.75rem_1rem]',
           !showAccount && !showDate &&
-            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto_auto]',
+            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_5.75rem_1rem]',
         )}
         onClick={onClick}
       >
@@ -852,13 +875,15 @@ function TransactionRow({
         ) : null}
         <span
           className={cn(
-            'shrink-0 pt-0.5 text-right tabular-nums',
+            'w-[5.75rem] shrink-0 pt-0.5 text-right tabular-nums',
             txn.amount < 0 && 'text-muted-foreground',
           )}
         >
           {formatTxnAmount(txn.amount)}
         </span>
-        <Pencil className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
+        <span className="flex size-4 shrink-0 items-center justify-center">
+          <Pencil className="size-3.5 text-muted-foreground" />
+        </span>
       </button>
     </li>
   )

@@ -344,6 +344,16 @@
   background-color: #f8f8f8 !important;
   background-image: linear-gradient(to bottom right, #f5f5f5, #ffffff) !important;
 }
+.hover-fill.hover-fill-plain[aria-expanded='true'] {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+.hover-fill.hover-fill-plain[aria-expanded='true']:hover,
+.hover-fill.hover-fill-plain[aria-expanded='true']:focus-visible,
+.hover-fill.hover-fill-plain[aria-expanded='true']:active {
+  background-color: #f8f8f8 !important;
+  background-image: linear-gradient(to bottom right, #f5f5f5, #ffffff) !important;
+}
 .hover-fill-active {
   background-color: #f0f0f0 !important;
   background-image: none !important;

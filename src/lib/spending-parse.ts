@@ -94,9 +94,10 @@ function groupRows(items: PdfTextItem[]) {
   for (const row of rows) {
     row.items.sort((left, right) => left.x - right.x)
   }
-  return rows.map((row) =>
-    normalizeRow(row.items.map((item) => item.str).join(' ')),
-  )
+  return rows.map((row) => ({
+    page: row.page,
+    text: normalizeRow(row.items.map((item) => item.str).join(' ')),
+  }))
 }
 
 export function guessSpendingAccountId(
@@ -138,8 +139,8 @@ function fallbackAccountId(accounts: BankAccount[]) {
   )
 }
 
-function statementYear(lines: string[]) {
-  const head = lines.slice(0, 40).join(' ')
+function statementYear(lines: { text: string }[]) {
+  const head = lines.slice(0, 40).map((line) => line.text).join(' ')
   const years = [...head.matchAll(/\b(20\d{2})\b/g)].map((match) =>
     Number(match[1]),
   )
@@ -211,12 +212,16 @@ function pickPdfAmount(
   return { token, amount: signedPdfAmount(token.value, polarity) }
 }
 
-function isMerchantContinuation(line: string) {
-  if (!line) return false
-  if (ACTIVITY_HEADER.test(line) || SECTION_BREAK.test(line)) return false
-  if (sectionPolarity(line)) return false
-  if (/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/.test(line)) return false
-  if (/\$\d/.test(line)) return false
+function isMerchantContinuation(
+  line: { text: string; page: number },
+  page: number,
+) {
+  if (line.page !== page) return false
+  if (!line.text) return false
+  if (ACTIVITY_HEADER.test(line.text) || SECTION_BREAK.test(line.text)) return false
+  if (sectionPolarity(line.text)) return false
+  if (/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/.test(line.text)) return false
+  if (/\$\d/.test(line.text)) return false
   return true
 }
 
@@ -243,6 +248,13 @@ function parsePdfLine(
   let description = line.slice(dateEnd, descEnd).trim()
   description = description.replace(/^[.\-–—]+\s*/, '').replace(/\s+/g, ' ')
   if (!description || SKIP_DESC.test(description)) return null
+  if (
+    /xxxxxx\d+|suspected error|describe the error|dollar amount of the suspected|spending account check card/i.test(
+      description,
+    )
+  ) {
+    return null
+  }
   const merchant = cleanMerchantName(description) || toSentenceCase(description)
   if (!merchant) return null
 
@@ -257,30 +269,45 @@ function parsePdfLine(
 }
 
 function parsePdfLines(
-  lines: string[],
+  lines: { text: string; page: number }[],
   accountId: string,
   sourceFile: string,
 ): NewSpendingTxn[] {
   const year = statementYear(lines)
   let polarity: Polarity = 'unknown'
   let creditsDebits = false
+  let seenActivity = false
+  let inActivity = false
+  let page = -1
   const parsed: NewSpendingTxn[] = []
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]
-    if (ACTIVITY_HEADER.test(line)) {
-      creditsDebits = /credits\s+debits/i.test(line)
+    if (line.page !== page) {
+      page = line.page
+      inActivity = false
+    }
+    if (ACTIVITY_HEADER.test(line.text)) {
+      seenActivity = true
+      inActivity = true
+      creditsDebits = /credits\s+debits/i.test(line.text)
       polarity = 'unknown'
       continue
     }
-    const nextPolarity = sectionPolarity(line)
+    if (/^activity$/i.test(line.text)) continue
+    if (SECTION_BREAK.test(line.text)) {
+      inActivity = false
+      continue
+    }
+    const nextPolarity = sectionPolarity(line.text)
     if (nextPolarity) {
       polarity = nextPolarity
       creditsDebits = false
       continue
     }
+    if (seenActivity && !inActivity) continue
     const txn = parsePdfLine(
-      line,
+      line.text,
       accountId,
       sourceFile,
       year,
@@ -290,10 +317,13 @@ function parsePdfLines(
     if (!txn) continue
     while (
       index + 1 < lines.length &&
-      isMerchantContinuation(lines[index + 1])
+      isMerchantContinuation(lines[index + 1], page)
     ) {
       index += 1
-      txn.description = `${txn.description} ${lines[index]}`.replace(/\s+/g, ' ')
+      txn.description = `${txn.description} ${lines[index].text}`.replace(
+        /\s+/g,
+        ' ',
+      )
     }
     txn.merchant =
       cleanMerchantName(txn.description) || toSentenceCase(txn.description)
@@ -502,7 +532,10 @@ export async function parseStatementFile(
     const lines = groupRows(items)
     const accountId = guessSpendingAccountId(
       file.name,
-      lines.slice(0, 40).join(' '),
+      lines
+        .slice(0, 40)
+        .map((line) => line.text)
+        .join(' '),
       accounts,
     )
     const parsed = parsePdfLines(lines, accountId, sourceFile)
