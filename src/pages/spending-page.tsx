@@ -1134,7 +1134,6 @@ function EditTxnForm({
 type ChildDraft = {
   id: string
   name: string
-  budget: string
 }
 
 type GroupDraft = {
@@ -1154,7 +1153,6 @@ function snapshotCategoryPicks(groups: GroupDraft[]) {
       categories: group.categories.map((item) => ({
         id: item.id,
         name: item.name.trim(),
-        budget: item.budget.trim(),
       })),
     })),
   )
@@ -1388,7 +1386,6 @@ function EditCategoriesDialog({
       list.push({
         id: item.id,
         name: item.name,
-        budget: item.budget != null ? String(item.budget) : '',
       })
       children.set(item.parentId, list)
     }
@@ -1465,7 +1462,7 @@ function EditCategoriesDialog({
           ? {
               ...item,
               open: true,
-              categories: [...item.categories, { id, name: '', budget: '' }],
+              categories: [...item.categories, { id, name: '' }],
             }
           : item,
       ),
@@ -1510,12 +1507,10 @@ function EditCategoriesDialog({
       for (const child of group.categories) {
         const childName = toSentenceCase(child.name)
         if (!childName) continue
-        const budget = parseAmount(child.budget)
         next.push({
           id: child.id,
           name: childName,
           parentId: group.id,
-          ...(budget != null && budget >= 0 ? { budget } : {}),
         })
       }
     }
@@ -1584,27 +1579,7 @@ function EditCategoriesDialog({
                     data-scroll-id={group.id}
                     className="rounded-lg"
                   >
-                    <div className="hover-fill grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg py-1.5 pr-2.5 pl-1.5">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="shrink-0"
-                        aria-expanded={group.open}
-                        aria-label={
-                          group.open
-                            ? `Collapse ${group.name || 'group'}`
-                            : `Expand ${group.name || 'group'}`
-                        }
-                        onClick={() => updateGroup(group.id, { open: !group.open })}
-                      >
-                        <ChevronDown
-                          className={cn(
-                            'size-4 text-muted-foreground transition-transform',
-                            group.open && 'rotate-180',
-                          )}
-                        />
-                      </Button>
+                    <div className="hover-fill grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg py-1.5 pr-2.5 pl-2.5">
                       <div className="flex min-w-0 items-center gap-2">
                         <Input
                           className="h-8 min-w-0 flex-1"
@@ -1629,6 +1604,26 @@ function EditCategoriesDialog({
                         variant="ghost"
                         size="icon-sm"
                         className="shrink-0"
+                        aria-expanded={group.open}
+                        aria-label={
+                          group.open
+                            ? `Collapse ${group.name || 'group'}`
+                            : `Expand ${group.name || 'group'}`
+                        }
+                        onClick={() => updateGroup(group.id, { open: !group.open })}
+                      >
+                        <ChevronDown
+                          className={cn(
+                            'size-4 text-muted-foreground transition-transform',
+                            group.open && 'rotate-180',
+                          )}
+                        />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="shrink-0"
                         aria-label={`Remove ${group.name || 'group'}`}
                         onClick={() =>
                           setDrafts((current) =>
@@ -1640,7 +1635,7 @@ function EditCategoriesDialog({
                       </Button>
                     </div>
                     {group.open ? (
-                      <div className="mt-0.5 mb-1 ml-9 grid gap-0.5 pr-2.5">
+                      <div className="mt-0.5 mb-1 grid gap-0.5 pr-2.5 pl-2.5">
                         {group.categories.map((child) => (
                           <div
                             key={child.id}
@@ -1662,30 +1657,6 @@ function EditCategoriesDialog({
                                 })
                               }
                             />
-                            <div className="flex h-8 w-[5.75rem] shrink-0 items-center rounded-lg border px-2">
-                              <span className="text-muted-foreground text-sm">
-                                $
-                              </span>
-                              <input
-                                className="h-full w-full min-w-0 bg-transparent text-right text-sm tabular-nums outline-none"
-                                value={child.budget}
-                                placeholder="0"
-                                inputMode="decimal"
-                                aria-label={`${child.name || 'Category'} budget`}
-                                onChange={(event) =>
-                                  updateGroup(group.id, {
-                                    categories: group.categories.map((item) =>
-                                      item.id === child.id
-                                        ? {
-                                            ...item,
-                                            budget: event.target.value,
-                                          }
-                                        : item,
-                                    ),
-                                  })
-                                }
-                              />
-                            </div>
                             <Button
                               type="button"
                               variant="ghost"
