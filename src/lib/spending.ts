@@ -69,6 +69,15 @@ export function visibleSpendingCategories(categories: SpendingCategory[]) {
   })
 }
 
+export function spendingCategoriesForExpense(
+  expenseId: string,
+  categories: SpendingCategory[],
+) {
+  return visibleSpendingCategories(categories).filter((item) =>
+    categoryExpenseIds(item).includes(expenseId),
+  )
+}
+
 export function spendingBucketIdForExpense(
   expenseId: string,
   categories: SpendingCategory[],

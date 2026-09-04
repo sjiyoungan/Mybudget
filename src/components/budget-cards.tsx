@@ -108,6 +108,7 @@ import { useSpending } from '@/lib/spending-context'
 import {
   applyExpenseSpendingBuckets,
   spendingBucketIdForExpense,
+  spendingCategoriesForExpense,
   toSentenceCase,
   visibleSpendingCategories,
 } from '@/lib/spending'
@@ -2379,12 +2380,14 @@ function ExpenseLine({
   onEditAmount,
   onEditName,
   nested,
+  spendingLabel,
 }: {
   expense: RecurringExpense
   editingAmount: boolean
   onEditAmount: (id: string | null) => void
   onEditName: (id: string) => void
   nested?: boolean
+  spendingLabel?: string
 }) {
   return (
     <>
@@ -2403,6 +2406,14 @@ function ExpenseLine({
       >
         {expense.name}
       </button>
+      {nested ? (
+        <span
+          className="min-w-0 truncate pl-1 text-sm text-neutral-500"
+          title={spendingLabel || undefined}
+        >
+          {spendingLabel || ''}
+        </span>
+      ) : null}
       <div
         className={
           nested
@@ -2429,6 +2440,7 @@ function CategoryExpensesCard({
   mode: 'expenses' | 'debt'
 }) {
   const { categories, expenses, debts } = useBudget()
+  const { categories: spendingCategories } = useSpending()
   const [open, setOpen] = useState(false)
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null)
   const [amountEditId, setAmountEditId] = useState<string | null>(null)
@@ -2490,7 +2502,7 @@ function CategoryExpensesCard({
                 )}
               </div>
             ) : (
-              <div className="grid w-full grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-3">
+              <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto] items-baseline gap-x-4 gap-y-3">
                 {shownCategories.map((item) => {
                   const details = expenses.filter(
                     (expense) =>
@@ -2501,16 +2513,17 @@ function CategoryExpensesCard({
                   return (
                     <div
                       key={item.id}
-                      className="col-span-2 grid grid-cols-subgrid"
+                      className="col-span-3 grid grid-cols-subgrid"
                     >
-                      <div className="col-span-2 grid grid-cols-subgrid items-baseline py-2">
+                      <div className="col-span-3 grid grid-cols-subgrid items-baseline py-2">
                         <span>{item.name}</span>
+                        <span />
                         <span className="text-right tabular-nums">
                           {formatUsdWholeUp(totalForCategory(expenses, item.id))}
                         </span>
                       </div>
                       {details.length > 0 ? (
-                        <div className="col-span-2 grid grid-cols-subgrid items-center gap-y-1 rounded-[6px] bg-[#f6f6f6] py-1">
+                        <div className="col-span-3 grid grid-cols-subgrid items-center gap-y-1 rounded-[6px] bg-[#f6f6f6] py-1">
                           {details.map((expense) => (
                             <ExpenseLine
                               key={expense.id}
@@ -2519,6 +2532,12 @@ function CategoryExpensesCard({
                               onEditAmount={setAmountEditId}
                               onEditName={setEditExpenseId}
                               nested
+                              spendingLabel={spendingCategoriesForExpense(
+                                expense.id,
+                                spendingCategories,
+                              )
+                                .map((category) => toSentenceCase(category.name))
+                                .join(', ')}
                             />
                           ))}
                         </div>
