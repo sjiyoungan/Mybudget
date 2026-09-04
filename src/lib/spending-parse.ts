@@ -490,11 +490,15 @@ function isCsv(file: File) {
 export async function parseStatementFile(
   file: File,
   accounts: BankAccount[],
+  pages?: number[],
 ): Promise<NewSpendingTxn[]> {
   const sourceFile = file.name
   if (isPdf(file)) {
+    if (pages && pages.length === 0) {
+      throw new Error(`${file.name}: choose at least one page.`)
+    }
     const { extractPdfTextItems } = await import('@/lib/extract-pdf')
-    const items = await extractPdfTextItems(file)
+    const items = await extractPdfTextItems(file, pages)
     const lines = groupRows(items)
     const accountId = guessSpendingAccountId(
       file.name,

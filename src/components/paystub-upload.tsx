@@ -14,6 +14,14 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -45,6 +53,22 @@ async function readPaystubFile(file: File): Promise<Paystub> {
 }
 
 const MAX_FILES = 20
+
+type PendingStatement = {
+  id: string
+  file: File
+  pageCount: number | null
+}
+
+function isStatementPdf(file: File) {
+  return (
+    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+  )
+}
+
+function allPages(count: number) {
+  return Array.from({ length: count }, (_, index) => index + 1)
+}
 
 function summaryMessage(saved: number, skipped: number, failed: string[]) {
   const parts: string[] = []
@@ -90,6 +114,12 @@ export function PaystubUploadButton({
     null,
   )
   const [message, setMessage] = useState<string | null>(null)
+  const [pendingStatements, setPendingStatements] = useState<PendingStatement[]>(
+    [],
+  )
+  const [selectedPages, setSelectedPages] = useState<Record<string, number[]>>(
+    {},
+  )
   const [pendingStub, setPendingStub] = useState<Paystub | null>(null)
 
   const busy = progress != null
@@ -177,26 +207,83 @@ export function PaystubUploadButton({
 
     setMessage(null)
     setProgress({ current: 0, total: files.length })
-    const batches: SpendingUploadBatch[] = []
-    const failed: string[] = []
+    const pending: PendingStatement[] = []
+    const pages: Record<string, number[]> = {}
 
     for (const [index, file] of files.entries()) {
       setProgress({ current: index + 1, total: files.length })
+      const id = crypto.randomUUID()
+      if (isStatementPdf(file)) {
+        try {
+          const { countPdfPages } = await import('@/lib/extract-pdf')
+          const pageCount = await countPdfPages(file)
+          pending.push({ id, file, pageCount })
+          pages[id] = allPages(pageCount)
+        } catch {
+          pending.push({ id, file, pageCount: 0 })
+          pages[id] = []
+        }
+      } else {
+        pending.push({ id, file, pageCount: null })
+      }
+    }
+
+    setProgress(null)
+    setSelectedPages(pages)
+    setPendingStatements(pending)
+  }
+
+  function toggleStatementPage(id: string, page: number) {
+    setSelectedPages((current) => {
+      const selected = current[id] ?? []
+      const next = selected.includes(page)
+        ? selected.filter((item) => item !== page)
+        : [...selected, page].sort((left, right) => left - right)
+      return { ...current, [id]: next }
+    })
+  }
+
+  function canImportStatements() {
+    return pendingStatements.some((item) => {
+      if (item.pageCount == null) return true
+      return (selectedPages[item.id] ?? []).length > 0
+    })
+  }
+
+  async function importPendingStatements() {
+    const pending = pendingStatements
+    if (pending.length === 0) return
+    setPendingStatements([])
+    setProgress({ current: 0, total: pending.length })
+    const batches: SpendingUploadBatch[] = []
+    const failed: string[] = []
+
+    for (const [index, item] of pending.entries()) {
+      setProgress({ current: index + 1, total: pending.length })
+      const pages =
+        item.pageCount == null ? undefined : (selectedPages[item.id] ?? [])
+      if (item.pageCount != null && (!pages || pages.length === 0)) {
+        failed.push(`${item.file.name}: choose at least one page.`)
+        continue
+      }
       try {
         batches.push({
-          name: file.name,
-          transactions: await parseStatementFile(file, accounts),
+          name: item.file.name,
+          transactions: await parseStatementFile(item.file, accounts, pages),
         })
       } catch (caught) {
         failed.push(
-          caught instanceof Error ? caught.message : file.name || 'one file',
+          caught instanceof Error
+            ? caught.message
+            : item.file.name || 'one file',
         )
-        batches.push({ name: file.name, transactions: [] })
+        batches.push({ name: item.file.name, transactions: [] })
       }
     }
 
     const { added } = importTransactions(batches)
     setProgress(null)
+    setSelectedPages({})
 
     if (added > 0) navigate('/spending')
     if (added > 0 || failed.length > 0) {
@@ -273,6 +360,91 @@ export function PaystubUploadButton({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <Dialog
+        open={pendingStatements.length > 0}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingStatements([])
+            setSelectedPages({})
+          }
+        }}
+      >
+        <DialogContent className="flex max-h-[min(36rem,calc(100vh-2rem))] w-[min(42rem,calc(100%-2rem))] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-4 sm:max-w-[min(42rem,calc(100%-2rem))]">
+          <DialogHeader className="pb-3">
+            <DialogTitle>Choose pages</DialogTitle>
+            <DialogDescription>
+              Pick which pages to read from each statement.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+            <div className="grid gap-3">
+              {pendingStatements.map((item) => {
+                const selected = selectedPages[item.id] ?? []
+                return (
+                  <div
+                    key={item.id}
+                    className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3"
+                  >
+                    <span className="min-w-0 break-words pt-1 [overflow-wrap:anywhere]">
+                      {item.file.name}
+                    </span>
+                    {item.pageCount == null ? (
+                      <span className="text-muted-foreground pt-1 text-sm">
+                        All rows
+                      </span>
+                    ) : item.pageCount <= 0 ? (
+                      <span className="text-muted-foreground pt-1 text-sm">
+                        Could not read pages
+                      </span>
+                    ) : (
+                      <div className="flex max-w-[16rem] flex-wrap justify-end gap-1">
+                        {allPages(item.pageCount).map((page) => {
+                          const on = selected.includes(page)
+                          return (
+                            <button
+                              key={page}
+                              type="button"
+                              aria-pressed={on}
+                              aria-label={`Page ${page}${on ? ', selected' : ''}`}
+                              onClick={() => toggleStatementPage(item.id, page)}
+                              className={cn(
+                                'hover-fill flex size-7 items-center justify-center rounded-md text-sm tabular-nums',
+                                on && 'hover-fill-active font-medium',
+                              )}
+                            >
+                              {page}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setPendingStatements([])
+                setSelectedPages({})
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!canImportStatements()}
+              onClick={() => void importPendingStatements()}
+            >
+              Import
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={pendingStub != null}
