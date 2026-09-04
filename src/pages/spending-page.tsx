@@ -1258,10 +1258,25 @@ function ExpenseSelectDropdown({
   isSelected: (id: string) => boolean
   onToggle: (id: string) => void
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [menuWidth, setMenuWidth] = useState<number>()
+  const ordered = [...lines].sort((left, right) => {
+    const leftOn = isSelected(left.id) ? 0 : 1
+    const rightOn = isSelected(right.id) ? 0 : 1
+    return leftOn - rightOn
+  })
+
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (!open) return
+        const width = triggerRef.current?.getBoundingClientRect().width
+        if (width) setMenuWidth(width)
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button
+          ref={triggerRef}
           type="button"
           variant="outline"
           size="sm"
@@ -1273,9 +1288,14 @@ function ExpenseSelectDropdown({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className="z-[60] max-h-72 min-w-64 overflow-y-auto"
+        className="z-[60] max-h-72 min-w-0 overflow-x-hidden overflow-y-auto"
+        style={
+          menuWidth
+            ? { width: menuWidth, minWidth: menuWidth, maxWidth: menuWidth }
+            : undefined
+        }
       >
-        {lines.length === 0 ? (
+        {ordered.length === 0 ? (
           <DropdownMenuItem
             className="text-muted-foreground"
             onSelect={(event) => event.preventDefault()}
@@ -1283,18 +1303,18 @@ function ExpenseSelectDropdown({
             No expenses
           </DropdownMenuItem>
         ) : (
-          lines.map((expense) => {
+          ordered.map((expense) => {
             const on = isSelected(expense.id)
             return (
               <DropdownMenuItem
                 key={expense.id}
-                className="grid cursor-pointer grid-cols-[1fr_auto] items-center gap-3"
+                className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
                 onSelect={(event) => {
                   event.preventDefault()
                   onToggle(expense.id)
                 }}
               >
-                <span className={on ? 'font-medium' : undefined}>
+                <span className={cn('truncate', on && 'font-medium')}>
                   {toSentenceCase(expense.name)}
                 </span>
                 <CategoryCheck checked={on} />
