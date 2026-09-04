@@ -554,7 +554,7 @@ export function SpendingPage() {
                   </span>
                 </button>
                 {expanded ? (
-                  <ul className="grid gap-0.5">
+                  <ul className="hover-fill-active grid gap-0.5 rounded-lg">
                     {row.items.map((txn) => (
                       <TransactionRow
                         key={txn.id}
