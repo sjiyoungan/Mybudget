@@ -43,7 +43,7 @@ type SpendingContextValue = {
     patch: Partial<Omit<SpendingTxn, 'id'>>,
   ) => void
   removeTransaction: (id: string) => void
-  addCategory: (name: string, expenseId?: string) => string | null
+  addCategory: (name: string, expenseIds?: string[]) => string | null
   replaceCategories: (categories: SpendingCategory[]) => void
   addRule: (input: {
     match: string
@@ -128,11 +128,11 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
           transactions: current.transactions.filter((txn) => txn.id !== id),
         }))
       },
-      addCategory(name, expenseId) {
+      addCategory(name, expenseIds) {
         const trimmed = toSentenceCase(name)
         if (!trimmed) return null
         const id = crypto.randomUUID()
-        const linked = expenseId?.trim()
+        const linked = (expenseIds ?? []).map((item) => item.trim()).filter(Boolean)
         setState((current) => ({
           ...current,
           categories: [
@@ -140,7 +140,8 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
             {
               id,
               name: trimmed,
-              ...(linked ? { expenseId: linked } : {}),
+              ...(linked.length > 0 ? { expenseIds: linked } : {}),
+              grouped: true,
               updatedAt: nowIso(),
             },
           ],
@@ -152,29 +153,47 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
         for (const item of categories) {
           const name = toSentenceCase(item.name)
           if (!name) continue
-          const expenseId = item.expenseId?.trim()
+          const expenseIds = [
+            ...new Set(
+              (item.expenseIds ?? [])
+                .concat(item.expenseId ? [item.expenseId] : [])
+                .map((id) => id.trim())
+                .filter(Boolean),
+            ),
+          ]
           next.push({
             id: item.id,
             name,
-            ...(expenseId ? { expenseId } : {}),
+            ...(expenseIds.length > 0 ? { expenseIds } : {}),
+            ...(item.grouped ? { grouped: true } : {}),
             ...(item.enabled === false ? { enabled: false } : {}),
             updatedAt: nowIso(),
           })
         }
         const ids = new Set(next.map((item) => item.id))
+        const expenseToCategory = new Map<string, string>()
+        for (const item of next) {
+          for (const expenseId of item.expenseIds ?? []) {
+            expenseToCategory.set(expenseId, item.id)
+          }
+        }
         setState((current) => ({
           ...current,
           categories: next,
-          transactions: current.transactions.map((txn) =>
-            txn.categoryId && !ids.has(txn.categoryId)
-              ? {
-                  ...txn,
-                  categoryId: undefined,
-                  customCategory: true,
-                  updatedAt: nowIso(),
-                }
-              : txn,
-          ),
+          transactions: current.transactions.map((txn) => {
+            if (!txn.categoryId || ids.has(txn.categoryId)) return txn
+            const old = current.categories.find((item) => item.id === txn.categoryId)
+            const moved = (old?.expenseIds ?? [])
+              .concat(old?.expenseId ? [old.expenseId] : [])
+              .map((id) => expenseToCategory.get(id))
+              .find((id) => id != null)
+            return {
+              ...txn,
+              categoryId: moved,
+              customCategory: true,
+              updatedAt: nowIso(),
+            }
+          }),
         }))
       },
       addRule(input) {

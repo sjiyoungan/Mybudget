@@ -39,8 +39,10 @@ import { formatDateWithoutYear, formatUsd } from '@/lib/format'
 import { monthName } from '@/lib/income'
 import { useSpending } from '@/lib/spending-context'
 import {
+  categoryExpenseIds,
   displayMerchant,
   isActiveSpendingCategory,
+  isGroupedSpendingCategory,
   isSpendingPurchase,
   sortSpendingTxns,
   toSentenceCase,
@@ -263,14 +265,17 @@ export function SpendingPage() {
       }
     }
     const rows = activeCategories.map((category, index) => {
-      const expense = category.expenseId
-        ? expenses.find((item) => item.id === category.expenseId)
-        : undefined
+      const linked = categoryExpenseIds(category)
+        .map((id) => expenses.find((item) => item.id === id))
+        .filter((item): item is (typeof expenses)[number] => item != null)
       return {
         id: category.id,
         name: toSentenceCase(category.name),
         amount: totals.get(category.id) ?? 0,
-        budget: expense ? monthlyAmount(expense) : null,
+        budget:
+          linked.length > 0
+            ? linked.reduce((sum, item) => sum + monthlyAmount(item), 0)
+            : null,
         color: SLICE_COLORS[index % SLICE_COLORS.length],
       }
     })
@@ -802,6 +807,7 @@ type ExtraDraft = {
   id: string
   name: string
   enabled: boolean
+  expenseIds: string[]
 }
 
 function snapshotCategoryPicks(
@@ -814,7 +820,19 @@ function snapshotCategoryPicks(
       id: item.id,
       name: item.name.trim(),
       enabled: item.enabled,
+      expenseIds: [...item.expenseIds].sort(),
     })),
+  })
+}
+
+function standaloneCategoryForExpense(
+  categories: SpendingCategory[],
+  expenseId: string,
+) {
+  return categories.find((item) => {
+    if (isGroupedSpendingCategory(item)) return false
+    const ids = categoryExpenseIds(item)
+    return ids.length === 1 && ids[0] === expenseId
   })
 }
 
@@ -846,15 +864,17 @@ function EditCategoriesDialog({
     if (!open) return
     const nextChecked = categories
       .filter(
-        (item) => item.expenseId && isActiveSpendingCategory(item),
+        (item) =>
+          isActiveSpendingCategory(item) && !isGroupedSpendingCategory(item),
       )
-      .map((item) => item.expenseId as string)
+      .flatMap((item) => categoryExpenseIds(item))
     const nextExtras = categories
-      .filter((item) => !item.expenseId)
+      .filter(isGroupedSpendingCategory)
       .map((item) => ({
         id: item.id,
         name: item.name,
         enabled: isActiveSpendingCategory(item),
+        expenseIds: categoryExpenseIds(item),
       }))
     setCheckedIds(nextChecked)
     setExtras(nextExtras)
@@ -864,6 +884,9 @@ function EditCategoriesDialog({
 
   const dirty = snapshotCategoryPicks(checkedIds, extras) !== baseline
   const checked = new Set(checkedIds)
+  const assignedIds = new Set(extras.flatMap((item) => item.expenseIds))
+  const standaloneLines = lines.filter((item) => !assignedIds.has(item.id))
+  const addableLines = standaloneLines
 
   function closeClean() {
     setConfirmOpen(false)
@@ -890,25 +913,52 @@ function EditCategoriesDialog({
   function addBlank() {
     setExtras((current) => [
       ...current,
-      { id: crypto.randomUUID(), name: '', enabled: true },
+      { id: crypto.randomUUID(), name: '', enabled: true, expenseIds: [] },
     ])
+  }
+
+  function addExpenseToGroup(groupId: string, expenseId: string) {
+    if (!expenseId || expenseId === NONE) return
+    setCheckedIds((current) => current.filter((id) => id !== expenseId))
+    setExtras((current) =>
+      current.map((item) =>
+        item.id === groupId && !item.expenseIds.includes(expenseId)
+          ? { ...item, expenseIds: [...item.expenseIds, expenseId] }
+          : item,
+      ),
+    )
+  }
+
+  function removeExpenseFromGroup(groupId: string, expenseId: string) {
+    setExtras((current) =>
+      current.map((item) =>
+        item.id === groupId
+          ? {
+              ...item,
+              expenseIds: item.expenseIds.filter((id) => id !== expenseId),
+            }
+          : item,
+      ),
+    )
   }
 
   function handleSave() {
     const next: SpendingCategory[] = []
+    const assigned = new Set(extras.flatMap((item) => item.expenseIds))
     for (const expense of lines) {
-      const existing = categories.find((item) => item.expenseId === expense.id)
+      if (assigned.has(expense.id)) continue
+      const existing = standaloneCategoryForExpense(categories, expense.id)
       if (checked.has(expense.id)) {
         next.push({
           id: existing?.id ?? crypto.randomUUID(),
           name: toSentenceCase(expense.name),
-          expenseId: expense.id,
+          expenseIds: [expense.id],
         })
       } else if (existing) {
         next.push({
           id: existing.id,
           name: toSentenceCase(expense.name),
-          expenseId: expense.id,
+          expenseIds: [expense.id],
           enabled: false,
         })
       }
@@ -919,6 +969,8 @@ function EditCategoriesDialog({
       next.push({
         id: extra.id,
         name,
+        grouped: true,
+        ...(extra.expenseIds.length > 0 ? { expenseIds: extra.expenseIds } : {}),
         ...(extra.enabled ? {} : { enabled: false }),
       })
     }
@@ -966,7 +1018,7 @@ function EditCategoriesDialog({
 
           <div className="no-scrollbar max-h-[min(70vh,40rem)] overflow-y-auto py-3">
             <ul className="grid gap-0.5">
-              {lines.map((expense) => {
+              {standaloneLines.map((expense) => {
                 const on = checked.has(expense.id)
                 return (
                   <li key={expense.id}>
@@ -992,59 +1044,109 @@ function EditCategoriesDialog({
             </ul>
 
             {extras.length > 0 ? (
-              <ul className="mt-3 grid gap-1.5 border-t pt-3">
+              <ul className="mt-3 grid gap-4 border-t pt-3">
                 {extras.map((extra) => (
-                  <li
-                    key={extra.id}
-                    className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 px-2.5"
-                  >
-                    <Input
-                      value={extra.name}
-                      placeholder="Name"
-                      aria-label="Category name"
-                      onChange={(event) =>
-                        setExtras((current) =>
-                          current.map((item) =>
-                            item.id === extra.id
-                              ? { ...item, name: event.target.value }
-                              : item,
-                          ),
+                  <li key={extra.id} className="grid gap-1">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 px-2.5">
+                      <Input
+                        value={extra.name}
+                        placeholder="Name"
+                        aria-label="Category name"
+                        onChange={(event) =>
+                          setExtras((current) =>
+                            current.map((item) =>
+                              item.id === extra.id
+                                ? { ...item, name: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={extra.enabled}
+                        aria-label={`Show ${extra.name || 'category'} on the pie`}
+                        className="flex size-8 cursor-pointer items-center justify-center"
+                        onClick={() =>
+                          setExtras((current) =>
+                            current.map((item) =>
+                              item.id === extra.id
+                                ? { ...item, enabled: !item.enabled }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        {extra.enabled ? (
+                          <Check className="size-4 text-neutral-500" />
+                        ) : null}
+                      </button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Remove ${extra.name || 'category'}`}
+                        onClick={() =>
+                          setExtras((current) =>
+                            current.filter((item) => item.id !== extra.id),
+                          )
+                        }
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                    <ul className="grid gap-0.5 pl-5">
+                      {extra.expenseIds.map((expenseId) => {
+                        const expense = lines.find((item) => item.id === expenseId)
+                        return (
+                          <li
+                            key={expenseId}
+                            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-1"
+                          >
+                            <span className="text-sm">
+                              {toSentenceCase(expense?.name ?? 'Removed expense')}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Remove ${expense?.name ?? 'expense'}`}
+                              onClick={() =>
+                                removeExpenseFromGroup(extra.id, expenseId)
+                              }
+                            >
+                              <Trash2 />
+                            </Button>
+                          </li>
                         )
-                      }
-                    />
-                    <button
-                      type="button"
-                      role="checkbox"
-                      aria-checked={extra.enabled}
-                      aria-label={`Show ${extra.name || 'category'} on the pie`}
-                      className="flex size-8 cursor-pointer items-center justify-center"
-                      onClick={() =>
-                        setExtras((current) =>
-                          current.map((item) =>
-                            item.id === extra.id
-                              ? { ...item, enabled: !item.enabled }
-                              : item,
-                          ),
-                        )
-                      }
-                    >
-                      {extra.enabled ? (
-                        <Check className="size-4 text-neutral-500" />
-                      ) : null}
-                    </button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Remove ${extra.name || 'category'}`}
-                      onClick={() =>
-                        setExtras((current) =>
-                          current.filter((item) => item.id !== extra.id),
-                        )
-                      }
-                    >
-                      <Trash2 />
-                    </Button>
+                      })}
+                    </ul>
+                    {addableLines.length > 0 ? (
+                      <div className="px-2.5">
+                        <Select
+                          key={extra.expenseIds.join('|')}
+                          onValueChange={(value) =>
+                            addExpenseToGroup(extra.id, value)
+                          }
+                        >
+                          <SelectTrigger
+                            size="sm"
+                            className="w-full"
+                            aria-label={`Add expense to ${extra.name || 'category'}`}
+                          >
+                            <SelectValue placeholder="Add expense" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {addableLines.map((expense) => (
+                              <SelectItem key={expense.id} value={expense.id}>
+                                {toSentenceCase(expense.name)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>

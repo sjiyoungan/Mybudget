@@ -20,8 +20,12 @@ export type SpendingTxn = {
 export type SpendingCategory = {
   id: string
   name: string
-  /** Recurring expense line this category is budgeted against. */
+  /** Recurring expense lines this category is budgeted against. */
+  expenseIds?: string[]
+  /** @deprecated Migrated into `expenseIds`. */
   expenseId?: string
+  /** Created with Add category so several expenses can share this name. */
+  grouped?: boolean
   /** When false, hidden from the pie and categorize options. */
   enabled?: boolean
   updatedAt?: string
@@ -29,6 +33,21 @@ export type SpendingCategory = {
 
 export function isActiveSpendingCategory(category: SpendingCategory) {
   return category.enabled !== false
+}
+
+export function categoryExpenseIds(category: SpendingCategory) {
+  const ids: string[] = []
+  for (const id of category.expenseIds ?? []) {
+    if (id && !ids.includes(id)) ids.push(id)
+  }
+  if (category.expenseId && !ids.includes(category.expenseId)) {
+    ids.push(category.expenseId)
+  }
+  return ids
+}
+
+export function isGroupedSpendingCategory(category: SpendingCategory) {
+  return category.grouped === true || categoryExpenseIds(category).length !== 1
 }
 
 export type SpendingRule = {
@@ -190,14 +209,22 @@ function normalizeCategory(value: unknown): SpendingCategory | null {
   if (!id || !name) return null
   const updatedAt =
     typeof row.updatedAt === 'string' && row.updatedAt ? row.updatedAt : undefined
-  const expenseId =
-    typeof row.expenseId === 'string' && row.expenseId
-      ? row.expenseId
-      : undefined
+  const expenseIds = categoryExpenseIds({
+    id,
+    name,
+    expenseIds: Array.isArray(row.expenseIds)
+      ? row.expenseIds.filter((item): item is string => typeof item === 'string')
+      : undefined,
+    expenseId:
+      typeof row.expenseId === 'string' && row.expenseId
+        ? row.expenseId
+        : undefined,
+  })
   return {
     id,
     name,
-    ...(expenseId ? { expenseId } : {}),
+    ...(expenseIds.length > 0 ? { expenseIds } : {}),
+    ...(row.grouped === true ? { grouped: true } : {}),
     ...(row.enabled === false ? { enabled: false } : {}),
     ...(updatedAt ? { updatedAt } : {}),
   }
