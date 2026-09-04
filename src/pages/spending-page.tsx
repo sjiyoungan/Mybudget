@@ -1033,10 +1033,14 @@ function EditTxnForm({
                   )
                 }
                 return (
-                  <SelectGroup key={category.id}>
+                  <SelectGroup key={category.id} className="p-0">
                     <SelectLabel>{toSentenceCase(category.name)}</SelectLabel>
                     {children.map((child) => (
-                      <SelectItem key={child.id} value={child.id}>
+                      <SelectItem
+                        key={child.id}
+                        value={child.id}
+                        className="pl-3.5"
+                      >
                         {toSentenceCase(child.name)}
                       </SelectItem>
                     ))}
