@@ -10,12 +10,6 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer'
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -248,6 +242,9 @@ export function SpendingPage() {
       : defaultMonth
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
+  const [expandedStatementMonth, setExpandedStatementMonth] = useState<
+    string | null
+  >(null)
   const [expandedUpload, setExpandedUpload] = useState<string | null>(null)
   const [removeUploadId, setRemoveUploadId] = useState<string | null>(null)
   const [editCategoriesOpen, setEditCategoriesOpen] = useState(false)
@@ -266,20 +263,35 @@ export function SpendingPage() {
       ),
     [monthPrefix, transactions],
   )
-  const monthUploads = useMemo(() => {
-    if (activeMonth == null) return []
-    return [...uploads]
-      .filter((upload) =>
-        uploadBelongsToMonth(
-          upload,
-          selectedYear,
-          activeMonth,
-          transactions,
-          uploads,
+  const statementMonths = useMemo(() => {
+    const groups = new Map<
+      string,
+      { year: number; month: number; uploads: SpendingUpload[] }
+    >()
+    for (const upload of uploads) {
+      const key = uploadMonthKey(upload, transactions, uploads)
+      if (!key) continue
+      const id = `${key.year}-${key.month}`
+      const group = groups.get(id)
+      if (group) group.uploads.push(upload)
+      else groups.set(id, { year: key.year, month: key.month, uploads: [upload] })
+    }
+    const rows = [...groups.values()]
+      .map((group) => ({
+        ...group,
+        uploads: [...group.uploads].sort((left, right) =>
+          right.uploadedAt.localeCompare(left.uploadedAt),
         ),
-      )
-      .sort((left, right) => right.uploadedAt.localeCompare(left.uploadedAt))
-  }, [activeMonth, selectedYear, transactions, uploads])
+      }))
+      .sort((left, right) => right.year - left.year || right.month - left.month)
+    const manyYears = new Set(rows.map((row) => row.year)).size > 1
+    return rows.map((row) => ({
+      ...row,
+      label: manyYears
+        ? `${monthName(row.month)} ${row.year}`
+        : monthName(row.month),
+    }))
+  }, [transactions, uploads])
   const spentTxns = useMemo(
     () => monthTxns.filter(isSpendingPurchase),
     [monthTxns],
@@ -347,38 +359,48 @@ export function SpendingPage() {
 
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="font-heading text-3xl font-medium">Spending</h1>
-        <Select
-          value={String(selectedYear)}
-          onValueChange={(value) => {
-            const next = Number(value)
-            setYear(next)
-            setSelectedMonth(null)
-            setExpandedDay(null)
-          }}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="font-heading text-3xl font-medium">Spending</h1>
+          <Select
+            value={String(selectedYear)}
+            onValueChange={(value) => {
+              const next = Number(value)
+              setYear(next)
+              setSelectedMonth(null)
+              setExpandedDay(null)
+            }}
+          >
+            <SelectTrigger
+              aria-label="Spending year"
+              size="sm"
+              className="h-8 text-base"
+            >
+              <SelectValue placeholder="Year" />
+            </SelectTrigger>
+            <SelectContent
+              position="popper"
+              align="start"
+              side="bottom"
+              sideOffset={4}
+              className="w-(--radix-select-trigger-width) min-w-(--radix-select-trigger-width) rounded-md"
+            >
+              {years.map((option) => (
+                <SelectItem key={option} value={String(option)} className="text-base">
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setStatementsOpen(true)}
         >
-          <SelectTrigger
-            aria-label="Spending year"
-            size="sm"
-            className="h-8 text-base"
-          >
-            <SelectValue placeholder="Year" />
-          </SelectTrigger>
-          <SelectContent
-            position="popper"
-            align="start"
-            side="bottom"
-            sideOffset={4}
-            className="w-(--radix-select-trigger-width) min-w-(--radix-select-trigger-width) rounded-md"
-          >
-            {years.map((option) => (
-              <SelectItem key={option} value={String(option)} className="text-base">
-                {option}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          Statement
+        </Button>
       </div>
 
       <section className="grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
@@ -424,25 +446,14 @@ export function SpendingPage() {
           <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
             <CardTitle>Total expense</CardTitle>
             <CardAction>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={activeMonth == null}
-                  onClick={() => setStatementsOpen(true)}
-                >
-                  Statement
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setEditCategoriesOpen(true)}
-                >
-                  Edit category
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setEditCategoriesOpen(true)}
+              >
+                Edit category
+              </Button>
             </CardAction>
           </CardHeader>
           <CardContent className="grid gap-5">
@@ -531,90 +542,135 @@ export function SpendingPage() {
         </CardContent>
       </Card>
 
-      <Drawer
-        direction="right"
+      <Dialog
         open={statementsOpen}
         onOpenChange={(open) => {
           setStatementsOpen(open)
-          if (!open) setExpandedUpload(null)
+          if (!open) {
+            setExpandedStatementMonth(null)
+            setExpandedUpload(null)
+          }
         }}
       >
-        <DrawerContent className="min-w-0 overflow-x-hidden data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-full data-[vaul-drawer-direction=right]:max-w-[min(48rem,100%)] data-[vaul-drawer-direction=right]:sm:max-w-[min(48rem,100%)]">
-          <DrawerHeader>
-            <DrawerTitle>
-              {activeMonth == null
-                ? 'Statements'
-                : `${monthName(activeMonth)} statements`}
-            </DrawerTitle>
-          </DrawerHeader>
-          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pb-6">
-            {monthUploads.length === 0 ? (
+        <DialogContent
+          className="flex max-h-[min(40rem,calc(100vh-2rem))] w-[min(48rem,calc(100%-2rem))] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-4 sm:max-w-[min(48rem,calc(100%-2rem))]"
+        >
+          <DialogHeader className="pb-3">
+            <DialogTitle>Statements</DialogTitle>
+            <DialogDescription className="sr-only">
+              Uploaded statements grouped by month.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+            {statementMonths.length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                {activeMonth == null
-                  ? 'No statements to show yet.'
-                  : `No statements for ${monthName(activeMonth)}.`}
+                No statements uploaded yet.
               </p>
             ) : (
               <div className="grid min-w-0 gap-1">
-                {monthUploads.map((upload) => {
-                  const items = sortSpendingTxns(
-                    transactionsForUpload(transactions, upload, uploads),
-                  )
-                  const expanded = expandedUpload === upload.id
+                {statementMonths.map((group) => {
+                  const monthKey = `${group.year}-${group.month}`
+                  const monthOpen = expandedStatementMonth === monthKey
                   return (
-                    <div key={upload.id} className="min-w-0">
-                      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedUpload(expanded ? null : upload.id)
-                          }
-                          className="hover-fill grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left"
-                        >
-                          <span
-                            className={cn(
-                              'min-w-0 break-words [overflow-wrap:anywhere]',
-                              expanded && 'font-medium',
-                            )}
-                          >
-                            {upload.name}
-                          </span>
-                          <ChevronDown
-                            className={cn(
-                              'size-4 shrink-0 text-muted-foreground transition-transform',
-                              expanded && 'rotate-180',
-                            )}
-                          />
-                        </button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Remove ${upload.name}`}
-                          onClick={() => setRemoveUploadId(upload.id)}
-                        >
-                          <Trash2 />
-                        </Button>
-                      </div>
-                      {expanded ? (
-                        <ul className="grid min-w-0 gap-0.5 py-1 pl-2">
-                          {items.length === 0 ? (
-                            <li className="text-muted-foreground px-2.5 py-2 text-sm">
-                              No purchases from this file.
-                            </li>
-                          ) : (
-                            items.map((txn) => (
-                              <TransactionRow
-                                key={txn.id}
-                                txn={txn}
-                                accounts={accounts}
-                                categories={categories}
-                                showAccount={false}
-                                onClick={() => setEditing(txn)}
-                              />
-                            ))
+                    <div key={monthKey} className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExpandedStatementMonth(monthOpen ? null : monthKey)
+                          if (monthOpen) setExpandedUpload(null)
+                        }}
+                        className="hover-fill grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-lg px-2.5 py-2 text-left"
+                      >
+                        <span
+                          className={cn(
+                            'min-w-0',
+                            monthOpen && 'font-medium',
                           )}
-                        </ul>
+                        >
+                          {group.label}
+                        </span>
+                        <span className="text-muted-foreground shrink-0 text-sm">
+                          {statementCountLabel(group.uploads.length)}
+                        </span>
+                        <ChevronDown
+                          className={cn(
+                            'size-4 shrink-0 text-muted-foreground transition-transform',
+                            monthOpen && 'rotate-180',
+                          )}
+                        />
+                      </button>
+                      {monthOpen ? (
+                        <div className="grid min-w-0 gap-1 py-1 pl-3">
+                          {group.uploads.map((upload) => {
+                            const items = sortSpendingTxns(
+                              transactionsForUpload(
+                                transactions,
+                                upload,
+                                uploads,
+                              ),
+                            )
+                            const expanded = expandedUpload === upload.id
+                            return (
+                              <div key={upload.id} className="min-w-0">
+                                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedUpload(
+                                        expanded ? null : upload.id,
+                                      )
+                                    }
+                                    className="hover-fill grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2.5 py-2 text-left"
+                                  >
+                                    <span
+                                      className={cn(
+                                        'min-w-0 break-words [overflow-wrap:anywhere]',
+                                        expanded && 'font-medium',
+                                      )}
+                                    >
+                                      {upload.name}
+                                    </span>
+                                    <ChevronDown
+                                      className={cn(
+                                        'size-4 shrink-0 text-muted-foreground transition-transform',
+                                        expanded && 'rotate-180',
+                                      )}
+                                    />
+                                  </button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label={`Remove ${upload.name}`}
+                                    onClick={() => setRemoveUploadId(upload.id)}
+                                  >
+                                    <Trash2 />
+                                  </Button>
+                                </div>
+                                {expanded ? (
+                                  <ul className="grid min-w-0 gap-0.5 py-1 pl-2">
+                                    {items.length === 0 ? (
+                                      <li className="text-muted-foreground px-2.5 py-2 text-sm">
+                                        No purchases from this file.
+                                      </li>
+                                    ) : (
+                                      items.map((txn) => (
+                                        <TransactionRow
+                                          key={txn.id}
+                                          txn={txn}
+                                          accounts={accounts}
+                                          categories={categories}
+                                          showAccount={false}
+                                          onClick={() => setEditing(txn)}
+                                        />
+                                      ))
+                                    )}
+                                  </ul>
+                                ) : null}
+                              </div>
+                            )
+                          })}
+                        </div>
                       ) : null}
                     </div>
                   )
@@ -622,8 +678,8 @@ export function SpendingPage() {
               </div>
             )}
           </div>
-        </DrawerContent>
-      </Drawer>
+        </DialogContent>
+      </Dialog>
 
       <EditTxnDialog
         txn={editing}
@@ -1088,23 +1144,42 @@ function yearFromStatementName(name: string) {
   return match ? Number(match[1]) : null
 }
 
-function uploadBelongsToMonth(
+function uploadMonthKey(
   upload: SpendingUpload,
-  year: number,
-  month: number,
   transactions: SpendingTxn[],
   uploads: SpendingUpload[],
 ) {
   const namedMonth = monthFromStatementName(upload.name)
+  const namedYear = yearFromStatementName(upload.name)
   if (namedMonth != null) {
-    const namedYear = yearFromStatementName(upload.name)
-    if (namedYear != null) return namedYear === year && namedMonth === month
-    return namedMonth === month
+    if (namedYear != null) return { year: namedYear, month: namedMonth }
+    const dated = transactionsForUpload(transactions, upload, uploads).find(
+      (txn) => /^\d{4}-\d{2}/.test(txn.date),
+    )
+    const year = dated
+      ? Number(dated.date.slice(0, 4))
+      : new Date(upload.uploadedAt).getFullYear()
+    return {
+      year: Number.isFinite(year) ? year : new Date().getFullYear(),
+      month: namedMonth,
+    }
   }
-  const prefix = `${year}-${String(month + 1).padStart(2, '0')}-`
-  return transactionsForUpload(transactions, upload, uploads).some((txn) =>
-    txn.date.startsWith(prefix),
+  const dated = transactionsForUpload(transactions, upload, uploads).find(
+    (txn) => /^\d{4}-\d{2}/.test(txn.date),
   )
+  if (dated) {
+    return {
+      year: Number(dated.date.slice(0, 4)),
+      month: Number(dated.date.slice(5, 7)) - 1,
+    }
+  }
+  const uploaded = new Date(upload.uploadedAt)
+  if (!Number.isFinite(uploaded.getTime())) return null
+  return { year: uploaded.getFullYear(), month: uploaded.getMonth() }
+}
+
+function statementCountLabel(count: number) {
+  return count === 1 ? '1 statement' : `${count} statements`
 }
 
 function statementName(txn: SpendingTxn, uploads: SpendingUpload[]) {
