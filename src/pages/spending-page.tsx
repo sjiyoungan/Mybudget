@@ -914,8 +914,6 @@ function EditCategoriesDialog({
 
   const dirty = snapshotCategoryPicks(checkedIds, extras) !== baseline
   const checked = new Set(checkedIds)
-  const assignedIds = new Set(extras.flatMap((item) => item.expenseIds))
-  const standaloneLines = lines.filter((item) => !assignedIds.has(item.id))
   const editingExtra = extras.find((item) => item.id === editingExtraId)
   const editDirty =
     editingExtra != null &&
@@ -1119,15 +1117,26 @@ function EditCategoriesDialog({
             <>
           <div className="no-scrollbar max-h-[min(70vh,40rem)] overflow-y-auto py-3">
             <ul className="grid gap-0.5">
-              {standaloneLines.map((expense) => {
-                const on = checked.has(expense.id)
+              {lines.map((expense) => {
+                const groupedIn = extras.find((item) =>
+                  item.expenseIds.includes(expense.id),
+                )
+                const on = groupedIn != null || checked.has(expense.id)
                 return (
                   <li key={expense.id}>
                     <button
                       type="button"
                       role="checkbox"
                       aria-checked={on}
-                      onClick={() => toggleExpense(expense.id)}
+                      aria-label={
+                        groupedIn
+                          ? `${toSentenceCase(expense.name)}, included in ${toSentenceCase(groupedIn.name) || 'a category'}`
+                          : toSentenceCase(expense.name)
+                      }
+                      onClick={() => {
+                        if (groupedIn) return
+                        toggleExpense(expense.id)
+                      }}
                       className="hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-4 rounded-lg py-2 pr-2.5 pl-2.5 text-left"
                     >
                       <span className={on ? 'font-medium' : undefined}>
@@ -1141,74 +1150,76 @@ function EditCategoriesDialog({
             </ul>
 
             {extras.length > 0 ? (
-              <ul className="mt-3 grid gap-2 border-t pt-3">
+              <ul className="mt-3 grid gap-0.5 border-t pt-3">
                 {extras.map((extra) => (
                   <li
                     key={extra.id}
-                    className="flex min-w-0 items-center gap-2 px-2.5"
+                    className="hover-fill grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg py-1.5 pr-2.5 pl-2.5"
                   >
-                    <Input
-                      className="w-36 shrink-0 sm:w-44"
-                      value={extra.name}
-                      placeholder="Name"
-                      aria-label="Category name"
-                      onChange={(event) =>
-                        setExtras((current) =>
-                          current.map((item) =>
-                            item.id === extra.id
-                              ? { ...item, name: event.target.value }
-                              : item,
-                          ),
-                        )
-                      }
-                    />
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="min-w-0 flex-1 justify-between bg-white"
-                        >
-                          <span className="truncate">
-                            {expenseCountLabel(extra.expenseIds.length)}
-                          </span>
-                          <ChevronDown className="size-4 shrink-0" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="min-w-56">
-                        {extra.expenseIds.length === 0 ? (
-                          <DropdownMenuItem
-                            className="text-muted-foreground"
-                            onSelect={(event) => event.preventDefault()}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Input
+                        className="h-8 min-w-0 flex-1"
+                        value={extra.name}
+                        placeholder="Name"
+                        aria-label="Category name"
+                        onChange={(event) =>
+                          setExtras((current) =>
+                            current.map((item) =>
+                              item.id === extra.id
+                                ? { ...item, name: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-[13.5rem] shrink-0 justify-between bg-white"
                           >
-                            No expenses selected
+                            <span className="truncate">
+                              {expenseCountLabel(extra.expenseIds.length)}
+                            </span>
+                            <ChevronDown className="size-4 shrink-0" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="min-w-56">
+                          {extra.expenseIds.length === 0 ? (
+                            <DropdownMenuItem
+                              className="text-muted-foreground"
+                              onSelect={(event) => event.preventDefault()}
+                            >
+                              No expenses selected
+                            </DropdownMenuItem>
+                          ) : (
+                            extra.expenseIds.map((expenseId) => {
+                              const expense = lines.find(
+                                (item) => item.id === expenseId,
+                              )
+                              return (
+                                <DropdownMenuItem
+                                  key={expenseId}
+                                  onSelect={(event) => event.preventDefault()}
+                                >
+                                  {toSentenceCase(
+                                    expense?.name ?? 'Removed expense',
+                                  )}
+                                </DropdownMenuItem>
+                              )
+                            })
+                          )}
+                          <DropdownMenuItem
+                            className="text-muted-foreground mt-1 border-t"
+                            onSelect={() => openExtraEditor(extra.id)}
+                          >
+                            Edit
                           </DropdownMenuItem>
-                        ) : (
-                          extra.expenseIds.map((expenseId) => {
-                            const expense = lines.find(
-                              (item) => item.id === expenseId,
-                            )
-                            return (
-                              <DropdownMenuItem
-                                key={expenseId}
-                                onSelect={(event) => event.preventDefault()}
-                              >
-                                {toSentenceCase(
-                                  expense?.name ?? 'Removed expense',
-                                )}
-                              </DropdownMenuItem>
-                            )
-                          })
-                        )}
-                        <DropdownMenuItem
-                          className="text-muted-foreground mt-1 border-t"
-                          onSelect={() => openExtraEditor(extra.id)}
-                        >
-                          Edit
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                     <button
                       type="button"
                       role="checkbox"
