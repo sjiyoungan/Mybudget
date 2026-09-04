@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronDown, Pencil, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -27,7 +27,9 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -41,7 +43,7 @@ import {
   type RecurringExpense,
 } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
-import { formatDateWithoutYear, formatUsd } from '@/lib/format'
+import { formatDateWithoutYear, formatUsd, formatUsdWholeUp } from '@/lib/format'
 import { monthName } from '@/lib/income'
 import { useSpending } from '@/lib/spending-context'
 import {
@@ -952,9 +954,7 @@ function EditTxnForm({
   const [amount, setAmount] = useState(Math.abs(txn.amount).toFixed(2))
   const [date, setDate] = useState(txn.date)
   const [accountId, setAccountId] = useState(txn.accountId)
-  const [categoryId, setCategoryId] = useState(
-    () => rolledSpendingCategoryId(txn.categoryId, categories) ?? '',
-  )
+  const [categoryId, setCategoryId] = useState(() => txn.categoryId ?? '')
   const categoryOptions = visibleSpendingCategories(categories)
   const [createRule, setCreateRule] = useState(false)
   const [match, setMatch] = useState(() => defaultRuleMatch(txn.description))
@@ -994,11 +994,28 @@ function EditTxnForm({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={NONE}>Uncategorized</SelectItem>
-              {categoryOptions.map((category) => (
-                <SelectItem key={category.id} value={category.id}>
-                  {toSentenceCase(category.name)}
-                </SelectItem>
-              ))}
+              {categoryOptions.map((category) => {
+                const children = categories.filter(
+                  (item) => item.parentId === category.id,
+                )
+                if (children.length === 0) {
+                  return (
+                    <SelectItem key={category.id} value={category.id}>
+                      {toSentenceCase(category.name)}
+                    </SelectItem>
+                  )
+                }
+                return (
+                  <SelectGroup key={category.id}>
+                    <SelectLabel>{toSentenceCase(category.name)}</SelectLabel>
+                    {children.map((child) => (
+                      <SelectItem key={child.id} value={child.id}>
+                        {toSentenceCase(child.name)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )
+              })}
             </SelectContent>
           </Select>
         </label>
@@ -1114,35 +1131,43 @@ function EditTxnForm({
   )
 }
 
-type ExtraDraft = {
+type ChildDraft = {
+  id: string
+  name: string
+  budget: string
+}
+
+type GroupDraft = {
   id: string
   name: string
   expenseIds: string[]
+  categories: ChildDraft[]
+  open: boolean
 }
 
-function snapshotCategoryPicks(
-  checked: string[],
-  extras: ExtraDraft[],
-) {
-  return JSON.stringify({
-    checked: [...checked].sort(),
-    extras: extras.map((item) => ({
-      id: item.id,
-      name: item.name.trim(),
-      expenseIds: [...item.expenseIds].sort(),
+function snapshotCategoryPicks(groups: GroupDraft[]) {
+  return JSON.stringify(
+    groups.map((group) => ({
+      id: group.id,
+      name: group.name.trim(),
+      expenseIds: [...group.expenseIds].sort(),
+      categories: group.categories.map((item) => ({
+        id: item.id,
+        name: item.name.trim(),
+        budget: item.budget.trim(),
+      })),
     })),
-  })
+  )
 }
 
-function standaloneCategoryForExpense(
-  categories: SpendingCategory[],
-  expenseId: string,
-) {
-  return categories.find((item) => {
-    if (isGroupedSpendingCategory(item)) return false
-    const ids = categoryExpenseIds(item)
-    return ids.length === 1 && ids[0] === expenseId
-  })
+function allotExpenseLabel(ids: string[], expenses: RecurringExpense[]) {
+  if (ids.length === 0) return 'Allot expense'
+  if (ids.length === 1) {
+    const expense = expenses.find((item) => item.id === ids[0])
+    if (!expense) return 'Allot expense'
+    return `${toSentenceCase(expense.name)} · ${formatUsdWholeUp(monthlyAmount(expense))}`
+  }
+  return `${ids.length} expenses`
 }
 
 function expenseCountLabel(count: number) {
@@ -1248,12 +1273,14 @@ function CategoryCheck({ checked }: { checked: boolean }) {
 function ExpenseSelectDropdown({
   className,
   count,
+  label,
   lines,
   isSelected,
   onToggle,
 }: {
   className?: string
   count: number
+  label?: string
   lines: RecurringExpense[]
   isSelected: (id: string) => boolean
   onToggle: (id: string) => void
@@ -1282,7 +1309,7 @@ function ExpenseSelectDropdown({
           size="sm"
           className={cn('shrink-0 justify-between bg-white', className)}
         >
-          <span className="truncate">{expenseCountLabel(count)}</span>
+          <span className="truncate">{label ?? expenseCountLabel(count)}</span>
           <ChevronDown className="size-4 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
@@ -1347,48 +1374,58 @@ function EditCategoriesDialog({
     [expenses, groups],
   )
   const listRef = useRef<HTMLDivElement>(null)
-  const pendingScrollExtraId = useRef<string | null>(null)
-  const [checkedIds, setCheckedIds] = useState<string[]>([])
-  const [extras, setExtras] = useState<ExtraDraft[]>([])
+  const pendingScrollId = useRef<string | null>(null)
+  const [drafts, setDrafts] = useState<GroupDraft[]>([])
   const [baseline, setBaseline] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    const nextChecked = categories
-      .filter(
-        (item) =>
-          isActiveSpendingCategory(item) && !isGroupedSpendingCategory(item),
-      )
-      .flatMap((item) => categoryExpenseIds(item))
-    const nextExtras = categories
-      .filter(isGroupedSpendingCategory)
-      .map((item) => ({
+    const children = new Map<string, ChildDraft[]>()
+    for (const item of categories) {
+      if (!item.parentId) continue
+      const list = children.get(item.parentId) ?? []
+      list.push({
+        id: item.id,
+        name: item.name,
+        budget: item.budget != null ? String(item.budget) : '',
+      })
+      children.set(item.parentId, list)
+    }
+    const nextDrafts: GroupDraft[] = []
+    for (const item of categories) {
+      if (item.parentId) continue
+      if (
+        !isGroupedSpendingCategory(item) &&
+        !(isActiveSpendingCategory(item) && categoryExpenseIds(item).length > 0)
+      ) {
+        continue
+      }
+      nextDrafts.push({
         id: item.id,
         name: item.name,
         expenseIds: categoryExpenseIds(item),
-      }))
-    setCheckedIds(nextChecked)
-    setExtras(nextExtras)
-    setBaseline(snapshotCategoryPicks(nextChecked, nextExtras))
+        categories: children.get(item.id) ?? [],
+        open: false,
+      })
+    }
+    setDrafts(nextDrafts)
+    setBaseline(snapshotCategoryPicks(nextDrafts))
     setConfirmOpen(false)
-    pendingScrollExtraId.current = null
+    pendingScrollId.current = null
   }, [categories, open])
 
   useLayoutEffect(() => {
-    const id = pendingScrollExtraId.current
+    const id = pendingScrollId.current
     if (!id) return
-    pendingScrollExtraId.current = null
-    const node = listRef.current?.querySelector(`[data-extra-id="${id}"]`)
+    pendingScrollId.current = null
+    const node = listRef.current?.querySelector(`[data-scroll-id="${id}"]`)
     if (!(node instanceof HTMLElement)) return
     node.scrollIntoView({ behavior: 'smooth', block: 'end' })
     node.querySelector('input')?.focus()
-  }, [extras])
+  }, [drafts])
 
-  const dirty = snapshotCategoryPicks(checkedIds, extras) !== baseline
-  const checked = new Set(checkedIds)
-  const assignedIds = new Set(extras.flatMap((item) => item.expenseIds))
-  const standaloneCount = checkedIds.filter((id) => !assignedIds.has(id)).length
+  const dirty = snapshotCategoryPicks(drafts) !== baseline
 
   function closeClean() {
     setConfirmOpen(false)
@@ -1404,27 +1441,43 @@ function EditCategoriesDialog({
     closeClean()
   }
 
-  function toggleExpense(id: string) {
-    if (assignedIds.has(id)) return
-    setCheckedIds((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id],
+  function updateGroup(id: string, patch: Partial<GroupDraft>) {
+    setDrafts((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     )
   }
 
-  function addBlank() {
+  function addGroup() {
     const id = crypto.randomUUID()
-    pendingScrollExtraId.current = id
-    setExtras((current) => [...current, { id, name: '', expenseIds: [] }])
+    pendingScrollId.current = id
+    setDrafts((current) => [
+      ...current,
+      { id, name: '', expenseIds: [], categories: [], open: true },
+    ])
   }
 
-  function toggleExtraExpense(extraId: string, expenseId: string) {
-    setExtras((current) => {
-      const extra = current.find((item) => item.id === extraId)
-      const adding = extra != null && !extra.expenseIds.includes(expenseId)
+  function addCategory(groupId: string) {
+    const id = crypto.randomUUID()
+    pendingScrollId.current = id
+    setDrafts((current) =>
+      current.map((item) =>
+        item.id === groupId
+          ? {
+              ...item,
+              open: true,
+              categories: [...item.categories, { id, name: '', budget: '' }],
+            }
+          : item,
+      ),
+    )
+  }
+
+  function toggleAllotment(groupId: string, expenseId: string) {
+    setDrafts((current) => {
+      const group = current.find((item) => item.id === groupId)
+      const adding = group != null && !group.expenseIds.includes(expenseId)
       return current.map((item) => {
-        if (item.id === extraId) {
+        if (item.id === groupId) {
           return {
             ...item,
             expenseIds: item.expenseIds.includes(expenseId)
@@ -1441,39 +1494,36 @@ function EditCategoriesDialog({
         return item
       })
     })
-    setCheckedIds((current) => current.filter((id) => id !== expenseId))
   }
 
   function handleSave() {
     const next: SpendingCategory[] = []
-    const assigned = new Set(extras.flatMap((item) => item.expenseIds))
-    for (const expense of lines) {
-      if (assigned.has(expense.id)) continue
-      const existing = standaloneCategoryForExpense(categories, expense.id)
-      if (checked.has(expense.id)) {
+    for (const group of drafts) {
+      const name = toSentenceCase(group.name)
+      if (!name) continue
+      next.push({
+        id: group.id,
+        name,
+        grouped: true,
+        ...(group.expenseIds.length > 0 ? { expenseIds: group.expenseIds } : {}),
+      })
+      for (const child of group.categories) {
+        const childName = toSentenceCase(child.name)
+        if (!childName) continue
+        const budget = parseAmount(child.budget)
         next.push({
-          id: existing?.id ?? crypto.randomUUID(),
-          name: toSentenceCase(expense.name),
-          expenseIds: [expense.id],
-        })
-      } else if (existing) {
-        next.push({
-          id: existing.id,
-          name: toSentenceCase(expense.name),
-          expenseIds: [expense.id],
-          enabled: false,
+          id: child.id,
+          name: childName,
+          parentId: group.id,
+          ...(budget != null && budget >= 0 ? { budget } : {}),
         })
       }
     }
-    for (const extra of extras) {
-      const name = toSentenceCase(extra.name)
-      if (!name) continue
-      next.push({
-        id: extra.id,
-        name,
-        grouped: true,
-        ...(extra.expenseIds.length > 0 ? { expenseIds: extra.expenseIds } : {}),
-      })
+    for (const item of categories) {
+      if (item.enabled !== false) continue
+      if (item.parentId || item.grouped) continue
+      if (next.some((row) => row.id === item.id)) continue
+      next.push(item)
     }
     onSave(next)
   }
@@ -1487,7 +1537,7 @@ function EditCategoriesDialog({
         }}
       >
         <DialogContent
-          className="w-[min(42rem,calc(100%-2rem))] max-w-[calc(100%-2rem)] gap-0 p-4 sm:max-w-2xl"
+          className="w-[min(46rem,calc(100%-2rem))] max-w-[calc(100%-2rem)] gap-0 p-4 sm:max-w-2xl"
           showCloseButton={false}
           onEscapeKeyDown={(event) => {
             event.preventDefault()
@@ -1510,9 +1560,9 @@ function EditCategoriesDialog({
                 variant="outline"
                 size="sm"
                 className="bg-white"
-                onClick={addBlank}
+                onClick={addGroup}
               >
-                Add category
+                Add group
               </Button>
             </div>
           </div>
@@ -1521,66 +1571,155 @@ function EditCategoriesDialog({
             ref={listRef}
             className="no-scrollbar max-h-[min(70vh,40rem)] overflow-y-auto py-3"
           >
-            <div className="px-2.5 py-1.5">
-              <ExpenseSelectDropdown
-                className="w-full"
-                count={standaloneCount}
-                lines={lines}
-                isSelected={(id) => !assignedIds.has(id) && checked.has(id)}
-                onToggle={toggleExpense}
-              />
-            </div>
-
-            {extras.length > 0 ? (
-              <ul className="mt-1 grid gap-0.5">
-                {extras.map((extra) => (
+            {drafts.length === 0 ? (
+              <p className="text-muted-foreground px-2.5 py-2 text-sm">
+                Add a group, allot an expense as its budget, then expand it to
+                add categories like eating out or hobbies.
+              </p>
+            ) : (
+              <ul className="grid gap-1">
+                {drafts.map((group) => (
                   <li
-                    key={extra.id}
-                    data-extra-id={extra.id}
-                    className="hover-fill grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg py-1.5 pr-2.5 pl-2.5"
+                    key={group.id}
+                    data-scroll-id={group.id}
+                    className="rounded-lg"
                   >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Input
-                        className="h-8 min-w-0 flex-1"
-                        value={extra.name}
-                        placeholder="Name"
-                        aria-label="Category name"
-                        onChange={(event) =>
-                          setExtras((current) =>
-                            current.map((item) =>
-                              item.id === extra.id
-                                ? { ...item, name: event.target.value }
-                                : item,
-                            ),
+                    <div className="hover-fill grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg py-1.5 pr-2.5 pl-1.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="shrink-0"
+                        aria-expanded={group.open}
+                        aria-label={
+                          group.open
+                            ? `Collapse ${group.name || 'group'}`
+                            : `Expand ${group.name || 'group'}`
+                        }
+                        onClick={() => updateGroup(group.id, { open: !group.open })}
+                      >
+                        <ChevronDown
+                          className={cn(
+                            'size-4 text-muted-foreground transition-transform',
+                            group.open && 'rotate-180',
+                          )}
+                        />
+                      </Button>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Input
+                          className="h-8 min-w-0 flex-1"
+                          value={group.name}
+                          placeholder="Group"
+                          aria-label="Group name"
+                          onChange={(event) =>
+                            updateGroup(group.id, { name: event.target.value })
+                          }
+                        />
+                        <ExpenseSelectDropdown
+                          className="w-[14.5rem]"
+                          count={group.expenseIds.length}
+                          label={allotExpenseLabel(group.expenseIds, lines)}
+                          lines={lines}
+                          isSelected={(id) => group.expenseIds.includes(id)}
+                          onToggle={(id) => toggleAllotment(group.id, id)}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="shrink-0"
+                        aria-label={`Remove ${group.name || 'group'}`}
+                        onClick={() =>
+                          setDrafts((current) =>
+                            current.filter((item) => item.id !== group.id),
                           )
                         }
-                      />
-                      <ExpenseSelectDropdown
-                        className="w-[13.5rem]"
-                        count={extra.expenseIds.length}
-                        lines={lines}
-                        isSelected={(id) => extra.expenseIds.includes(id)}
-                        onToggle={(id) => toggleExtraExpense(extra.id, id)}
-                      />
+                      >
+                        <Trash2 />
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="shrink-0"
-                      aria-label={`Remove ${extra.name || 'category'}`}
-                      onClick={() =>
-                        setExtras((current) =>
-                          current.filter((item) => item.id !== extra.id),
-                        )
-                      }
-                    >
-                      <Trash2 />
-                    </Button>
+                    {group.open ? (
+                      <div className="mt-0.5 mb-1 ml-9 grid gap-0.5 pr-2.5">
+                        {group.categories.map((child) => (
+                          <div
+                            key={child.id}
+                            data-scroll-id={child.id}
+                            className="hover-fill flex items-center gap-2 rounded-lg py-1 pr-1 pl-2.5"
+                          >
+                            <Input
+                              className="h-8 min-w-0 flex-1"
+                              value={child.name}
+                              placeholder="Category"
+                              aria-label="Category name"
+                              onChange={(event) =>
+                                updateGroup(group.id, {
+                                  categories: group.categories.map((item) =>
+                                    item.id === child.id
+                                      ? { ...item, name: event.target.value }
+                                      : item,
+                                  ),
+                                })
+                              }
+                            />
+                            <div className="flex h-8 w-[5.75rem] shrink-0 items-center rounded-lg border px-2">
+                              <span className="text-muted-foreground text-sm">
+                                $
+                              </span>
+                              <input
+                                className="h-full w-full min-w-0 bg-transparent text-right text-sm tabular-nums outline-none"
+                                value={child.budget}
+                                placeholder="0"
+                                inputMode="decimal"
+                                aria-label={`${child.name || 'Category'} budget`}
+                                onChange={(event) =>
+                                  updateGroup(group.id, {
+                                    categories: group.categories.map((item) =>
+                                      item.id === child.id
+                                        ? {
+                                            ...item,
+                                            budget: event.target.value,
+                                          }
+                                        : item,
+                                    ),
+                                  })
+                                }
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="shrink-0"
+                              aria-label={`Remove ${child.name || 'category'}`}
+                              onClick={() =>
+                                updateGroup(group.id, {
+                                  categories: group.categories.filter(
+                                    (item) => item.id !== child.id,
+                                  ),
+                                })
+                              }
+                            >
+                              <Trash2 />
+                            </Button>
+                          </div>
+                        ))}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground h-8 justify-start px-2.5 hover:bg-transparent hover:text-foreground"
+                          onClick={() => addCategory(group.id)}
+                        >
+                          <Plus className="size-3.5" />
+                          Add category
+                        </Button>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>
-            ) : null}
+            )}
           </div>
 
           <DialogFooter className="relative z-20 items-center sm:justify-end sm:gap-4">

@@ -219,6 +219,8 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
             id: item.id,
             name,
             ...(expenseIds.length > 0 ? { expenseIds } : {}),
+            ...(item.parentId ? { parentId: item.parentId } : {}),
+            ...(item.budget != null ? { budget: item.budget } : {}),
             ...(item.grouped ? { grouped: true } : {}),
             ...(item.enabled === false ? { enabled: false } : {}),
             updatedAt: nowIso(),
@@ -237,10 +239,14 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
           transactions: current.transactions.map((txn) => {
             if (!txn.categoryId || ids.has(txn.categoryId)) return txn
             const old = current.categories.find((item) => item.id === txn.categoryId)
-            const moved = (old?.expenseIds ?? [])
-              .concat(old?.expenseId ? [old.expenseId] : [])
-              .map((id) => expenseToCategory.get(id))
-              .find((id) => id != null)
+            const parentId =
+              old?.parentId && ids.has(old.parentId) ? old.parentId : undefined
+            const moved =
+              parentId ??
+              (old?.expenseIds ?? [])
+                .concat(old?.expenseId ? [old.expenseId] : [])
+                .map((id) => expenseToCategory.get(id))
+                .find((id) => id != null)
             return {
               ...txn,
               categoryId: moved,

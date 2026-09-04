@@ -26,6 +26,10 @@ export type SpendingCategory = {
   expenseIds?: string[]
   /** @deprecated Migrated into `expenseIds`. */
   expenseId?: string
+  /** Parent group. Set on specific categories under a group. */
+  parentId?: string
+  /** Budget allotted to a child category, in dollars. */
+  budget?: number
   /** Created with Add category so several expenses can share this name. */
   grouped?: boolean
   /** When false, hidden from the pie and categorize options. */
@@ -49,7 +53,12 @@ export function categoryExpenseIds(category: SpendingCategory) {
   return ids
 }
 
+export function isSpendingChildCategory(category: SpendingCategory) {
+  return Boolean(category.parentId)
+}
+
 export function isGroupedSpendingCategory(category: SpendingCategory) {
+  if (category.parentId) return false
   return category.grouped === true || categoryExpenseIds(category).length !== 1
 }
 
@@ -63,6 +72,7 @@ export function visibleSpendingCategories(categories: SpendingCategory[]) {
       .flatMap(categoryExpenseIds),
   )
   return categories.filter((item) => {
+    if (item.parentId) return false
     if (!isActiveSpendingCategory(item)) return false
     if (isGroupedSpendingCategory(item)) return true
     return !categoryExpenseIds(item).some((id) => groupedExpenseIds.has(id))
@@ -105,6 +115,15 @@ export function applyExpenseSpendingBuckets(
     [...assignments.values()].filter((id) => id.length > 0),
   )
   return categories.map((item) => {
+    if (item.parentId) {
+      return {
+        id: item.id,
+        name: item.name,
+        parentId: item.parentId,
+        ...(item.budget != null ? { budget: item.budget } : {}),
+        ...(item.updatedAt ? { updatedAt: item.updatedAt } : {}),
+      }
+    }
     const remaining = categoryExpenseIds(item).filter((id) => {
       if (!assignments.has(id)) return true
       return assignments.get(id) === item.id
@@ -135,6 +154,10 @@ export function rolledSpendingCategoryId(
 ) {
   if (!categoryId) return undefined
   const current = categories.find((item) => item.id === categoryId)
+  if (current?.parentId) {
+    const parent = categories.find((item) => item.id === current.parentId)
+    if (parent && isActiveSpendingCategory(parent)) return parent.id
+  }
   const expenseIds = current ? categoryExpenseIds(current) : []
   const group = categories.find(
     (item) =>
@@ -344,10 +367,18 @@ function normalizeCategory(value: unknown): SpendingCategory | null {
         ? row.expenseId
         : undefined,
   })
+  const parentId =
+    typeof row.parentId === 'string' && row.parentId ? row.parentId : undefined
+  const budget =
+    typeof row.budget === 'number' && Number.isFinite(row.budget)
+      ? row.budget
+      : undefined
   return {
     id,
     name,
     ...(expenseIds.length > 0 ? { expenseIds } : {}),
+    ...(parentId ? { parentId } : {}),
+    ...(budget != null ? { budget } : {}),
     ...(row.grouped === true ? { grouped: true } : {}),
     ...(row.enabled === false ? { enabled: false } : {}),
     ...(updatedAt ? { updatedAt } : {}),
