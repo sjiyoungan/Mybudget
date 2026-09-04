@@ -50,8 +50,10 @@ import {
   isActiveSpendingCategory,
   isGroupedSpendingCategory,
   isSpendingPurchase,
+  rolledSpendingCategoryId,
   sortSpendingTxns,
   toSentenceCase,
+  visibleSpendingCategories,
   type SpendingCategory,
   type SpendingTxn,
 } from '@/lib/spending'
@@ -125,8 +127,9 @@ function categoryName(
   categoryId: string | undefined,
   categories: SpendingCategory[],
 ) {
-  if (!categoryId) return 'Uncategorized'
-  const name = categories.find((item) => item.id === categoryId)?.name
+  const resolved = rolledSpendingCategoryId(categoryId, categories)
+  if (!resolved) return 'Uncategorized'
+  const name = categories.find((item) => item.id === resolved)?.name
   return name ? toSentenceCase(name) : 'Uncategorized'
 }
 
@@ -205,7 +208,7 @@ export function SpendingPage() {
   } = useSpending()
   const { accounts, expenses, categories: expenseGroups } = useBudget()
   const activeCategories = useMemo(
-    () => categories.filter(isActiveSpendingCategory),
+    () => visibleSpendingCategories(categories),
     [categories],
   )
   const now = useMemo(() => new Date(), [])
@@ -263,7 +266,7 @@ export function SpendingPage() {
     const totals = new Map(activeCategories.map((category) => [category.id, 0]))
     let uncategorized = 0
     for (const txn of spentTxns) {
-      const key = txn.categoryId ?? ''
+      const key = rolledSpendingCategoryId(txn.categoryId, categories) ?? ''
       if (key && totals.has(key)) {
         totals.set(key, (totals.get(key) ?? 0) + txn.amount)
       } else {
@@ -298,7 +301,7 @@ export function SpendingPage() {
       (left, right) =>
         right.amount - left.amount || left.name.localeCompare(right.name),
     )
-  }, [activeCategories, expenses, spentTxns])
+  }, [activeCategories, categories, expenses, spentTxns])
   const dayRows = useMemo(() => {
     const byDay = new Map<string, SpendingTxn[]>()
     for (const txn of spentTxns) {
@@ -493,7 +496,7 @@ export function SpendingPage() {
       <EditTxnDialog
         txn={editing}
         accounts={accounts}
-        categories={activeCategories}
+        categories={categories}
         onClose={() => setEditing(null)}
         onSave={(id, patch, rule) => {
           updateTransaction(id, patch)
@@ -653,7 +656,10 @@ function EditTxnForm({
   const [amount, setAmount] = useState(Math.abs(txn.amount).toFixed(2))
   const [date, setDate] = useState(txn.date)
   const [accountId, setAccountId] = useState(txn.accountId)
-  const [categoryId, setCategoryId] = useState(txn.categoryId ?? '')
+  const [categoryId, setCategoryId] = useState(
+    () => rolledSpendingCategoryId(txn.categoryId, categories) ?? '',
+  )
+  const categoryOptions = visibleSpendingCategories(categories)
   const [createRule, setCreateRule] = useState(false)
   const [match, setMatch] = useState(() => defaultRuleMatch(txn.description))
   const parsedAmount = parseAmount(amount)
@@ -689,7 +695,7 @@ function EditTxnForm({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={NONE}>Uncategorized</SelectItem>
-              {categories.map((category) => (
+              {categoryOptions.map((category) => (
                 <SelectItem key={category.id} value={category.id}>
                   {toSentenceCase(category.name)}
                 </SelectItem>
@@ -1121,7 +1127,7 @@ function EditCategoriesDialog({
                 const groupedIn = extras.find((item) =>
                   item.expenseIds.includes(expense.id),
                 )
-                const on = groupedIn != null || checked.has(expense.id)
+                const on = !groupedIn && checked.has(expense.id)
                 return (
                   <li key={expense.id}>
                     <button
@@ -1130,7 +1136,7 @@ function EditCategoriesDialog({
                       aria-checked={on}
                       aria-label={
                         groupedIn
-                          ? `${toSentenceCase(expense.name)}, included in ${toSentenceCase(groupedIn.name) || 'a category'}`
+                          ? `${toSentenceCase(expense.name)} is under ${toSentenceCase(groupedIn.name) || 'a category'}`
                           : toSentenceCase(expense.name)
                       }
                       onClick={() => {

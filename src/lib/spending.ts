@@ -50,6 +50,39 @@ export function isGroupedSpendingCategory(category: SpendingCategory) {
   return category.grouped === true || categoryExpenseIds(category).length !== 1
 }
 
+export function visibleSpendingCategories(categories: SpendingCategory[]) {
+  const groupedExpenseIds = new Set(
+    categories
+      .filter(
+        (item) =>
+          isActiveSpendingCategory(item) && isGroupedSpendingCategory(item),
+      )
+      .flatMap(categoryExpenseIds),
+  )
+  return categories.filter((item) => {
+    if (!isActiveSpendingCategory(item)) return false
+    if (isGroupedSpendingCategory(item)) return true
+    return !categoryExpenseIds(item).some((id) => groupedExpenseIds.has(id))
+  })
+}
+
+export function rolledSpendingCategoryId(
+  categoryId: string | undefined,
+  categories: SpendingCategory[],
+) {
+  if (!categoryId) return undefined
+  const current = categories.find((item) => item.id === categoryId)
+  const expenseIds = current ? categoryExpenseIds(current) : []
+  const group = categories.find(
+    (item) =>
+      isActiveSpendingCategory(item) &&
+      isGroupedSpendingCategory(item) &&
+      categoryExpenseIds(item).some((id) => expenseIds.includes(id)),
+  )
+  if (group) return group.id
+  return categoryId
+}
+
 export type SpendingRule = {
   id: string
   match: string
