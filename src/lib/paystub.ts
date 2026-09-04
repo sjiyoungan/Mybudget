@@ -22,6 +22,7 @@ export type PdfTextItem = {
   str: string
   x: number
   y: number
+  page?: number
 }
 
 const ROW_TOLERANCE = 2.5
@@ -47,13 +48,19 @@ function parseAmount(fragments: string[]) {
 }
 
 function groupRows(items: PdfTextItem[]) {
-  const sorted = [...items].sort((left, right) => right.y - left.y || left.x - right.x)
-  const rows: { y: number; items: PdfTextItem[] }[] = []
+  const sorted = [...items].sort(
+    (left, right) =>
+      (left.page ?? 0) - (right.page ?? 0) || right.y - left.y || left.x - right.x,
+  )
+  const rows: { y: number; page: number; items: PdfTextItem[] }[] = []
 
   for (const item of sorted) {
-    const row = rows.find((entry) => Math.abs(entry.y - item.y) <= ROW_TOLERANCE)
+    const page = item.page ?? 0
+    const row = rows.find(
+      (entry) => entry.page === page && Math.abs(entry.y - item.y) <= ROW_TOLERANCE,
+    )
     if (row) row.items.push(item)
-    else rows.push({ y: item.y, items: [item] })
+    else rows.push({ y: item.y, page, items: [item] })
   }
 
   for (const row of rows) {

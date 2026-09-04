@@ -126,6 +126,11 @@ export function cleanMerchantName(text: string) {
     /\binterest charges?(?:,)?(?:\s+and)?(?:\s+purchases?)?\b/gi,
     '',
   )
+  value = value.replace(
+    /^(?:check card purchase|debit card purchase|ach deposit|ach withdrawal|ach debit|direct deposit|electronic deposit|electronic withdrawal|interest paid)\s+/i,
+    '',
+  )
+  value = value.replace(/,?\s+[A-Za-z .'-]+,\s+[A-Z]{2},\s+US$/i, '')
   value = value.replace(/\bpurchases?\s*$/i, '')
   value = value.replace(/[.,;:]+$/g, '').replace(/\s+/g, ' ').trim()
   return toSentenceCase(value)

@@ -17,7 +17,7 @@ export async function extractPdfTextItems(file: File): Promise<PdfTextItem[]> {
     for (const item of content.items) {
       if (!('str' in item) || !item.str.trim()) continue
       const [, , , , x, y] = item.transform
-      items.push({ str: item.str, x, y })
+      items.push({ str: item.str, x, y, page: pageNumber })
     }
   }
 

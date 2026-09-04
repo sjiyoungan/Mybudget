@@ -1,13 +1,21 @@
 import type { BankAccount } from '@/lib/budget'
 import type { PdfTextItem } from '@/lib/paystub'
-import { cleanMerchantName, type NewSpendingTxn } from '@/lib/spending'
+import {
+  cleanMerchantName,
+  toSentenceCase,
+  type NewSpendingTxn,
+} from '@/lib/spending'
 
 const ROW_TOLERANCE = 3
 const MONEY_RE =
   /\(?-?\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})\)?(?:\s*(?:CR|DR|Cr|Dr))?/g
 const DATE_RE = /\b(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/g
 const SKIP_DESC =
-  /^(beginning|ending) balance|^total\b|^page\b|statement period|continued on|average ledger|^date\b|^description\b|^amount\b|^balance\b|overdraft protection|^checks paid|^deposits and credits|^withdrawals and debits|^interest charges?(?: and)?(?: purchases?)?$|^new balance|^posted date|^transaction date|^post date/i
+  /^(beginning|ending) balance|^total\b|^page\b|statement period|continued on|average ledger|^date\b|^description\b|^amount\b|^balance\b|overdraft protection|^checks paid|^deposits and (?:other )?credits|^withdrawals and (?:other )?debits|^interest (?:charges?|paid)|(?:^|\b)new balance|^posted date|^transaction date|^post date|^account name|^spending account|^savings account|^customer statement|^checks outstanding|suspected error|describe the error|^to balance your account|^equal housing|^[\u2022\u25cf\u25e6\u2043\u2219\u00b7\u2023]/i
+const ACTIVITY_HEADER =
+  /date\s+description\s+(?:credits\s+debits\s+balance|amount\s+balance)/i
+const SECTION_BREAK =
+  /^(?:summary|overdraft|activity|regulatory|send correspondence|ally bank member|combined customer|page \d)/i
 
 function pad2(value: number) {
   return String(value).padStart(2, '0')
@@ -70,13 +78,18 @@ function normalizeRow(text: string) {
 
 function groupRows(items: PdfTextItem[]) {
   const sorted = [...items].sort(
-    (left, right) => right.y - left.y || left.x - right.x,
+    (left, right) =>
+      (left.page ?? 0) - (right.page ?? 0) || right.y - left.y || left.x - right.x,
   )
-  const rows: { y: number; items: PdfTextItem[] }[] = []
+  const rows: { y: number; page: number; items: PdfTextItem[] }[] = []
   for (const item of sorted) {
-    const row = rows.find((entry) => Math.abs(entry.y - item.y) <= ROW_TOLERANCE)
+    const page = item.page ?? 0
+    const row = rows.find(
+      (entry) =>
+        entry.page === page && Math.abs(entry.y - item.y) <= ROW_TOLERANCE,
+    )
     if (row) row.items.push(item)
-    else rows.push({ y: item.y, items: [item] })
+    else rows.push({ y: item.y, page, items: [item] })
   }
   for (const row of rows) {
     row.items.sort((left, right) => left.x - right.x)
@@ -104,6 +117,12 @@ export function guessSpendingAccountId(
   if (/discover/.test(hay)) {
     return (
       accounts.find((account) => account.id === 'discover-checking')?.id ??
+      fallbackAccountId(accounts)
+    )
+  }
+  if (/\bally\b/.test(hay)) {
+    return (
+      accounts.find((account) => account.id === 'sheet-ally')?.id ??
       fallbackAccountId(accounts)
     )
   }
@@ -153,34 +172,78 @@ function signedPdfAmount(raw: number, polarity: Polarity) {
   return abs
 }
 
+function lineMoney(line: string) {
+  return [...line.matchAll(MONEY_RE)]
+    .map((match) => ({
+      text: match[0],
+      index: match.index ?? 0,
+      value: parseMoneyToken(match[0]),
+    }))
+    .filter(
+      (item): item is { text: string; index: number; value: number } =>
+        item.value != null &&
+        (/[.]/.test(item.text) || /CR|DR/i.test(item.text)),
+    )
+}
+
+function pickPdfAmount(
+  money: { text: string; index: number; value: number }[],
+  polarity: Polarity,
+  creditsDebits: boolean,
+) {
+  if (money.length === 0) return null
+  if (money.length >= 3) {
+    const credit = money[0]
+    const debit = money[1]
+    const unusedCredit = Math.abs(credit.value) < 0.005
+    const unusedDebit = Math.abs(debit.value) < 0.005
+    if (creditsDebits || unusedCredit || unusedDebit) {
+      if (Math.abs(debit.value) > 0.005) {
+        return { token: debit, amount: Math.abs(debit.value) }
+      }
+      if (Math.abs(credit.value) > 0.005) {
+        return { token: credit, amount: -Math.abs(credit.value) }
+      }
+      return null
+    }
+  }
+  const token = money.length >= 2 ? money[money.length - 2] : money[money.length - 1]
+  return { token, amount: signedPdfAmount(token.value, polarity) }
+}
+
+function isMerchantContinuation(line: string) {
+  if (!line) return false
+  if (ACTIVITY_HEADER.test(line) || SECTION_BREAK.test(line)) return false
+  if (sectionPolarity(line)) return false
+  if (/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/.test(line)) return false
+  if (/\$\d/.test(line)) return false
+  return true
+}
+
 function parsePdfLine(
   line: string,
   accountId: string,
   sourceFile: string,
   year: number | null,
   polarity: Polarity,
+  creditsDebits: boolean,
 ): NewSpendingTxn | null {
   const dateMatches = [...line.matchAll(DATE_RE)]
   if (dateMatches.length === 0) return null
+  if ((dateMatches[0].index ?? 0) > 4) return null
   const date = parseSlashDate(dateMatches[0][1], year)
   if (!date) return null
 
-  const money = [...line.matchAll(MONEY_RE)]
-    .map((match) => ({ text: match[0], index: match.index ?? 0 }))
-    .filter((item) => /[.]/.test(item.text) || /CR|DR/i.test(item.text))
-  if (money.length === 0) return null
+  const money = lineMoney(line)
+  const picked = pickPdfAmount(money, polarity, creditsDebits)
+  if (!picked || Math.abs(picked.amount) < 0.005) return null
 
-  const amountToken =
-    money.length >= 2 ? money[money.length - 2] : money[money.length - 1]
-  const rawAmount = parseMoneyToken(amountToken.text)
-  if (rawAmount == null || Math.abs(rawAmount) < 0.005) return null
-
-  const dateMatch = dateMatches[dateMatches.length > 1 ? 1 : 0]
-  const dateEnd = (dateMatch.index ?? 0) + dateMatch[0].length
-  let description = line.slice(dateEnd, amountToken.index).trim()
+  const dateEnd = (dateMatches[0].index ?? 0) + dateMatches[0][0].length
+  const descEnd = money[0]?.index ?? picked.token.index
+  let description = line.slice(dateEnd, descEnd).trim()
   description = description.replace(/^[.\-–—]+\s*/, '').replace(/\s+/g, ' ')
   if (!description || SKIP_DESC.test(description)) return null
-  const merchant = cleanMerchantName(description)
+  const merchant = cleanMerchantName(description) || toSentenceCase(description)
   if (!merchant) return null
 
   return {
@@ -188,7 +251,7 @@ function parsePdfLine(
     description,
     merchant,
     accountId,
-    amount: signedPdfAmount(rawAmount, polarity),
+    amount: picked.amount,
     sourceFile,
   }
 }
@@ -200,16 +263,42 @@ function parsePdfLines(
 ): NewSpendingTxn[] {
   const year = statementYear(lines)
   let polarity: Polarity = 'unknown'
+  let creditsDebits = false
   const parsed: NewSpendingTxn[] = []
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    if (ACTIVITY_HEADER.test(line)) {
+      creditsDebits = /credits\s+debits/i.test(line)
+      polarity = 'unknown'
+      continue
+    }
     const nextPolarity = sectionPolarity(line)
     if (nextPolarity) {
       polarity = nextPolarity
+      creditsDebits = false
       continue
     }
-    const txn = parsePdfLine(line, accountId, sourceFile, year, polarity)
-    if (txn) parsed.push(txn)
+    const txn = parsePdfLine(
+      line,
+      accountId,
+      sourceFile,
+      year,
+      polarity,
+      creditsDebits,
+    )
+    if (!txn) continue
+    while (
+      index + 1 < lines.length &&
+      isMerchantContinuation(lines[index + 1])
+    ) {
+      index += 1
+      txn.description = `${txn.description} ${lines[index]}`.replace(/\s+/g, ' ')
+    }
+    txn.merchant =
+      cleanMerchantName(txn.description) || toSentenceCase(txn.description)
+    if (!txn.merchant) continue
+    parsed.push(txn)
   }
   return parsed
 }
