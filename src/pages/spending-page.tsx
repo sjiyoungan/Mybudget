@@ -539,7 +539,7 @@ export function SpendingPage() {
           if (!open) setExpandedUpload(null)
         }}
       >
-        <DrawerContent className="data-[vaul-drawer-direction=right]:h-full sm:max-w-md">
+        <DrawerContent className="min-w-0 overflow-x-hidden data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:w-full data-[vaul-drawer-direction=right]:max-w-[min(48rem,100%)] data-[vaul-drawer-direction=right]:sm:max-w-[min(48rem,100%)]">
           <DrawerHeader>
             <DrawerTitle>
               {activeMonth == null
@@ -547,7 +547,7 @@ export function SpendingPage() {
                 : `${monthName(activeMonth)} statements`}
             </DrawerTitle>
           </DrawerHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pb-6">
             {monthUploads.length === 0 ? (
               <p className="text-muted-foreground text-sm">
                 {activeMonth == null
@@ -555,15 +555,15 @@ export function SpendingPage() {
                   : `No statements for ${monthName(activeMonth)}.`}
               </p>
             ) : (
-              <div className="grid gap-1">
+              <div className="grid min-w-0 gap-1">
                 {monthUploads.map((upload) => {
                   const items = sortSpendingTxns(
                     transactionsForUpload(transactions, upload, uploads),
                   )
                   const expanded = expandedUpload === upload.id
                   return (
-                    <div key={upload.id}>
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                    <div key={upload.id} className="min-w-0">
+                      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                         <button
                           type="button"
                           onClick={() =>
@@ -597,7 +597,7 @@ export function SpendingPage() {
                         </Button>
                       </div>
                       {expanded ? (
-                        <ul className="grid gap-0.5 py-1 pr-8 pl-[22px]">
+                        <ul className="grid min-w-0 gap-0.5 py-1 pl-2">
                           {items.length === 0 ? (
                             <li className="text-muted-foreground px-2.5 py-2 text-sm">
                               No purchases from this file.
@@ -609,6 +609,7 @@ export function SpendingPage() {
                                 txn={txn}
                                 accounts={accounts}
                                 categories={categories}
+                                showAccount={false}
                                 onClick={() => setEditing(txn)}
                               />
                             ))
@@ -740,32 +741,44 @@ function TransactionRow({
   txn,
   accounts,
   categories,
+  showAccount = true,
   onClick,
 }: {
   txn: SpendingTxn
   accounts: { id: string; name: string }[]
   categories: SpendingCategory[]
+  showAccount?: boolean
   onClick: () => void
 }) {
+  const category = categoryName(txn.categoryId, categories)
   return (
-    <li>
+    <li className="min-w-0">
       <button
         type="button"
-        className="hover-fill flex w-full items-start gap-3 rounded-lg px-2.5 py-2 text-left"
+        className={cn(
+          'hover-fill grid w-full min-w-0 items-start gap-x-3 rounded-lg px-2.5 py-2 text-left',
+          showAccount
+            ? 'grid-cols-[minmax(0,1fr)_auto_auto_auto]'
+            : 'grid-cols-[minmax(0,1fr)_auto_auto]',
+        )}
         onClick={onClick}
       >
-        <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
-          {displayMerchant(txn)}
-          <span className="text-muted-foreground ml-2 hidden text-xs sm:inline">
-            {categoryName(txn.categoryId, categories)}
+        <span className="min-w-0">
+          <span className="block break-words [overflow-wrap:anywhere]">
+            {displayMerchant(txn)}
+          </span>
+          <span className="text-muted-foreground mt-0.5 block text-xs">
+            {category}
           </span>
         </span>
-        <span className="text-muted-foreground hidden w-24 shrink-0 pt-0.5 text-xs sm:block">
-          {accountName(txn.accountId, accounts)}
-        </span>
+        {showAccount ? (
+          <span className="text-muted-foreground hidden w-24 shrink-0 pt-0.5 text-xs sm:block">
+            {accountName(txn.accountId, accounts)}
+          </span>
+        ) : null}
         <span
           className={cn(
-            'w-[5.5rem] shrink-0 pt-0.5 text-right tabular-nums',
+            'shrink-0 pt-0.5 text-right tabular-nums',
             txn.amount < 0 && 'text-muted-foreground',
           )}
         >
