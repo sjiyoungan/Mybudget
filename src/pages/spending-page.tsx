@@ -661,6 +661,7 @@ export function SpendingPage() {
                                           accounts={accounts}
                                           categories={categories}
                                           showAccount={false}
+                                          showDate
                                           onClick={() => setEditing(txn)}
                                         />
                                       ))
@@ -798,12 +799,14 @@ function TransactionRow({
   accounts,
   categories,
   showAccount = true,
+  showDate = false,
   onClick,
 }: {
   txn: SpendingTxn
   accounts: { id: string; name: string }[]
   categories: SpendingCategory[]
   showAccount?: boolean
+  showDate?: boolean
   onClick: () => void
 }) {
   const category = categoryName(txn.categoryId, categories)
@@ -813,9 +816,10 @@ function TransactionRow({
         type="button"
         className={cn(
           'hover-fill grid w-full min-w-0 items-start gap-x-3 rounded-lg px-2.5 py-2 text-left',
-          showAccount
-            ? 'grid-cols-[minmax(0,1fr)_auto_auto_auto]'
-            : 'grid-cols-[minmax(0,1fr)_auto_auto]',
+          showAccount && showDate && 'grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]',
+          showAccount && !showDate && 'grid-cols-[minmax(0,1fr)_auto_auto_auto]',
+          !showAccount && showDate && 'grid-cols-[minmax(0,1fr)_auto_auto_auto]',
+          !showAccount && !showDate && 'grid-cols-[minmax(0,1fr)_auto_auto]',
         )}
         onClick={onClick}
       >
@@ -830,6 +834,11 @@ function TransactionRow({
         {showAccount ? (
           <span className="text-muted-foreground hidden w-24 shrink-0 pt-0.5 text-xs sm:block">
             {accountName(txn.accountId, accounts)}
+          </span>
+        ) : null}
+        {showDate ? (
+          <span className="text-muted-foreground shrink-0 pt-0.5">
+            {formatDateWithoutYear(txn.date, 'short')}
           </span>
         ) : null}
         <span
