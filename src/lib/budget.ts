@@ -12,6 +12,8 @@ export type BankAccount = {
   kind: AccountKind
   lastFour: string
   role: AccountRole
+  /** What this account is for, like holidays or groceries. */
+  purpose: string
   balance: number
 }
 
@@ -83,6 +85,7 @@ type SheetBankAccount = {
   lastFour: string
   role: AccountRole
   key: string
+  purpose?: string
 }
 
 const sheetBankAccounts: SheetBankAccount[] = [
@@ -106,6 +109,7 @@ const sheetBankAccounts: SheetBankAccount[] = [
     lastFour: '1871',
     role: 'other',
     key: 'one',
+    purpose: 'Holidays',
   },
   {
     id: 'sheet-axos',
@@ -120,6 +124,7 @@ const sheetBankAccounts: SheetBankAccount[] = [
     lastFour: '9914',
     role: 'other',
     key: 'chime',
+    purpose: 'Groceries',
   },
   {
     id: 'sheet-ally',
@@ -171,6 +176,18 @@ function accountMatchKey(name: string) {
   return n
 }
 
+function fillMissingPurposes(accounts: BankAccount[]): BankAccount[] {
+  return accounts.map((account) => {
+    if (account.purpose?.trim()) return account
+    const sheet = sheetBankAccounts.find(
+      (item) =>
+        item.id === account.id || item.key === accountMatchKey(account.name),
+    )
+    if (!sheet?.purpose) return account
+    return { ...account, purpose: sheet.purpose }
+  })
+}
+
 function mergeSheetAccounts(accounts: BankAccount[]): BankAccount[] {
   const next = accounts.map((account) => {
     const sheet = sheetBankAccounts.find(
@@ -183,6 +200,7 @@ function mergeSheetAccounts(accounts: BankAccount[]): BankAccount[] {
       name: sheet.name,
       kind: isAccountKind(account.kind) ? account.kind : 'checking',
       lastFour: sheet.lastFour,
+      purpose: account.purpose?.trim() || sheet.purpose || '',
     }
   })
   const known = new Set(
@@ -199,6 +217,7 @@ function mergeSheetAccounts(accounts: BankAccount[]): BankAccount[] {
       kind: 'checking',
       lastFour: sheet.lastFour,
       role: sheet.role,
+      purpose: sheet.purpose ?? '',
       balance: 0,
     })
     known.add(sheet.id)
@@ -208,12 +227,13 @@ function mergeSheetAccounts(accounts: BankAccount[]): BankAccount[] {
 }
 
 export const defaultAccounts: BankAccount[] = sheetBankAccounts.map(
-  ({ id, name, lastFour, role }) => ({
+  ({ id, name, lastFour, role, purpose }) => ({
     id,
     name,
     kind: 'checking',
     lastFour,
     role,
+    purpose: purpose ?? '',
     balance: 0,
   }),
 )
@@ -629,12 +649,14 @@ function normalizeAccount(value: unknown): BankAccount | null {
   )
   const role =
     item.role === 'bills' || item.role === 'overflow' ? item.role : 'other'
+  const purpose = typeof item.purpose === 'string' ? item.purpose.trim() : ''
   return {
     id: item.id,
     name: item.name,
     kind,
     lastFour,
     role,
+    purpose,
     balance: typeof item.balance === 'number' ? item.balance : 0,
   }
 }
@@ -746,9 +768,11 @@ export function parseBudgetState(value: unknown): BudgetState | null {
       ? parsed.updatedAt
       : undefined
   return {
-    accounts: (parsed.accounts.length > 0 ? parsed.accounts : defaultAccounts)
-      .map(normalizeAccount)
-      .filter((item): item is BankAccount => item != null),
+    accounts: fillMissingPurposes(
+      (parsed.accounts.length > 0 ? parsed.accounts : defaultAccounts)
+        .map(normalizeAccount)
+        .filter((item): item is BankAccount => item != null),
+    ),
     expenses,
     debts: restoreLostSeededDebts(
       parsed.debts

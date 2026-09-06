@@ -2439,7 +2439,7 @@ function CategoryExpensesCard({
   title: string
   mode: 'expenses' | 'debt'
 }) {
-  const { categories, expenses, debts } = useBudget()
+  const { accounts, categories, expenses, debts } = useBudget()
   const { categories: spendingCategories } = useSpending()
   const [open, setOpen] = useState(false)
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null)
@@ -2532,12 +2532,19 @@ function CategoryExpensesCard({
                               onEditAmount={setAmountEditId}
                               onEditName={setEditExpenseId}
                               nested
-                              spendingLabel={spendingCategoriesForExpense(
-                                expense.id,
-                                spendingCategories,
-                              )
-                                .map((category) => toSentenceCase(category.name))
-                                .join(', ')}
+                              spendingLabel={
+                                accounts.find(
+                                  (account) => account.id === expense.accountId,
+                                )?.purpose ||
+                                spendingCategoriesForExpense(
+                                  expense.id,
+                                  spendingCategories,
+                                )
+                                  .map((category) =>
+                                    toSentenceCase(category.name),
+                                  )
+                                  .join(', ')
+                              }
                             />
                           ))}
                         </div>
@@ -2589,10 +2596,13 @@ function AccountLabel({
   )
 }
 
-const amountColClass = 'w-20 shrink-0 text-right tabular-nums'
-const lastFourColClass = 'w-[4.75rem] shrink-0 tabular-nums'
+const amountColClass = 'w-16 shrink-0 text-right tabular-nums'
+const lastFourColClass = 'w-12 shrink-0 tabular-nums'
+const purposeColClass = 'min-w-0 w-[5.75rem] shrink-0'
+const ACCOUNT_ROW_GRID =
+  'grid w-full min-w-0 grid-cols-[minmax(0,1fr)_3rem_minmax(0,5.75rem)_4rem_4rem] items-baseline gap-x-2.5'
 const ACCOUNT_EDIT_GRID =
-  'grid grid-cols-[minmax(10rem,16rem)_5.5rem_7rem_28px] items-center gap-2'
+  'grid grid-cols-[minmax(8rem,14rem)_5.5rem_minmax(7rem,10rem)_7rem_28px] items-center gap-2'
 
 export function CardGearButton({
   label,
@@ -2705,19 +2715,17 @@ function AccountsCard() {
         </CardHeader>
         <CardContent className="grid">
           <div className="grid gap-y-1">
-              <div className="flex items-baseline">
-                <span className="text-muted-foreground min-w-0 flex-1 text-xs font-medium">
-                  Account name
-                </span>
-                <span
-                  className={cn(
-                    lastFourColClass,
-                    'text-muted-foreground mr-6 text-xs font-medium',
-                  )}
-                >
-                  Last four
-                </span>
-                <AmountCols header left="Bi-weekly" right="Monthly" />
+              <div
+                className={cn(
+                  ACCOUNT_ROW_GRID,
+                  'text-muted-foreground text-xs font-medium',
+                )}
+              >
+                <span className="min-w-0">Account name</span>
+                <span>Last four</span>
+                <span>For</span>
+                <span className="text-right">Bi-weekly</span>
+                <span className="text-right">Monthly</span>
               </div>
               {listed.map((account) => {
                 const selected = drawerAccount === account.id
@@ -2738,25 +2746,29 @@ function AccountsCard() {
                       )
                     }
                     className={cn(
-                      'hover-fill flex w-full cursor-pointer items-baseline rounded-lg py-2 text-left',
+                      ACCOUNT_ROW_GRID,
+                      'hover-fill cursor-pointer rounded-lg py-2 text-left',
                       selected && 'hover-fill-active',
                     )}
                   >
-                    <span className="min-w-0 flex-1 truncate">
-                      {account.name}
+                    <span className="min-w-0 truncate">{account.name}</span>
+                    <span className={cn(lastFourColClass, 'text-muted-foreground')}>
+                      {account.lastFour || ''}
                     </span>
                     <span
                       className={cn(
-                        lastFourColClass,
-                        'text-muted-foreground mr-6',
+                        purposeColClass,
+                        'text-muted-foreground truncate',
                       )}
                     >
-                      {account.lastFour || ''}
+                      {account.purpose || ''}
                     </span>
-                    <AmountCols
-                      left={formatUsdWholeUp(need / 2)}
-                      right={formatUsdWholeUp(need)}
-                    />
+                    <span className={amountColClass}>
+                      {formatUsdWholeUp(need / 2)}
+                    </span>
+                    <span className={amountColClass}>
+                      {formatUsdWholeUp(need)}
+                    </span>
                   </button>
                 )
               })}
@@ -2778,6 +2790,7 @@ type AccountDraft = {
   id: string
   name: string
   lastFour: string
+  purpose: string
   kind: AccountKind
   leftover: boolean
 }
@@ -2788,6 +2801,7 @@ function accountSnapshot(drafts: AccountDraft[]) {
       id: draft.id,
       name: draft.name.trim(),
       lastFour: draft.lastFour,
+      purpose: draft.purpose.trim(),
       kind: draft.kind,
       leftover: draft.leftover,
     })),
@@ -2814,6 +2828,7 @@ function EditAccountsDialog({
       id: account.id,
       name: account.name,
       lastFour: account.lastFour,
+      purpose: account.purpose ?? '',
       kind: account.kind,
       leftover: account.role === 'overflow',
     }))
@@ -2905,6 +2920,7 @@ function EditAccountsDialog({
           kind: draft.kind,
           lastFour: draft.lastFour,
           role,
+          purpose: draft.purpose.trim(),
           balance: current?.balance ?? 0,
         }
       }),
@@ -2917,7 +2933,7 @@ function EditAccountsDialog({
     setFocusId(id)
     setDrafts((current) => [
       ...current,
-      { id, name: '', lastFour: '', kind: 'checking', leftover: false },
+      { id, name: '', lastFour: '', purpose: '', kind: 'checking', leftover: false },
     ])
   }
 
@@ -2963,6 +2979,7 @@ function EditAccountsDialog({
             >
               <span className={DEBT_LABEL_LEFT}>Name</span>
               <span>Last four</span>
+              <span>For</span>
               <span
                 className="text-center leading-tight"
                 title="The rest of the paycheck goes into this account"
@@ -2998,6 +3015,15 @@ function EditAccountsDialog({
                   inputMode="numeric"
                   maxLength={4}
                   aria-label="Last four digits"
+                />
+                <Input
+                  className={cn('h-8', EDIT_GHOST_FIELD)}
+                  value={draft.purpose}
+                  onChange={(event) =>
+                    updateDraft(draft.id, { purpose: event.target.value })
+                  }
+                  placeholder=""
+                  aria-label="What this account is for"
                 />
                 {draft.kind === 'checking' ? (
                   <button

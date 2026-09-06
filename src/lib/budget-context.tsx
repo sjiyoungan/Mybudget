@@ -142,6 +142,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
             kind,
             lastFour: '',
             role: 'other',
+            purpose: '',
             balance: 0,
           }
           return withBudgetEdit({
