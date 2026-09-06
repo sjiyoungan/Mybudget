@@ -2597,10 +2597,10 @@ function AccountLabel({
 }
 
 const amountColClass = 'w-16 shrink-0 text-right tabular-nums'
-const lastFourColClass = 'w-12 shrink-0 tabular-nums'
-const purposeColClass = 'min-w-0 w-[5.75rem] shrink-0'
+const lastFourColClass = 'tabular-nums'
+const purposeColClass = 'min-w-0 truncate'
 const ACCOUNT_ROW_GRID =
-  'grid w-full min-w-0 grid-cols-[minmax(0,1fr)_3rem_minmax(0,5.75rem)_4rem_4rem] items-baseline gap-x-2.5'
+  'grid w-full min-w-0 grid-cols-[minmax(9rem,max-content)_minmax(0,1fr)_4.5rem] items-baseline gap-x-8'
 const ACCOUNT_EDIT_GRID =
   'grid grid-cols-[minmax(8rem,14rem)_5.5rem_minmax(7rem,10rem)_7rem_28px] items-center gap-2'
 
@@ -2721,11 +2721,12 @@ function AccountsCard() {
                   'text-muted-foreground text-xs font-medium',
                 )}
               >
-                <span className="min-w-0">Account name</span>
-                <span>Last four</span>
+                <span className="flex items-baseline gap-x-2">
+                  <span>Account name</span>
+                  <span>Last four</span>
+                </span>
                 <span>For</span>
                 <span className="text-right">Bi-weekly</span>
-                <span className="text-right">Monthly</span>
               </div>
               {listed.map((account) => {
                 const selected = drawerAccount === account.id
@@ -2751,23 +2752,24 @@ function AccountsCard() {
                       selected && 'hover-fill-active',
                     )}
                   >
-                    <span className="min-w-0 truncate">{account.name}</span>
-                    <span className={cn(lastFourColClass, 'text-muted-foreground')}>
-                      {account.lastFour || ''}
+                    <span className="flex items-baseline gap-x-2">
+                      <span className="truncate">{account.name}</span>
+                      <span
+                        className={cn(
+                          lastFourColClass,
+                          'text-muted-foreground',
+                        )}
+                      >
+                        {account.lastFour || ''}
+                      </span>
                     </span>
                     <span
-                      className={cn(
-                        purposeColClass,
-                        'text-muted-foreground truncate',
-                      )}
+                      className={cn(purposeColClass, 'text-muted-foreground')}
                     >
                       {account.purpose || ''}
                     </span>
                     <span className={amountColClass}>
                       {formatUsdWholeUp(need / 2)}
-                    </span>
-                    <span className={amountColClass}>
-                      {formatUsdWholeUp(need)}
                     </span>
                   </button>
                 )
