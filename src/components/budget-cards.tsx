@@ -108,7 +108,6 @@ import { useSpending } from '@/lib/spending-context'
 import {
   applyExpenseSpendingBuckets,
   spendingBucketIdForExpense,
-  spendingCategoriesForExpense,
   toSentenceCase,
   visibleSpendingCategories,
 } from '@/lib/spending'
@@ -2440,7 +2439,6 @@ function CategoryExpensesCard({
   mode: 'expenses' | 'debt'
 }) {
   const { accounts, categories, expenses, debts } = useBudget()
-  const { categories: spendingCategories } = useSpending()
   const [open, setOpen] = useState(false)
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null)
   const [amountEditId, setAmountEditId] = useState<string | null>(null)
@@ -2535,15 +2533,7 @@ function CategoryExpensesCard({
                               spendingLabel={
                                 accounts.find(
                                   (account) => account.id === expense.accountId,
-                                )?.purpose ||
-                                spendingCategoriesForExpense(
-                                  expense.id,
-                                  spendingCategories,
-                                )
-                                  .map((category) =>
-                                    toSentenceCase(category.name),
-                                  )
-                                  .join(', ')
+                                )?.name ?? ''
                               }
                             />
                           ))}
