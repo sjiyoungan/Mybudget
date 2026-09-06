@@ -937,6 +937,25 @@ function draftIsComplete(draft: ExpenseDraft, categoryIds: Set<string>) {
   )
 }
 
+function reorderCategories(
+  categories: CategoryDraft[],
+  id: string,
+  targetId: string,
+) {
+  if (id === targetId) return categories
+  const from = categories.findIndex((item) => item.id === id)
+  const to = categories.findIndex((item) => item.id === targetId)
+  if (from < 0 || to < 0) return categories
+  const next = [...categories]
+  const [item] = next.splice(from, 1)
+  if (!item) return categories
+  next.splice(to, 0, item)
+  if (next.every((entry, index) => entry.id === categories[index]?.id)) {
+    return categories
+  }
+  return next
+}
+
 function reorderDraft(
   drafts: ExpenseDraft[],
   draftId: string,
@@ -1052,14 +1071,23 @@ function CategoryDropGroup({
   categoryId,
   active,
   children,
+  onCategoryDragOver,
 }: {
   categoryId?: string
   active: boolean
   children: ReactNode
+  onCategoryDragOver?: (categoryId: string) => void
 }) {
   return (
     <section
       data-category-id={categoryId}
+      onDragOver={(event) => {
+        if (!onCategoryDragOver || !categoryId) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'move'
+        onCategoryDragOver(categoryId)
+      }}
+      onDrop={(event) => event.preventDefault()}
       className={cn(
         'space-y-1 rounded-lg py-1',
         active && 'bg-neutral-50 ring-1 ring-neutral-200',
@@ -1297,6 +1325,9 @@ function EditExpensesDialog({
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [dueDayError, setDueDayError] = useState(false)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(
+    null,
+  )
   const [dropCategoryId, setDropCategoryId] = useState<string | null>(null)
   const [addCategoryOpen, setAddCategoryOpen] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -1305,6 +1336,7 @@ function EditExpensesDialog({
   const listWrapRef = useRef<HTMLDivElement>(null)
   const pendingScrollCategoryId = useRef<string | null>(null)
   const draggingIdRef = useRef<string | null>(null)
+  const draggingCategoryIdRef = useRef<string | null>(null)
   const moveDraftUnderPointerRef = useRef<(x: number, y: number) => void>(() => {})
   const stopDragListenersRef = useRef<(() => void) | null>(null)
 
@@ -1324,8 +1356,10 @@ function EditExpensesDialog({
     setRemoveId(null)
     setDueDayError(false)
     setDraggingId(null)
+    setDraggingCategoryId(null)
     setDropCategoryId(null)
     draggingIdRef.current = null
+    draggingCategoryIdRef.current = null
     stopDragListenersRef.current?.()
     stopDragListenersRef.current = null
     setAddCategoryOpen(false)
@@ -1538,6 +1572,24 @@ function EditExpensesDialog({
     }
   }
 
+  function handleCategoryDragStart(id: string) {
+    draggingCategoryIdRef.current = id
+    setDraggingCategoryId(id)
+  }
+
+  function handleCategoryDragOver(targetId: string) {
+    const id = draggingCategoryIdRef.current
+    if (!id || !targetId || targetId === id) return
+    setDropCategoryId(targetId)
+    setCategoryDrafts((current) => reorderCategories(current, id, targetId))
+  }
+
+  function handleCategoryDragEnd() {
+    draggingCategoryIdRef.current = null
+    setDraggingCategoryId(null)
+    setDropCategoryId(null)
+  }
+
   function moveDraftUnderPointer(clientX: number, clientY: number) {
     const id = draggingIdRef.current
     if (!id) return
@@ -1635,7 +1687,7 @@ function EditExpensesDialog({
             }}
             className={cn(
               'no-scrollbar max-h-[min(70vh,40rem)] space-y-4 overflow-y-auto',
-              draggingId && 'select-none',
+              (draggingId || draggingCategoryId) && 'select-none',
             )}
           >
             <div
@@ -1687,9 +1739,29 @@ function EditExpensesDialog({
                   key={category.id}
                   categoryId={category.id}
                   active={dropCategoryId === category.id}
+                  onCategoryDragOver={handleCategoryDragOver}
                 >
-                  <div>
-                    <div className="flex items-center gap-2 pl-4">
+                  <div
+                    className={cn(
+                      draggingCategoryId === category.id && 'opacity-50',
+                    )}
+                  >
+                    <div className="relative flex items-center gap-2 pl-4">
+                    <button
+                      type="button"
+                      draggable
+                      data-drag-handle
+                      aria-label={`Move ${category.name}`}
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = 'move'
+                        event.dataTransfer.setData('text/plain', category.id)
+                        handleCategoryDragStart(category.id)
+                      }}
+                      onDragEnd={handleCategoryDragEnd}
+                      className="text-neutral-400 hover:text-foreground absolute inset-y-0 left-0 z-10 flex w-4 cursor-grab items-center justify-center touch-none active:cursor-grabbing"
+                    >
+                      <Menu className="size-3.5" />
+                    </button>
                     <p className="pl-2.5 text-sm font-semibold">{category.name}</p>
                     <Button
                       type="button"
