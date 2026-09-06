@@ -63,6 +63,14 @@ type SpendingContextValue = {
   importTransactions: (batches: SpendingUploadBatch[]) => {
     added: number
   }
+  addTransaction: (input: {
+    date: string
+    description: string
+    merchant: string
+    accountId: string
+    amount: number
+    categoryId?: string
+  }) => string
   updateTransaction: (
     id: string,
     patch: Partial<Omit<SpendingTxn, 'id'>>,
@@ -164,6 +172,32 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
         const next = importSpendingTxns(state, batches)
         setState(next.state)
         return { added: next.added }
+      },
+      addTransaction(input) {
+        const id = crypto.randomUUID()
+        const merchant = toSentenceCase(input.merchant)
+        const description = input.description.trim() || merchant
+        const categoryId = input.categoryId?.trim()
+        const txn: SpendingTxn = {
+          id,
+          date: input.date,
+          description,
+          merchant,
+          accountId: input.accountId,
+          amount: input.amount,
+          ...(categoryId ? { categoryId } : {}),
+          customName: true,
+          customCategory: true,
+          updatedAt: nowIso(),
+        }
+        setState((current) => ({
+          ...current,
+          transactions: applySpendingRules(
+            [...current.transactions, txn],
+            current.rules,
+          ),
+        }))
+        return id
       },
       updateTransaction(id, patch) {
         setState((current) => ({

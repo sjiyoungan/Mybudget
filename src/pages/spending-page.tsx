@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/select'
 import {
   DEBT_CATEGORY_ID,
+  billsAccount,
   isHiddenExpense,
   isLiveExpense,
   monthlyAmount,
@@ -137,6 +138,26 @@ function categoryName(
   return name ? toSentenceCase(name) : 'Uncategorized'
 }
 
+function localIsoDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function defaultManualTxnDate(
+  year: number,
+  month: number | null,
+  now = new Date(),
+) {
+  if (month == null) return localIsoDate(now)
+  const today = localIsoDate(now)
+  const prefix = `${year}-${String(month + 1).padStart(2, '0')}`
+  const first = `${prefix}-01`
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const last = `${prefix}-${String(lastDay).padStart(2, '0')}`
+  if (today >= first && today <= last) return today
+  if (today < first) return first
+  return last
+}
+
 function defaultRuleMatch(description: string) {
   const tokens = description
     .replace(/[^A-Za-z0-9&.'+\- ]/g, ' ')
@@ -205,6 +226,7 @@ export function SpendingPage() {
   const {
     transactions,
     categories,
+    addTransaction,
     updateTransaction,
     removeTransaction,
     replaceCategories,
@@ -243,6 +265,7 @@ export function SpendingPage() {
       ? selectedMonth
       : defaultMonth
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
+  const [adding, setAdding] = useState(false)
   const [expandedDays, setExpandedDays] = useState<string[]>([])
   const [expandedStatementMonth, setExpandedStatementMonth] = useState<
     string | null
@@ -538,27 +561,44 @@ export function SpendingPage() {
       <Card>
         <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
           <CardTitle>Transactions</CardTitle>
-          {dayRows.length > 0 ? (
-            <CardAction>
+          <CardAction>
+            <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  const anyOpen = dayRows.some((row) =>
-                    expandedDays.includes(row.date),
-                  )
-                  setExpandedDays(anyOpen ? [] : dayRows.map((row) => row.date))
-                }}
+                onClick={() => setAdding(true)}
               >
-                {dayRows.some((row) => expandedDays.includes(row.date))
-                  ? 'Close all'
-                  : 'Expand all'}
+                Add
               </Button>
-            </CardAction>
-          ) : null}
+              {dayRows.length > 0 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const anyOpen = dayRows.some((row) =>
+                      expandedDays.includes(row.date),
+                    )
+                    setExpandedDays(
+                      anyOpen ? [] : dayRows.map((row) => row.date),
+                    )
+                  }}
+                >
+                  {dayRows.some((row) => expandedDays.includes(row.date))
+                    ? 'Close all'
+                    : 'Expand all'}
+                </Button>
+              ) : null}
+            </div>
+          </CardAction>
         </CardHeader>
         <CardContent className="grid gap-1">
+          {dayRows.length === 0 ? (
+            <p className="text-muted-foreground px-2.5 py-2 text-sm">
+              No purchases this month.
+            </p>
+          ) : null}
           {dayRows.map((row) => {
             const expanded = expandedDays.includes(row.date)
             return (
@@ -749,6 +789,33 @@ export function SpendingPage() {
         </DialogContent>
       </Dialog>
 
+      <AddTxnDialog
+        open={adding}
+        accounts={accounts}
+        categories={categories}
+        defaultDate={defaultManualTxnDate(selectedYear, activeMonth, now)}
+        defaultAccountId={
+          billsAccount(accounts)?.id ??
+          accounts.find((account) => account.kind === 'checking')?.id ??
+          accounts[0]?.id ??
+          ''
+        }
+        onClose={() => setAdding(false)}
+        onSave={(input) => {
+          addTransaction(input)
+          const year = Number.parseInt(input.date.slice(0, 4), 10)
+          const month = Number.parseInt(input.date.slice(5, 7), 10) - 1
+          if (Number.isFinite(year)) setYear(year)
+          if (Number.isFinite(month) && month >= 0 && month < 12) {
+            setSelectedMonth(month)
+          }
+          setExpandedDays((current) =>
+            current.includes(input.date) ? current : [...current, input.date],
+          )
+          setAdding(false)
+        }}
+      />
+
       <EditTxnDialog
         txn={editing}
         accounts={accounts}
@@ -923,6 +990,208 @@ function TransactionRow({
         </span>
       </button>
     </li>
+  )
+}
+
+function AddTxnDialog({
+  open,
+  accounts,
+  categories,
+  defaultDate,
+  defaultAccountId,
+  onClose,
+  onSave,
+}: {
+  open: boolean
+  accounts: { id: string; name: string }[]
+  categories: SpendingCategory[]
+  defaultDate: string
+  defaultAccountId: string
+  onClose: () => void
+  onSave: (input: {
+    date: string
+    description: string
+    merchant: string
+    accountId: string
+    amount: number
+    categoryId?: string
+  }) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        {open ? (
+          <AddTxnForm
+            key={`${defaultDate}-${defaultAccountId}`}
+            accounts={accounts}
+            categories={categories}
+            defaultDate={defaultDate}
+            defaultAccountId={defaultAccountId}
+            onClose={onClose}
+            onSave={onSave}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function AddTxnForm({
+  accounts,
+  categories,
+  defaultDate,
+  defaultAccountId,
+  onClose,
+  onSave,
+}: {
+  accounts: { id: string; name: string }[]
+  categories: SpendingCategory[]
+  defaultDate: string
+  defaultAccountId: string
+  onClose: () => void
+  onSave: (input: {
+    date: string
+    description: string
+    merchant: string
+    accountId: string
+    amount: number
+    categoryId?: string
+  }) => void
+}) {
+  const [merchant, setMerchant] = useState('')
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState(defaultDate)
+  const [accountId, setAccountId] = useState(defaultAccountId)
+  const [categoryId, setCategoryId] = useState('')
+  const categoryOptions = visibleSpendingCategories(categories)
+  const parsedAmount = parseAmount(amount)
+  const accountOptions =
+    accountId && !accounts.some((account) => account.id === accountId)
+      ? [{ id: accountId, name: 'Unknown' }, ...accounts]
+      : accounts
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Add transaction</DialogTitle>
+        <DialogDescription>
+          Enter a purchase that is not on a statement.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-3">
+        <label className="grid gap-1.5">
+          <span className="text-muted-foreground text-xs">Name</span>
+          <Input
+            value={merchant}
+            onChange={(event) => setMerchant(event.target.value)}
+            placeholder="Merchant"
+            autoFocus
+          />
+        </label>
+        <label className="grid gap-1.5">
+          <span className="text-muted-foreground text-xs">Category</span>
+          <Select
+            value={categoryId || NONE}
+            onValueChange={(value) => setCategoryId(value === NONE ? '' : value)}
+          >
+            <SelectTrigger className="w-full" aria-label="Category">
+              <SelectValue placeholder="Uncategorized" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>Uncategorized</SelectItem>
+              {categoryOptions.map((category) => {
+                const children = categories.filter(
+                  (item) => item.parentId === category.id,
+                )
+                if (children.length === 0) {
+                  return (
+                    <SelectItem key={category.id} value={category.id}>
+                      {toSentenceCase(category.name)}
+                    </SelectItem>
+                  )
+                }
+                return (
+                  <SelectGroup key={category.id} className="p-0">
+                    <SelectLabel>{toSentenceCase(category.name)}</SelectLabel>
+                    {children.map((child) => (
+                      <SelectItem
+                        key={child.id}
+                        value={child.id}
+                        className="pl-3.5"
+                      >
+                        {toSentenceCase(child.name)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )
+              })}
+            </SelectContent>
+          </Select>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="grid gap-1.5">
+            <span className="text-muted-foreground text-xs">Amount</span>
+            <Input
+              inputMode="decimal"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-muted-foreground text-xs">Date</span>
+            <Input
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+            />
+          </label>
+        </div>
+        <label className="grid gap-1.5">
+          <span className="text-muted-foreground text-xs">Account</span>
+          <Select value={accountId || undefined} onValueChange={setAccountId}>
+            <SelectTrigger className="w-full" aria-label="Account">
+              <SelectValue placeholder="Account" />
+            </SelectTrigger>
+            <SelectContent>
+              {accountOptions.map((account) => (
+                <SelectItem key={account.id} value={account.id}>
+                  {account.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          disabled={
+            !merchant.trim() ||
+            parsedAmount == null ||
+            parsedAmount <= 0 ||
+            !date ||
+            !accountId
+          }
+          onClick={() => {
+            if (parsedAmount == null) return
+            const name = toSentenceCase(merchant)
+            onSave({
+              date,
+              description: name,
+              merchant: name,
+              accountId,
+              amount: parsedAmount,
+              ...(categoryId ? { categoryId } : {}),
+            })
+          }}
+        >
+          Add
+        </Button>
+      </DialogFooter>
+    </>
   )
 }
 
