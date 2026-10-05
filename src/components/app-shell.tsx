@@ -1,6 +1,6 @@
-import { type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Menu, X } from 'lucide-react'
 
 import { PaystubUploadButton } from '@/components/paystub-upload'
 import { Button } from '@/components/ui/button'
@@ -95,91 +95,179 @@ function NavTreeActivePath({
   )
 }
 
-export function AppShell() {
+function AccountMenu() {
   const { signOut } = useAuth()
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="default"
+          aria-label="Account menu"
+          className="h-8 w-auto shrink-0 justify-start gap-1 overflow-visible px-2.5"
+        >
+          <span className="text-sm font-medium">JI</span>
+          <ChevronDown className="size-4 text-muted-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem
+          onSelect={() => {
+            void signOut()
+          }}
+        >
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function AppNav({ onNavigate }: { onNavigate?: () => void }) {
   const { pathname } = useLocation()
   const activeSubIndex = SUB_PAGES.findIndex((page) => page.to === pathname)
 
   return (
-    <div className="flex min-h-svh bg-background">
-      <nav className="border-border sticky top-0 flex h-svh w-52 shrink-0 flex-col gap-6 overflow-y-auto border-r px-3 py-4">
-        <div className="flex items-center justify-between gap-6">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="default"
-                aria-label="Account menu"
-                className="h-8 w-auto shrink-0 justify-start gap-1 overflow-visible px-2.5"
-              >
-                <span className="text-sm font-medium">JI</span>
-                <ChevronDown className="size-4 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem
-                onSelect={() => {
-                  void signOut()
-                }}
-              >
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <PaystubUploadButton iconOnly />
-        </div>
-
-        <div className="grid gap-0.5">
-          <div
-            className="nav-group"
-            style={
-              {
-                '--nav-tree-line': `${TREE_LINE_X}px`,
-                '--nav-tree-gutter': `${TREE_GUTTER}px`,
-                '--nav-tree-rail-top': `${TREE_RAIL_INSET}px`,
-              } as CSSProperties
-            }
+    <div className="grid gap-0.5">
+      <div
+        className="nav-group"
+        style={
+          {
+            '--nav-tree-line': `${TREE_LINE_X}px`,
+            '--nav-tree-gutter': `${TREE_GUTTER}px`,
+            '--nav-tree-rail-top': `${TREE_RAIL_INSET}px`,
+          } as CSSProperties
+        }
+      >
+        {TOP_PAGES.map((page) => (
+          <NavLink
+            key={page.to}
+            to={page.to}
+            end={page.end}
+            onClick={onNavigate}
+            className={({ isActive }) => navClass(isActive)}
           >
-            {TOP_PAGES.map((page) => (
-              <NavLink
-                key={page.to}
-                to={page.to}
-                end={page.end}
-                className={({ isActive }) => navClass(isActive)}
-              >
-                {page.label}
-              </NavLink>
-            ))}
-            <div className="nav-tree">
-              {SUB_PAGES.map((page) => (
-                <NavLink
-                  key={page.to}
-                  to={page.to}
-                  className={({ isActive }) => subNavClass(isActive)}
-                >
-                  {page.label}
-                </NavLink>
-              ))}
-            </div>
-            <NavTreeActivePath
-              activeIndex={activeSubIndex}
-              itemCount={SUB_PAGES.length}
-            />
-          </div>
-          {BOTTOM_PAGES.map((page) => (
+            {page.label}
+          </NavLink>
+        ))}
+        <div className="nav-tree">
+          {SUB_PAGES.map((page) => (
             <NavLink
               key={page.to}
               to={page.to}
-              className={({ isActive }) => navClass(isActive)}
+              onClick={onNavigate}
+              className={({ isActive }) => subNavClass(isActive)}
             >
               {page.label}
             </NavLink>
           ))}
         </div>
-      </nav>
-      <div className="min-w-0 flex-1 pt-[60px]">
-        <Outlet />
+        <NavTreeActivePath
+          activeIndex={activeSubIndex}
+          itemCount={SUB_PAGES.length}
+        />
       </div>
+      {BOTTOM_PAGES.map((page) => (
+        <NavLink
+          key={page.to}
+          to={page.to}
+          onClick={onNavigate}
+          className={({ isActive }) => navClass(isActive)}
+        >
+          {page.label}
+        </NavLink>
+      ))}
+    </div>
+  )
+}
+
+export function AppShell() {
+  const { pathname } = useLocation()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)')
+    function closeOnDesktop() {
+      if (media.matches) setMenuOpen(false)
+    }
+    media.addEventListener('change', closeOnDesktop)
+    return () => media.removeEventListener('change', closeOnDesktop)
+  }, [])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = previous
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
+
+  return (
+    <div className="flex min-h-svh bg-background">
+      <nav className="border-border sticky top-0 hidden h-svh w-52 shrink-0 flex-col gap-6 overflow-y-auto border-r px-3 py-4 lg:flex">
+        <div className="flex items-center justify-between gap-6">
+          <AccountMenu />
+          <PaystubUploadButton iconOnly />
+        </div>
+        <AppNav />
+      </nav>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="border-border sticky top-0 z-40 flex h-14 items-center gap-1 border-b bg-background px-2 lg:hidden">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Open menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+          >
+            <Menu />
+          </Button>
+          <AccountMenu />
+          <div className="flex-1" />
+          <PaystubUploadButton iconOnly />
+        </header>
+
+        <div className="min-w-0 flex-1 lg:pt-[60px]">
+          <Outlet />
+        </div>
+      </div>
+
+      {menuOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-background lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation"
+        >
+          <header className="border-border flex h-14 shrink-0 items-center gap-1 border-b px-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Close menu"
+              onClick={() => setMenuOpen(false)}
+            >
+              <X />
+            </Button>
+            <AccountMenu />
+          </header>
+          <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+            <AppNav onNavigate={() => setMenuOpen(false)} />
+          </nav>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -4384,7 +4384,7 @@ export function CalculationsPanel() {
     billsHaveText.trim() !== '' && shortBy > 0.005
 
   return (
-    <div className="grid grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle>{bills?.name ?? 'Bank of America debit'}</CardTitle>

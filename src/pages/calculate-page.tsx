@@ -2,7 +2,7 @@ import { CalculationsPanel } from '@/components/budget-cards'
 
 export function CalculatePage() {
   return (
-    <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
+    <main className="mx-auto grid max-w-5xl gap-6 px-4 pb-8 lg:px-6">
       <div>
         <h1 className="font-heading text-3xl font-medium">Calculator</h1>
         <p className="text-muted-foreground mt-2 text-sm">

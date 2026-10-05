@@ -88,7 +88,7 @@ export function IncomePage() {
 
   return (
     <>
-    <main className="mx-auto grid max-w-5xl px-6 pb-8">
+    <main className="mx-auto grid max-w-5xl px-4 pb-8 lg:px-6">
       <div className="flex flex-wrap items-center gap-3">
             <h1 className="font-heading text-3xl font-medium">Income</h1>
             <Select

@@ -393,7 +393,7 @@ export function SpendingPage() {
           : `${formatUsd(-monthDelta)} left`
 
   return (
-    <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
+    <main className="mx-auto grid max-w-5xl gap-6 px-4 pb-8 lg:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="font-heading text-3xl font-medium">Spending</h1>
@@ -505,7 +505,7 @@ export function SpendingPage() {
                 </span>
               ) : null}
             </p>
-            <div className="flex flex-wrap items-center gap-12">
+            <div className="flex flex-wrap items-center gap-6 lg:gap-12">
               <div className="pl-2">
                 <CategoryPie slices={slices} total={totalSpent} />
               </div>

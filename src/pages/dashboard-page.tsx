@@ -132,7 +132,7 @@ export function DashboardPage() {
     spendingBudget > 0 ? budgetDeltaLabel(spent, spendingBudget) : null
 
   return (
-    <main className="mx-auto grid max-w-5xl gap-6 px-6 pb-8">
+    <main className="mx-auto grid max-w-5xl gap-6 px-4 pb-8 lg:px-6">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="font-heading text-3xl font-medium">Dashboard</h1>
         <Select value={selected.key} onValueChange={setSelectedKey}>
@@ -172,7 +172,7 @@ export function DashboardPage() {
         </Select>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-3">
         <Link
           to="/income"
           className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
