@@ -264,7 +264,7 @@ function DeductionDrawer({
         onOpenChange(nextOpen)
       }}
     >
-      <DrawerContent className="data-[vaul-drawer-direction=right]:h-full sm:max-w-md">
+      <DrawerContent className="data-[vaul-drawer-direction=right]:sm:max-w-md">
         <DrawerHeader>
           <DrawerTitle>{title}</DrawerTitle>
         </DrawerHeader>

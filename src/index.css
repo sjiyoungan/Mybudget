@@ -452,7 +452,7 @@
 
 /* Metrics hug their content. Leftover width is split so each gap
    between metrics is 1fr and the empty space after the last metric is
-   half that, with hairlines only between metrics. */
+   half that. */
 .metric-grid,
 .metric-grid-row {
   display: grid;
@@ -474,10 +474,6 @@
   justify-self: stretch;
   align-self: stretch;
   pointer-events: none;
-  background-image: linear-gradient(var(--border), var(--border));
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 1px 100%;
 }
 
 @media (width < 80rem) {
@@ -492,9 +488,19 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .metric-grid:not(.metric-grid-row) > .metric-rule {
-    width: 100%;
-    height: 1px;
-    background-image: none;
-    background-color: var(--border);
+    display: none;
   }
+}
+
+[data-vaul-handle] {
+  position: relative;
+  touch-action: pan-y;
+}
+[data-vaul-handle-hitarea] {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2.75rem;
+  height: 2.75rem;
 }

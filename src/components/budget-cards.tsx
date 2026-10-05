@@ -3302,7 +3302,7 @@ function AccountDrawer({
         if (!nextOpen) closeDrawer()
       }}
     >
-      <DrawerContent className="account-drawer overflow-x-visible data-[vaul-drawer-direction=right]:h-full">
+      <DrawerContent className="account-drawer overflow-x-visible">
         <DrawerHeader>
           <DrawerTitle>
             {account ? (

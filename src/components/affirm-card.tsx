@@ -1099,7 +1099,7 @@ function AffirmLoanDrawer({
         if (!nextOpen) onClose()
       }}
     >
-      <DrawerContent className="data-[vaul-drawer-direction=right]:h-full sm:max-w-md">
+      <DrawerContent className="data-[vaul-drawer-direction=right]:sm:max-w-md">
         <DrawerHeader>
           <div className="flex items-start justify-between gap-3">
             {editing ? (
