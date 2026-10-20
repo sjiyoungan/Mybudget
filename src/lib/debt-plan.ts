@@ -626,6 +626,22 @@ export function strategyDebtOrder(
   now = new Date(),
   currentBalances?: Map<string, number>,
 ) {
+  return affirmLast(orderByStrategy(debts, plan, now, currentBalances))
+}
+
+/** Affirm only gets extra after every other debt, whatever the strategy. */
+function affirmLast(debts: Debt[]) {
+  const affirm = debts.filter((debt) => debt.id === AFFIRM_DEBT_ID)
+  if (affirm.length === 0) return debts
+  return [...debts.filter((debt) => debt.id !== AFFIRM_DEBT_ID), ...affirm]
+}
+
+function orderByStrategy(
+  debts: Debt[],
+  plan: DebtPlanState,
+  now: Date,
+  currentBalances?: Map<string, number>,
+) {
   if (plan.strategy === 'highest-interest') return [...debts]
   const startBalances = new Map(
     debts.map((debt) => [
