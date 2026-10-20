@@ -116,6 +116,7 @@ import {
   payoffMonth,
   plannedCurrentBalances,
   projectDebtPlan,
+  setMonthExtra,
   sortDebtsByPayoff,
   withLiveMonthlyBudget,
   type PlannerMonth,
@@ -4388,8 +4389,18 @@ function useCalcMemory<T>(key: string, initial: () => T) {
   return [value, setValue] as const
 }
 
+function leftForDebt(billsNeed: number, billsHaveText: string, overflowHaveText: string) {
+  const stillNeed = ceilDollars(
+    Math.max(0, billsNeed - (parseAmount(billsHaveText) ?? 0)),
+  )
+  const overflowHave = parseAmount(overflowHaveText) ?? 0
+  const transfer = Math.min(stillNeed, overflowHave)
+  return Math.max(0, Math.floor(overflowHave - transfer + 1e-9))
+}
+
 export function CalculationsPanel() {
   const { accounts, expenses, debts } = useBudget()
+  const { setPlan } = useDebtPlan()
   const [billsHaveText, setBillsHaveText] = useCalcMemory(
     'billsHave',
     () => '',
@@ -4411,7 +4422,7 @@ export function CalculationsPanel() {
   const stillNeed = ceilDollars(Math.max(0, need - have))
   const overflowHave = parseAmount(overflowHaveText) ?? 0
   const transfer = Math.min(stillNeed, overflowHave)
-  const leftover = Math.max(0, Math.floor(overflowHave - transfer + 1e-9))
+  const leftover = leftForDebt(need, billsHaveText, overflowHaveText)
   const shortBy = stillNeed - transfer
   const showShortBy =
     billsHaveText.trim() !== '' && shortBy > 0.005
@@ -4420,6 +4431,23 @@ export function CalculationsPanel() {
     0,
   )
   const splitLeft = Math.floor(leftover - splitTotal + 1e-9)
+
+  function sendToPlanner(nextBillsText: string, nextOverflowText: string) {
+    const now = new Date()
+    const ready =
+      bills != null &&
+      overflow != null &&
+      parseAmount(nextBillsText) != null &&
+      parseAmount(nextOverflowText) != null
+    setPlan((current) =>
+      setMonthExtra(
+        current,
+        now.getFullYear(),
+        now.getMonth(),
+        ready ? leftForDebt(need, nextBillsText, nextOverflowText) : null,
+      ),
+    )
+  }
 
   function updateSplitLine(id: string, patch: Partial<DebtSplitLine>) {
     setSplitLines((current) =>
@@ -4443,7 +4471,10 @@ export function CalculationsPanel() {
                 placeholder="How much I have"
                 aria-label="How much I have"
                 value={billsHaveText}
-                onChange={(event) => setBillsHaveText(event.target.value)}
+                onChange={(event) => {
+                  setBillsHaveText(event.target.value)
+                  sendToPlanner(event.target.value, overflowHaveText)
+                }}
               />
               <div className="mt-3 grid gap-3">
                 <CalcLine label="Total expenses" value={formatUsd(need)} />
@@ -4479,7 +4510,10 @@ export function CalculationsPanel() {
                 placeholder="How much I have"
                 aria-label="How much I have"
                 value={overflowHaveText}
-                onChange={(event) => setOverflowHaveText(event.target.value)}
+                onChange={(event) => {
+                  setOverflowHaveText(event.target.value)
+                  sendToPlanner(billsHaveText, event.target.value)
+                }}
               />
               <div className="mt-3 grid gap-3">
                 <CalcLine

@@ -47,6 +47,8 @@ export type DebtPlanState = {
   interestByMonth: Record<string, Record<string, number>>
   /** Signed corrections so a month's end matches the bank. */
   adjustmentsByMonth: Record<string, Record<string, number>>
+  /** Cash left for debt after bills, from the calculator, by month. */
+  extraByMonth: Record<string, number>
   paymentsByMonth: Record<string, Record<string, number>>
   /** Month keys (`YYYY-MM`) whose paid amounts were saved. */
   loggedMonths: string[]
@@ -163,6 +165,7 @@ export function defaultDebtPlan(): DebtPlanState {
     chargesByMonth: {},
     interestByMonth: {},
     adjustmentsByMonth: {},
+    extraByMonth: {},
     paymentsByMonth: {},
     loggedMonths: [],
     loggedHistory: {},
@@ -359,6 +362,7 @@ export function parseDebtPlan(value: unknown): DebtPlanState | null {
     chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
     interestByMonth: normalizeChargesByMonth(item.interestByMonth),
     adjustmentsByMonth: normalizeChargesByMonth(item.adjustmentsByMonth),
+    extraByMonth: normalizeMonthAmounts(item.extraByMonth),
     paymentsByMonth:
       hasLogging || Object.keys(loggedHistory).length > 0
         ? normalizeChargesByMonth(item.paymentsByMonth)
@@ -475,6 +479,17 @@ function normalizeChargesByMonth(value: unknown) {
       }
     }
     if (Object.keys(month).length > 0) next[key] = month
+  }
+  return next
+}
+
+function normalizeMonthAmounts(value: unknown) {
+  if (value == null || typeof value !== 'object') return {}
+  const next: Record<string, number> = {}
+  for (const [key, amount] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof amount === 'number' && Number.isFinite(amount)) {
+      next[key] = roundCents(Math.max(0, amount))
+    }
   }
   return next
 }
@@ -625,6 +640,31 @@ export function adjustmentOverride(
   const value = plan.adjustmentsByMonth?.[monthKey(year, month)]?.[debtId]
   if (typeof value === 'number' && Number.isFinite(value)) return roundCents(value)
   return undefined
+}
+
+export function extraOverride(plan: DebtPlanState, year: number, month: number) {
+  const value = plan.extraByMonth?.[monthKey(year, month)]
+  if (typeof value === 'number' && Number.isFinite(value)) return roundCents(value)
+  return undefined
+}
+
+export function setMonthExtra(
+  plan: DebtPlanState,
+  year: number,
+  month: number,
+  amount: number | null,
+): DebtPlanState {
+  const key = monthKey(year, month)
+  const extraByMonth = { ...plan.extraByMonth }
+  if (amount == null) {
+    if (!(key in extraByMonth)) return plan
+    delete extraByMonth[key]
+  } else {
+    const next = roundCents(Math.max(0, amount))
+    if (extraByMonth[key] === next) return plan
+    extraByMonth[key] = next
+  }
+  return { ...plan, extraByMonth }
 }
 
 export function setMonthAdjustment(
@@ -1247,19 +1287,25 @@ export function projectDebtPlan(
 
     const payments = new Map<string, number>()
     let allocated = 0
+    let freedFromMinimums = 0
     for (const debt of owing) {
       if (locked.has(debt.id)) continue
       const due = afterInterest.get(debt.id) ?? 0
       const charged = lines.find((line) => line.debtId === debt.id)?.charged ?? 0
-      const minPay = roundCents(
-        Math.min(scheduledPayment(debt, plan, year, month, charged), due),
-      )
+      const scheduled = scheduledPayment(debt, plan, year, month, charged)
+      const minPay = roundCents(Math.min(scheduled, due))
       payments.set(debt.id, minPay)
       allocated += minPay
+      freedFromMinimums += Math.max(0, scheduled - minPay)
     }
 
     const applyExtra = monthIdx >= nowIdx && locked.size === 0
-    let leftover = applyExtra ? extraPool(plan, debts, payments, locked) : 0
+    const cashForDebt = extraOverride(plan, year, month)
+    let leftover = !applyExtra
+      ? 0
+      : cashForDebt != null
+        ? roundCents(cashForDebt + freedFromMinimums)
+        : extraPool(plan, debts, payments, locked)
     const unlocked = owing.filter(
       (debt) => !locked.has(debt.id) && debt.id !== AFFIRM_DEBT_ID,
     )
