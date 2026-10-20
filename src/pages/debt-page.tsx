@@ -85,7 +85,7 @@ import {
   type PlannerLine,
   type PlannerMonth,
 } from '@/lib/debt-plan'
-import { formatUsdWhole } from '@/lib/format'
+import { formatUsd, formatUsdWhole } from '@/lib/format'
 import { plannerMonthlyNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
 import { cn } from '@/lib/utils'
@@ -295,10 +295,10 @@ function paidInputHasDraft(target: EventTarget | null) {
   }
   const committed = Number(target.dataset.committed ?? '0')
   const raw = target.value.trim()
-  if (raw === '') return committed !== 0
+  if (raw === '') return Math.abs(committed) >= 0.005
   const parsed = Number(raw.replace(/[$,\s]/g, ''))
   if (!Number.isFinite(parsed)) return true
-  return Math.round(parsed) !== committed
+  return Math.abs(parsed - committed) >= 0.005
 }
 
 function isLoggablePlannerMonth(row: PlannerMonth, now: Date) {
@@ -1493,6 +1493,7 @@ function MonthBlock({
           detail={line}
           muted={extras?.muted}
           faint
+          cents
         />
       )
     }
@@ -1576,7 +1577,7 @@ function MonthBlock({
             <LabelCell>Interest</LabelCell>
             {debts.map((debt) => editField(debt, 'interest'))}
             <td className="total-rule py-1.5 pr-4 pl-4 text-right tabular-nums">
-              {plannerUsd(row.totalInterest)}
+              {plannerUsd(row.totalInterest, false, true)}
             </td>
           </>
         ) : (
@@ -1610,6 +1611,8 @@ function MonthBlock({
             <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
               {plannerUsd(
                 row.lines.reduce((sum, line) => sum + line.charged, 0),
+                false,
+                true,
               )}
             </td>
           </tr>
@@ -1621,6 +1624,8 @@ function MonthBlock({
             <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
               {plannerUsd(
                 row.lines.reduce((sum, line) => sum + line.adjustment, 0),
+                false,
+                true,
               )}
             </td>
           </tr>
@@ -1628,7 +1633,7 @@ function MonthBlock({
             <LabelCell>Paid</LabelCell>
             {debts.map((debt) => editField(debt, 'paid'))}
             <td className="total-rule py-1.5 pr-4 pl-4 text-right tabular-nums">
-              {plannerUsd(row.totalPaid)}
+              {plannerUsd(row.totalPaid, false, true)}
             </td>
           </tr>
         </>
@@ -1647,6 +1652,7 @@ function MonthBlock({
               showZero={paidOff(debt.id)}
               highlighted={!editing && extraOn(debt.id)}
               faint={editing}
+              cents={editing}
             />
           )
         })}
@@ -1659,6 +1665,7 @@ function MonthBlock({
           {plannerUsd(
             row.remainingTotal,
             row.remainingTotal <= 0.005 && row.totalPaid > 0.005,
+            editing,
           )}
         </td>
       </tr>
@@ -1702,7 +1709,11 @@ function HairlineRow({
   )
 }
 
-function plannerUsd(value: number, showZero = false) {
+function plannerUsd(value: number, showZero = false, cents = false) {
+  if (cents) {
+    if (Math.abs(value) >= 0.005) return formatUsd(value)
+    return showZero ? formatUsd(0) : ''
+  }
   if (Math.round(value) !== 0) return formatUsdWhole(value)
   return showZero ? formatUsdWhole(0) : ''
 }
@@ -1809,6 +1820,7 @@ function AmountCell({
   faint = false,
   highlighted = false,
   showZero = false,
+  cents = false,
   detailKey,
   detail,
 }: {
@@ -1817,6 +1829,7 @@ function AmountCell({
   faint?: boolean
   highlighted?: boolean
   showZero?: boolean
+  cents?: boolean
   detailKey?: string
   detail?: PlannerLine
 }) {
@@ -1838,7 +1851,7 @@ function AmountCell({
         tip.leave(event, detailKey)
       }}
     >
-      {plannerUsd(value, showZero)}
+      {plannerUsd(value, showZero, cents)}
     </td>
   )
 }
@@ -1866,7 +1879,8 @@ function PaidCell({
   detail?: PlannerLine
   onCommit: (amount: number | null) => void
 }) {
-  const display = plannerUsd(value)
+  const display = plannerUsd(value, false, true)
+  const cents = roundCents(value).toFixed(2)
   const tip = useContext(TipContext)
 
   function commit(raw: string) {
@@ -1877,7 +1891,7 @@ function PaidCell({
     }
     const parsed = parseUsdInput(trimmed, field === 'adjustment')
     if (parsed == null) return
-    if (!overridden && Math.round(parsed) === Math.round(value)) return
+    if (!overridden && Math.abs(parsed - value) < 0.005) return
     onCommit(parsed)
   }
 
@@ -1885,7 +1899,7 @@ function PaidCell({
     <td
       data-debt-tip={detailKey}
       className={cn(
-        'min-w-24 px-4 py-1.5 text-right tabular-nums',
+        'min-w-28 px-4 py-1.5 text-right tabular-nums',
         extraTone(highlighted, muted, faint),
         highlighted && EXTRA_FILL,
       )}
@@ -1899,11 +1913,11 @@ function PaidCell({
       }}
     >
       <input
-        key={`${overridden ? 'o' : 'c'}-${Math.round(value)}`}
+        key={`${overridden ? 'o' : 'c'}-${cents}`}
         data-no-drag
         data-debt-id={debtId}
         data-field={field}
-        data-committed={Math.round(value)}
+        data-committed={cents}
         draggable={false}
         size={1}
         className="paid-input paid-input-boxed select-text"
@@ -1921,7 +1935,7 @@ function PaidCell({
         onFocus={(event) => {
           tip.hide()
           event.currentTarget.value =
-            Math.round(value) === 0 ? '' : String(Math.round(value))
+            Math.abs(value) < 0.005 ? '' : cents
           event.currentTarget.select()
         }}
         onBlur={(event) => {
@@ -1985,7 +1999,7 @@ function MonthDetailTip({
           <div key={label} className="contents">
             <span className="text-muted-foreground text-xs">{label}</span>
             <span className="text-right tabular-nums">
-              {formatUsdWhole(amount)}
+              {formatUsd(amount)}
             </span>
           </div>
         ))}
