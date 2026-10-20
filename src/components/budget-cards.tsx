@@ -4367,21 +4367,72 @@ export function EditDebtsDialog({
 const HAVE_INPUT_CLASS =
   'h-10 w-1/3 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
 
+type DebtSplitLine = { id: string; name: string; amount: string }
+
+function newSplitLine(): DebtSplitLine {
+  return { id: crypto.randomUUID(), name: '', amount: '' }
+}
+
+function useSessionState<T>(key: string, initial: () => T) {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const saved = sessionStorage.getItem(key)
+      if (saved != null) return JSON.parse(saved) as T
+    } catch {
+      // fall through to the initial value
+    }
+    return initial()
+  })
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(value))
+    } catch {
+      // storage full or disabled; keep in-memory state
+    }
+  }, [key, value])
+
+  return [value, setValue] as const
+}
+
 export function CalculationsPanel() {
   const { accounts, expenses, debts } = useBudget()
-  const [billsHaveText, setBillsHaveText] = useState('')
-  const [overflowHaveText, setOverflowHaveText] = useState('')
+  const [billsHaveText, setBillsHaveText] = useSessionState(
+    'calc.billsHave',
+    () => '',
+  )
+  const [overflowHaveText, setOverflowHaveText] = useSessionState(
+    'calc.overflowHave',
+    () => '',
+  )
+  const [splitLines, setSplitLines] = useSessionState<DebtSplitLine[]>(
+    'calc.debtSplit',
+    () => [newSplitLine(), newSplitLine()],
+  )
   const bills = billsAccount(accounts)
   const overflow = overflowAccount(accounts)
-  const need = bills ? monthlyDepositNeed(expenses, debts, bills.id) : 0
+  const need = bills
+    ? ceilDollars(monthlyDepositNeed(expenses, debts, bills.id))
+    : 0
   const have = parseAmount(billsHaveText) ?? 0
-  const stillNeed = Math.max(0, need - have)
+  const stillNeed = ceilDollars(Math.max(0, need - have))
   const overflowHave = parseAmount(overflowHaveText) ?? 0
   const transfer = Math.min(stillNeed, overflowHave)
-  const leftover = overflowHave - transfer
+  const leftover = Math.max(0, Math.floor(overflowHave - transfer + 1e-9))
   const shortBy = stillNeed - transfer
   const showShortBy =
     billsHaveText.trim() !== '' && shortBy > 0.005
+  const splitTotal = splitLines.reduce(
+    (sum, line) => sum + (parseAmount(line.amount) ?? 0),
+    0,
+  )
+  const splitLeft = roundCents(leftover - splitTotal)
+
+  function updateSplitLine(id: string, patch: Partial<DebtSplitLine>) {
+    setSplitLines((current) =>
+      current.map((line) => (line.id === id ? { ...line, ...patch } : line)),
+    )
+  }
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -4450,6 +4501,80 @@ export function CalculationsPanel() {
               Set an account role to Leftover to use this side.
             </EmptyNote>
           )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Debt</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <CalcLine label="Left for debt" value={formatUsd(leftover)} />
+          <div className="grid gap-2">
+            {splitLines.map((line, index) => (
+              <div
+                key={line.id}
+                className="grid grid-cols-[minmax(0,1fr)_7rem_28px] items-center gap-2"
+              >
+                <Input
+                  className="h-9"
+                  placeholder={`Debt ${index + 1}`}
+                  aria-label={`Debt ${index + 1} name`}
+                  value={line.name}
+                  onChange={(event) =>
+                    updateSplitLine(line.id, { name: event.target.value })
+                  }
+                />
+                <Input
+                  inputMode="decimal"
+                  className="h-9 text-right tabular-nums"
+                  placeholder="0.00"
+                  aria-label={`Debt ${index + 1} amount`}
+                  value={line.amount}
+                  onChange={(event) =>
+                    updateSplitLine(line.id, { amount: event.target.value })
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-muted-foreground"
+                  disabled={splitLines.length <= 1}
+                  aria-label={`Remove debt ${index + 1}`}
+                  onClick={() =>
+                    setSplitLines((current) =>
+                      current.filter((item) => item.id !== line.id),
+                    )
+                  }
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="justify-self-start"
+              onClick={() =>
+                setSplitLines((current) => [...current, newSplitLine()])
+              }
+            >
+              <Plus className="size-3.5" />
+              Add line
+            </Button>
+          </div>
+          <div className="flex items-baseline justify-between gap-3 text-sm font-medium">
+            <span>Left</span>
+            <span
+              className={cn(
+                'tabular-nums',
+                splitLeft < -0.005 && 'text-destructive',
+              )}
+            >
+              {formatUsd(splitLeft)}
+            </span>
+          </div>
         </CardContent>
       </Card>
     </div>
