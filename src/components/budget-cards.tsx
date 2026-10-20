@@ -4419,7 +4419,7 @@ export function CalculationsPanel() {
     (sum, line) => sum + (parseAmount(line.amount) ?? 0),
     0,
   )
-  const splitLeft = roundCents(leftover - splitTotal)
+  const splitLeft = Math.floor(leftover - splitTotal + 1e-9)
 
   function updateSplitLine(id: string, patch: Partial<DebtSplitLine>) {
     setSplitLines((current) =>
@@ -4501,7 +4501,7 @@ export function CalculationsPanel() {
           <CardTitle>Debt</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3">
-          <CalcLine label="Left for debt" value={formatUsd(leftover)} />
+          <CalcLine label="Debt payoff amount" value={formatUsd(leftover)} />
           <div className="grid gap-2">
             {splitLines.map((line, index) => (
               <div
