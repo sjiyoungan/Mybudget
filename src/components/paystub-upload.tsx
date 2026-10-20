@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useBudget } from '@/lib/budget-context'
+import { SPENDING_ENABLED } from '@/lib/features'
 import { formatLongDate } from '@/lib/format'
 import { parseAdpPaystub, type Paystub } from '@/lib/paystub'
 import { usePaystubs } from '@/lib/paystub-context'
@@ -300,6 +301,32 @@ export function PaystubUploadButton({
     event.target.value = ''
   }
 
+  const uploadButton = (
+    <Button
+      type="button"
+      variant={iconOnly ? 'ghost' : 'outline'}
+      size={iconOnly ? 'icon' : 'sm'}
+      disabled={busy}
+      className={cn(iconOnly && 'hover-fill hover-fill-icon', className)}
+      onClick={SPENDING_ENABLED ? undefined : () => inputRef.current?.click()}
+      aria-label={
+        progress
+          ? `Reading ${progress.current}/${progress.total}`
+          : 'Upload'
+      }
+    >
+      <Upload data-icon={iconOnly ? undefined : 'inline-start'} />
+      {iconOnly ? null : progress ? (
+        `Reading ${progress.current}/${progress.total}…`
+      ) : (
+        'Upload'
+      )}
+      {iconOnly || progress || !SPENDING_ENABLED ? null : (
+        <ChevronDown className="size-3.5 text-muted-foreground" />
+      )}
+    </Button>
+  )
+
   return (
     <>
       <input
@@ -318,30 +345,10 @@ export function PaystubUploadButton({
         className="sr-only"
         onChange={onSpendingInputChange}
       />
+      {SPENDING_ENABLED ? (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant={iconOnly ? 'ghost' : 'outline'}
-            size={iconOnly ? 'icon' : 'sm'}
-            disabled={busy}
-            className={cn(iconOnly && 'hover-fill hover-fill-icon', className)}
-            aria-label={
-              progress
-                ? `Reading ${progress.current}/${progress.total}`
-                : 'Upload'
-            }
-          >
-            <Upload data-icon={iconOnly ? undefined : 'inline-start'} />
-            {iconOnly ? null : progress ? (
-              `Reading ${progress.current}/${progress.total}…`
-            ) : (
-              'Upload'
-            )}
-            {iconOnly || progress ? null : (
-              <ChevronDown className="size-3.5 text-muted-foreground" />
-            )}
-          </Button>
+          {uploadButton}
         </DropdownMenuTrigger>
         <DropdownMenuContent align={iconOnly ? 'end' : 'start'}>
           <DropdownMenuItem
@@ -360,6 +367,9 @@ export function PaystubUploadButton({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      ) : (
+        uploadButton
+      )}
 
       <Dialog
         open={pendingStatements.length > 0}

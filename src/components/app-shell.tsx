@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useAuth } from '@/lib/auth-context'
+import { SPENDING_ENABLED } from '@/lib/features'
 import { cn } from '@/lib/utils'
 
 const TOP_PAGES = [
@@ -21,8 +22,8 @@ const SUB_PAGES = [
   { to: '/income', label: 'Income' },
   { to: '/expenses', label: 'Expenses' },
   { to: '/debt', label: 'Debt' },
-  { to: '/spending', label: 'Spending' },
-] as const
+  ...(SPENDING_ENABLED ? [{ to: '/spending', label: 'Spending' }] : []),
+]
 
 const BOTTOM_PAGES = [{ to: '/calculate', label: 'Calculator' }] as const
 

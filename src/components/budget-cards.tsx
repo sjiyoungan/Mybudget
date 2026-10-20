@@ -104,6 +104,7 @@ import {
   type RecurringExpense,
 } from '@/lib/budget'
 import { useDebtPlan } from '@/lib/debt-plan-context'
+import { SPENDING_ENABLED } from '@/lib/features'
 import { useSpending } from '@/lib/spending-context'
 import {
   applyExpenseSpendingBuckets,
@@ -811,8 +812,9 @@ type ExpenseDraft = {
 
 const NONE_BUCKET = 'none'
 
-const EXPENSE_ROW =
-  'grid-cols-[minmax(7rem,12rem)_5.75rem_6.75rem_4.75rem_minmax(6.5rem,1fr)_minmax(7rem,9rem)_28px_28px]' as const
+const EXPENSE_ROW = SPENDING_ENABLED
+  ? 'grid-cols-[minmax(7rem,12rem)_5.75rem_6.75rem_4.75rem_minmax(6.5rem,1fr)_minmax(7rem,9rem)_28px_28px]'
+  : 'grid-cols-[minmax(7rem,12rem)_5.75rem_6.75rem_4.75rem_minmax(6.5rem,1fr)_28px_28px]'
 
 function ExpenseColumnLabels() {
   return (
@@ -822,7 +824,9 @@ function ExpenseColumnLabels() {
       <span className={cn(DEBT_LABEL_LEFT, 'w-full')}>Frequency</span>
       <span className={cn(DEBT_LABEL_RIGHT, 'w-full')}>Due day</span>
       <span className={cn(DEBT_LABEL_LEFT, 'w-full')}>Bank</span>
-      <span className={cn(DEBT_LABEL_LEFT, 'w-full')}>Spending</span>
+      {SPENDING_ENABLED ? (
+        <span className={cn(DEBT_LABEL_LEFT, 'w-full')}>Spending</span>
+      ) : null}
       <span />
       <span />
     </>
@@ -1268,12 +1272,14 @@ function ExpenseDraftRow({
         quiet
         hideLastFour
       />
-      <SpendingBucketSelect
-        value={draft.spendingBucket}
-        buckets={spendingBuckets}
-        onChange={(spendingBucket) => onUpdate(draft.id, { spendingBucket })}
-        disabled={disableSpending}
-      />
+      {SPENDING_ENABLED ? (
+        <SpendingBucketSelect
+          value={draft.spendingBucket}
+          buckets={spendingBuckets}
+          onChange={(spendingBucket) => onUpdate(draft.id, { spendingBucket })}
+          disabled={disableSpending}
+        />
+      ) : null}
       <Button
         type="button"
         variant="ghost"

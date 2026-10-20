@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { AppShell } from '@/components/app-shell'
 import { useAuth } from '@/lib/auth-context'
+import { SPENDING_ENABLED } from '@/lib/features'
 import { supabase } from '@/lib/supabase'
 import { CalculatePage } from '@/pages/calculate-page'
 import { DashboardPage } from '@/pages/dashboard-page'
@@ -29,7 +30,9 @@ export default function App() {
         <Route path="/income" element={<IncomePage />} />
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/debt" element={<DebtPage />} />
-        <Route path="/spending" element={<SpendingPage />} />
+        {SPENDING_ENABLED ? (
+          <Route path="/spending" element={<SpendingPage />} />
+        ) : null}
         <Route path="/calculate" element={<CalculatePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

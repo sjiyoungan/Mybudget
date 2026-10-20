@@ -68,6 +68,27 @@ export function stubsForMonth(
     .sort((left, right) => left.payDate.localeCompare(right.payDate))
 }
 
+/**
+ * Average net pay over the full months before `monthIndex` (it may be partial).
+ * Months without paystubs are skipped so a short history isn't dragged down.
+ */
+export function trailingAverageNet(
+  paystubs: Paystub[],
+  year: number,
+  monthIndex: number,
+  span = 6,
+) {
+  const totals: number[] = []
+  for (let back = 1; back <= span; back += 1) {
+    const date = new Date(year, monthIndex - back, 1)
+    const stubs = stubsForMonth(paystubs, date.getFullYear(), date.getMonth())
+    if (stubs.length === 0) continue
+    totals.push(stubs.reduce((sum, stub) => sum + stub.netPay, 0))
+  }
+  if (totals.length === 0) return 0
+  return totals.reduce((sum, amount) => sum + amount, 0) / totals.length
+}
+
 export function currentMonthNet(paystubs: Paystub[], now = new Date()) {
   return stubsForMonth(paystubs, now.getFullYear(), now.getMonth()).reduce(
     (sum, stub) => sum + stub.netPay,

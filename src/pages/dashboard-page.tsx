@@ -18,18 +18,15 @@ import {
   SelectTrigger,
 } from '@/components/ui/select'
 import {
-  DEBT_CATEGORY_ID,
   ceiledMonthlyAmount,
   isExpenseActiveInMonth,
   isHiddenExpense,
   type RecurringExpense,
 } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
-import { formatUsd, formatUsdWhole, formatUsdWholeUp } from '@/lib/format'
-import { INCOME_START_YEAR, monthName, stubsForMonth } from '@/lib/income'
+import { formatUsdWhole, formatUsdWholeUp } from '@/lib/format'
+import { INCOME_START_YEAR, monthName, trailingAverageNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
-import { isSpendingPurchase } from '@/lib/spending'
-import { useSpending } from '@/lib/spending-context'
 import { cn } from '@/lib/utils'
 
 function monthKey(year: number, month: number) {
@@ -78,17 +75,9 @@ function expensesInMonth(
     .reduce((sum, item) => sum + ceiledMonthlyAmount(item), 0)
 }
 
-function budgetDeltaLabel(spent: number, budget: number) {
-  const delta = Math.round((spent - budget) * 100) / 100
-  if (Math.abs(delta) < 0.005) return { text: 'On budget', over: false }
-  if (delta > 0) return { text: `${formatUsd(delta)} over`, over: true }
-  return { text: `${formatUsd(-delta)} under`, over: false }
-}
-
 export function DashboardPage() {
   const { paystubs } = usePaystubs()
   const { expenses } = useBudget()
-  const { transactions } = useSpending()
   const now = useMemo(() => new Date(), [])
   const months = useMemo(() => dashboardMonths(now), [now])
   const yearGroups = useMemo(() => monthsByYear(months), [months])
@@ -104,32 +93,16 @@ export function DashboardPage() {
     }
 
   const income = useMemo(
-    () =>
-      stubsForMonth(paystubs, selected.year, selected.month).reduce(
-        (sum, stub) => sum + stub.netPay,
-        0,
-      ),
+    () => trailingAverageNet(paystubs, selected.year, selected.month),
     [paystubs, selected.month, selected.year],
   )
   const expenseTotal = useMemo(
     () => expensesInMonth(expenses, selected.year, selected.month),
     [expenses, selected.month, selected.year],
   )
-  const spent = useMemo(() => {
-    const prefix = `${selected.key}-`
-    return transactions
-      .filter((txn) => txn.date.startsWith(prefix) && isSpendingPurchase(txn))
-      .reduce((sum, txn) => sum + txn.amount, 0)
-  }, [selected.key, transactions])
-  const spendingBudget = useMemo(
-    () =>
-      expensesInMonth(expenses, selected.year, selected.month, [
-        DEBT_CATEGORY_ID,
-      ]),
-    [expenses, selected.month, selected.year],
+  const leftOver = Math.floor(
+    Math.round(income) - Math.ceil(expenseTotal - 1e-9) + 1e-9,
   )
-  const delta =
-    spendingBudget > 0 ? budgetDeltaLabel(spent, spendingBudget) : null
 
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-4 pb-8 lg:px-6">
@@ -180,7 +153,7 @@ export function DashboardPage() {
           <Card className="hover-fill">
             <CardHeader className="gap-5">
               <div className="flex items-start justify-between gap-2">
-                <CardDescription>Income</CardDescription>
+                <CardDescription>Income · 6-month avg</CardDescription>
                 <ChevronRight className="text-muted-foreground size-4" />
               </div>
               <CardTitle className="text-2xl">
@@ -205,34 +178,16 @@ export function DashboardPage() {
             </CardHeader>
           </Card>
         </Link>
-        <Link
-          to="/spending"
-          className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-        >
-          <Card className="hover-fill">
-            <CardHeader className="gap-5">
-              <div className="flex items-start justify-between gap-2">
-                <CardDescription>Spending</CardDescription>
-                <ChevronRight className="text-muted-foreground size-4" />
-              </div>
-              <CardTitle className="flex items-baseline text-2xl">
-                <span>{formatUsd(spent)}</span>
-                {delta ? (
-                  <span
-                    className={cn(
-                      'ml-1.5 text-sm font-normal',
-                      delta.over
-                        ? 'text-destructive'
-                        : 'text-muted-foreground',
-                    )}
-                  >
-                    {delta.text}
-                  </span>
-                ) : null}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </Link>
+        <Card>
+          <CardHeader className="gap-5">
+            <CardDescription>Left over</CardDescription>
+            <CardTitle
+              className={cn('text-2xl', leftOver < 0 && 'text-destructive')}
+            >
+              {formatUsdWhole(leftOver)}
+            </CardTitle>
+          </CardHeader>
+        </Card>
       </section>
 
       <DebtsCard />
