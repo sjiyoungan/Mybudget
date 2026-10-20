@@ -4367,29 +4367,22 @@ export function EditDebtsDialog({
 const HAVE_INPUT_CLASS =
   'h-10 w-1/3 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
 
-type DebtSplitLine = { id: string; name: string; amount: string }
+type DebtSplitLine = { id: string; amount: string }
 
 function newSplitLine(): DebtSplitLine {
-  return { id: crypto.randomUUID(), name: '', amount: '' }
+  return { id: crypto.randomUUID(), amount: '' }
 }
 
-function useSessionState<T>(key: string, initial: () => T) {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const saved = sessionStorage.getItem(key)
-      if (saved != null) return JSON.parse(saved) as T
-    } catch {
-      // fall through to the initial value
-    }
-    return initial()
-  })
+/** Lives only in memory: kept across page changes, gone on refresh or close. */
+const calcMemory = new Map<string, unknown>()
+
+function useCalcMemory<T>(key: string, initial: () => T) {
+  const [value, setValue] = useState<T>(() =>
+    calcMemory.has(key) ? (calcMemory.get(key) as T) : initial(),
+  )
 
   useEffect(() => {
-    try {
-      sessionStorage.setItem(key, JSON.stringify(value))
-    } catch {
-      // storage full or disabled; keep in-memory state
-    }
+    calcMemory.set(key, value)
   }, [key, value])
 
   return [value, setValue] as const
@@ -4397,16 +4390,16 @@ function useSessionState<T>(key: string, initial: () => T) {
 
 export function CalculationsPanel() {
   const { accounts, expenses, debts } = useBudget()
-  const [billsHaveText, setBillsHaveText] = useSessionState(
-    'calc.billsHave',
+  const [billsHaveText, setBillsHaveText] = useCalcMemory(
+    'billsHave',
     () => '',
   )
-  const [overflowHaveText, setOverflowHaveText] = useSessionState(
-    'calc.overflowHave',
+  const [overflowHaveText, setOverflowHaveText] = useCalcMemory(
+    'overflowHave',
     () => '',
   )
-  const [splitLines, setSplitLines] = useSessionState<DebtSplitLine[]>(
-    'calc.debtSplit',
+  const [splitLines, setSplitLines] = useCalcMemory<DebtSplitLine[]>(
+    'debtSplit',
     () => [newSplitLine(), newSplitLine()],
   )
   const bills = billsAccount(accounts)
@@ -4515,15 +4508,9 @@ export function CalculationsPanel() {
                 key={line.id}
                 className="grid grid-cols-[minmax(0,1fr)_7rem_28px] items-center gap-2"
               >
-                <Input
-                  className="h-9"
-                  placeholder={`Debt ${index + 1}`}
-                  aria-label={`Debt ${index + 1} name`}
-                  value={line.name}
-                  onChange={(event) =>
-                    updateSplitLine(line.id, { name: event.target.value })
-                  }
-                />
+                <span className="text-muted-foreground text-sm">
+                  Debt {index + 1}
+                </span>
                 <Input
                   inputMode="decimal"
                   className="h-9 text-right tabular-nums"
