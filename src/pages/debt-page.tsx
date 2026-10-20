@@ -1907,7 +1907,7 @@ function PaidCell({
         draggable={false}
         size={1}
         className="paid-input paid-input-boxed select-text"
-        inputMode="decimal"
+        inputMode={field === 'adjustment' ? 'text' : 'decimal'}
         aria-label={
           field === 'charged'
             ? 'Charged'
@@ -1995,10 +1995,76 @@ function MonthDetailTip({
 }
 
 function parseUsdInput(raw: string, allowNegative = false) {
-  const cleaned = raw.replace(/[$,\s]/g, '').replace(/^\((.*)\)$/, '-$1')
-  const parsed = Number(cleaned)
-  if (!Number.isFinite(parsed) || (!allowNegative && parsed < 0)) return null
+  const cleaned = raw.replace(/[$,\s]/g, '')
+  const parsed = evaluateArithmetic(cleaned)
+  if (parsed == null || (!allowNegative && parsed < 0)) return null
   return Math.round(parsed * 100) / 100
+}
+
+/** Evaluates + - * / and parentheses, e.g. `1290-765`. */
+function evaluateArithmetic(input: string): number | null {
+  let pos = 0
+
+  function peek() {
+    return input[pos]
+  }
+
+  function parseExpression(): number | null {
+    let value = parseTerm()
+    while (value != null && (peek() === '+' || peek() === '-')) {
+      const op = input[pos++]
+      const right = parseTerm()
+      if (right == null) return null
+      value = op === '+' ? value + right : value - right
+    }
+    return value
+  }
+
+  function parseTerm(): number | null {
+    let value = parseFactor()
+    while (value != null && (peek() === '*' || peek() === '/' || peek() === 'x')) {
+      const op = input[pos++]
+      const right = parseFactor()
+      if (right == null) return null
+      if (op === '/') {
+        if (right === 0) return null
+        value /= right
+      } else {
+        value *= right
+      }
+    }
+    return value
+  }
+
+  function parseFactor(): number | null {
+    if (peek() === '-') {
+      pos++
+      const value = parseFactor()
+      return value == null ? null : -value
+    }
+    if (peek() === '+') {
+      pos++
+      return parseFactor()
+    }
+    if (peek() === '(') {
+      pos++
+      const value = parseExpression()
+      if (peek() !== ')') return null
+      pos++
+      return value
+    }
+    const match = /^(\d+\.?\d*|\.\d+)/.exec(input.slice(pos))
+    if (!match) return null
+    pos += match[0].length
+    return Number(match[0])
+  }
+
+  if (input === '') return null
+  const result = parseExpression()
+  if (result == null || pos !== input.length || !Number.isFinite(result)) {
+    return null
+  }
+  return result
 }
 
 function applyFocusedPaidInput(plan: DebtPlanState, row: PlannerMonth) {
