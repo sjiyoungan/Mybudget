@@ -10,7 +10,14 @@ import {
 } from 'react'
 
 import { useAuth } from '@/lib/auth-context'
-import { loadDebtPlan, saveDebtPlan, type DebtPlanState } from '@/lib/debt-plan'
+import { useBudget } from '@/lib/budget-context'
+import {
+  loadDebtPlan,
+  paidOffLoggedDebtIds,
+  saveDebtPlan,
+  withClosedDebts,
+  type DebtPlanState,
+} from '@/lib/debt-plan'
 import { supabase } from '@/lib/supabase'
 import {
   markCloudReady,
@@ -56,6 +63,15 @@ export function DebtPlanProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [loading, user])
+
+  const { debts, removeDebt } = useBudget()
+  useEffect(() => {
+    const paidOff = paidOffLoggedDebtIds(plan)
+    const closing = debts.filter((debt) => paidOff.has(debt.id))
+    if (closing.length === 0) return
+    setPlanState((current) => withClosedDebts(current, closing))
+    for (const debt of closing) removeDebt(debt.id)
+  }, [plan, debts, removeDebt])
 
   const value = useMemo<DebtPlanContextValue>(
     () => ({

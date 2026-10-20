@@ -179,16 +179,23 @@ export function defaultDebtPlan(): DebtPlanState {
   }
 }
 
-/** Debts a logged month took to zero after owing something that month. */
-export function debtsPaidOffInMonth(row: PlannerMonth) {
-  return row.lines
-    .filter(
-      (line) =>
-        line.debtId !== AFFIRM_DEBT_ID &&
-        line.balance <= 0.005 &&
-        (line.start > 0.005 || line.paid > 0.005),
-    )
-    .map((line) => line.debtId)
+/** Debts whose latest logged month left them at zero after owing something. */
+export function paidOffLoggedDebtIds(plan: DebtPlanState) {
+  const latest = new Map<string, PlannerLine>()
+  const owed = new Set<string>()
+  const keys = Object.keys(plan.loggedHistory ?? {}).sort()
+  for (const key of keys) {
+    for (const line of plan.loggedHistory[key].lines) {
+      latest.set(line.debtId, line)
+      if (line.start > 0.005 || line.paid > 0.005) owed.add(line.debtId)
+    }
+  }
+  const ids = new Set<string>()
+  for (const [debtId, line] of latest) {
+    if (debtId === AFFIRM_DEBT_ID) continue
+    if (line.balance <= 0.005 && owed.has(debtId)) ids.add(debtId)
+  }
+  return ids
 }
 
 export function withClosedDebts(plan: DebtPlanState, closed: Debt[]): DebtPlanState {
