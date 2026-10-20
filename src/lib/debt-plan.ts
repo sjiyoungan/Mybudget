@@ -57,6 +57,8 @@ export type DebtPlanState = {
   /** First planner month after the history wipe (`YYYY-MM`). */
   planStartMonth: string
   affirmLoans: AffirmLoan[]
+  /** Debts removed from the budget after a logged payoff, kept for history. */
+  closedDebts: Debt[]
 }
 
 export type PlannerLine = {
@@ -173,7 +175,39 @@ export function defaultDebtPlan(): DebtPlanState {
     affirmLoans: pruneExpiredAffirmLoans(
       seededAffirmLoans.map((loan) => normalizeAffirmLoan({ ...loan })),
     ),
+    closedDebts: [],
   }
+}
+
+/** Debts a logged month took to zero after owing something that month. */
+export function debtsPaidOffInMonth(row: PlannerMonth) {
+  return row.lines
+    .filter(
+      (line) =>
+        line.debtId !== AFFIRM_DEBT_ID &&
+        line.balance <= 0.005 &&
+        (line.start > 0.005 || line.paid > 0.005),
+    )
+    .map((line) => line.debtId)
+}
+
+export function withClosedDebts(plan: DebtPlanState, closed: Debt[]): DebtPlanState {
+  if (closed.length === 0) return plan
+  const ids = new Set(closed.map((debt) => debt.id))
+  return {
+    ...plan,
+    closedDebts: [
+      ...(plan.closedDebts ?? []).filter((debt) => !ids.has(debt.id)),
+      ...closed,
+    ],
+  }
+}
+
+/** Budget debts plus closed ones the budget no longer has. */
+export function debtsWithClosed(debts: Debt[], plan: DebtPlanState): Debt[] {
+  const have = new Set(debts.map((debt) => debt.id))
+  const closed = (plan.closedDebts ?? []).filter((debt) => !have.has(debt.id))
+  return closed.length > 0 ? [...debts, ...closed] : debts
 }
 
 /** Debt total payments plus leftover after all expenses (including those payments). */
@@ -380,6 +414,15 @@ export function parseDebtPlan(value: unknown): DebtPlanState | null {
           )
         : fallback.affirmLoans,
     ),
+    closedDebts: Array.isArray(item.closedDebts)
+      ? item.closedDebts.filter(
+          (debt): debt is Debt =>
+            debt != null &&
+            typeof debt === 'object' &&
+            typeof debt.id === 'string' &&
+            typeof debt.lender === 'string',
+        )
+      : [],
   }
 }
 

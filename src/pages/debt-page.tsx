@@ -51,8 +51,11 @@ import {
   debtFreeLabel,
   AFFIRM_DEBT_ID,
   debtsWithAffirmPlan,
+  debtsPaidOffInMonth,
+  debtsWithClosed,
   debtsWithHistoryAccounts,
   historyRows,
+  withClosedDebts,
   historyVisibleDebts,
   logPlannerMonth,
   applyPlannerMonthValue,
@@ -161,8 +164,8 @@ export function DebtPage() {
     [debts, plan.affirmLoans, now],
   )
   const allDebts = useMemo(
-    () => debtsWithHistoryAccounts(plannerDebts),
-    [plannerDebts],
+    () => debtsWithHistoryAccounts(debtsWithClosed(plannerDebts, plan)),
+    [plannerDebts, plan],
   )
 
   const planForMath = useMemo(
@@ -322,6 +325,7 @@ function PlannerCard({
   now: Date
   onPlanChange: (plan: DebtPlanState) => void
 }) {
+  const { debts: budgetDebts, removeDebt } = useBudget()
   const [view, setView] = useState<PlannerView>('planner')
   const [customOpen, setCustomOpen] = useState(false)
   const [debtsOpen, setDebtsOpen] = useState(false)
@@ -496,7 +500,14 @@ function PlannerCard({
               plan,
               row,
             )
-            changePlan(logPlannerMonth(next, snapshot))
+            const logged = logPlannerMonth(next, snapshot)
+            const loggedRow = logged.loggedHistory[monthKey(row.year, row.month)]
+            const paidOffIds = new Set(
+              loggedRow ? debtsPaidOffInMonth(loggedRow) : [],
+            )
+            const closing = budgetDebts.filter((debt) => paidOffIds.has(debt.id))
+            changePlan(withClosedDebts(logged, closing))
+            for (const debt of closing) removeDebt(debt.id)
             setEditingKey(null)
           }}
           onPaidChange={(year, month, debtId, amount) => {

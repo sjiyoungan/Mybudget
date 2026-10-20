@@ -354,6 +354,12 @@ export function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPla
       remote.interestByMonth,
       local.interestByMonth,
     ),
+    closedDebts: [
+      ...(remote.closedDebts ?? []).filter(
+        (debt) => !(local.closedDebts ?? []).some((item) => item.id === debt.id),
+      ),
+      ...(local.closedDebts ?? []),
+    ],
     extraByMonth: {
       ...(remote.extraByMonth ?? {}),
       ...(local.extraByMonth ?? {}),
