@@ -4532,15 +4532,17 @@ export function CalculationsPanel() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Debt</CardTitle>
+          <div className="flex items-baseline justify-between gap-3">
+            <CardTitle>Debt payoff amount</CardTitle>
+            <span className="text-sm tabular-nums">{formatUsd(leftover)}</span>
+          </div>
         </CardHeader>
         <CardContent className="grid gap-3">
-          <CalcLine label="Debt payoff amount" value={formatUsd(leftover)} />
           <div className="grid gap-2">
             {splitLines.map((line, index) => (
               <div
                 key={line.id}
-                className="grid grid-cols-[minmax(0,1fr)_7rem_28px] items-center gap-2"
+                className="grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-2"
               >
                 <span className="text-muted-foreground text-sm">
                   Debt {index + 1}
@@ -4555,21 +4557,6 @@ export function CalculationsPanel() {
                     updateSplitLine(line.id, { amount: event.target.value })
                   }
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="text-muted-foreground"
-                  disabled={splitLines.length <= 1}
-                  aria-label={`Remove debt ${index + 1}`}
-                  onClick={() =>
-                    setSplitLines((current) =>
-                      current.filter((item) => item.id !== line.id),
-                    )
-                  }
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
               </div>
             ))}
             <Button
