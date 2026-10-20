@@ -25,7 +25,7 @@ import {
 } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
 import { formatUsdWhole, formatUsdWholeUp } from '@/lib/format'
-import { INCOME_START_YEAR, monthName, trailingAverageNet } from '@/lib/income'
+import { INCOME_START_YEAR, monthName, recentFullMonthsNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
 import { cn } from '@/lib/utils'
 
@@ -93,8 +93,8 @@ export function DashboardPage() {
     }
 
   const income = useMemo(
-    () => trailingAverageNet(paystubs, selected.year, selected.month),
-    [paystubs, selected.month, selected.year],
+    () => recentFullMonthsNet(paystubs, selected.year, selected.month, 3, now),
+    [paystubs, selected.month, selected.year, now],
   )
   const expenseTotal = useMemo(
     () => expensesInMonth(expenses, selected.year, selected.month),
@@ -153,7 +153,7 @@ export function DashboardPage() {
           <Card className="hover-fill">
             <CardHeader className="gap-5">
               <div className="flex items-start justify-between gap-2">
-                <CardDescription>Income · 6-month avg</CardDescription>
+                <CardDescription>Income · 3-month avg</CardDescription>
                 <ChevronRight className="text-muted-foreground size-4" />
               </div>
               <CardTitle className="text-2xl">

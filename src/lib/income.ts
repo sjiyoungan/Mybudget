@@ -68,21 +68,49 @@ export function stubsForMonth(
     .sort((left, right) => left.payDate.localeCompare(right.payDate))
 }
 
+/** Most common number of paychecks in a past month with any pay. */
+function usualPaychecksPerMonth(paystubs: Paystub[], now: Date) {
+  const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const counts = new Map<string, number>()
+  for (const stub of paystubs) {
+    const key = stub.payDate.slice(0, 7)
+    if (key >= current) continue
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  const tally = new Map<number, number>()
+  for (const count of counts.values()) tally.set(count, (tally.get(count) ?? 0) + 1)
+  let usual = 1
+  let seen = 0
+  for (const [count, times] of tally) {
+    if (times > seen || (times === seen && count < usual)) {
+      usual = count
+      seen = times
+    }
+  }
+  return usual
+}
+
 /**
- * Average net pay over the full months before `monthIndex` (it may be partial).
- * Months without paystubs are skipped so a short history isn't dragged down.
+ * Average net pay over the latest `span` full months up to `monthIndex`.
+ * The current month counts once it has the usual number of paychecks;
+ * months without paystubs are skipped.
  */
-export function trailingAverageNet(
+export function recentFullMonthsNet(
   paystubs: Paystub[],
   year: number,
   monthIndex: number,
-  span = 6,
+  span = 3,
+  now = new Date(),
 ) {
+  const nowIdx = now.getFullYear() * 12 + now.getMonth()
+  const usual = usualPaychecksPerMonth(paystubs, now)
   const totals: number[] = []
-  for (let back = 1; back <= span; back += 1) {
+  for (let back = 0; totals.length < span && back < span + 12; back += 1) {
     const date = new Date(year, monthIndex - back, 1)
     const stubs = stubsForMonth(paystubs, date.getFullYear(), date.getMonth())
     if (stubs.length === 0) continue
+    const idx = date.getFullYear() * 12 + date.getMonth()
+    if (idx >= nowIdx && stubs.length < usual) continue
     totals.push(stubs.reduce((sum, stub) => sum + stub.netPay, 0))
   }
   if (totals.length === 0) return 0
