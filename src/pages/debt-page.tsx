@@ -11,7 +11,7 @@ import {
   type PointerEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, Check, ChevronDown, Menu, Pencil, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, Menu, Pencil } from 'lucide-react'
 
 import { AffirmCard } from '@/components/affirm-card'
 import { CardGearButton, EditDebtsDialog } from '@/components/budget-cards'
@@ -61,9 +61,7 @@ import {
   type PlannerValueField,
   adjustmentOverride,
   chargeOverride,
-  extraOverride,
   interestOverride,
-  setMonthExtra,
   monthKey,
   paymentOverride,
   ALL_DEBT_YEARS,
@@ -345,8 +343,6 @@ function PlannerCard({
     [ordered, view, upcoming, history],
   )
   const rows = view === 'planner' ? upcoming : [...history].reverse()
-  const calculatorExtra = extraOverride(plan, now.getFullYear(), now.getMonth())
-
   useEffect(() => {
     if (view !== 'planner' || !editingKey) return
     const row = upcoming.find(
@@ -409,27 +405,6 @@ function PlannerCard({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-8">
             <HeaderStat label="Debt-free" value={freeOn} />
-            {view === 'planner' && calculatorExtra != null ? (
-              <div className="flex items-baseline gap-1">
-                <HeaderStat
-                  label="Left for debt"
-                  value={formatUsdWhole(calculatorExtra)}
-                />
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground self-center"
-                  aria-label="Stop using the calculator amount"
-                  title="Stop using the calculator amount"
-                  onClick={() =>
-                    changePlan(
-                      setMonthExtra(plan, now.getFullYear(), now.getMonth(), null),
-                    )
-                  }
-                >
-                  <X className="size-3.5" />
-                </button>
-              </div>
-            ) : null}
           </div>
           <div className="flex items-center gap-1">
             {view === 'planner' && plan.strategy === 'custom' ? (

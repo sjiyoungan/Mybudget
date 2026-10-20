@@ -113,6 +113,7 @@ import {
 } from '@/lib/spending'
 import {
   AFFIRM_DEBT_ID,
+  nextPaymentMonth,
   payoffMonth,
   plannedCurrentBalances,
   projectDebtPlan,
@@ -4437,16 +4438,16 @@ export function CalculationsPanel() {
     const ready =
       bills != null &&
       overflow != null &&
-      parseAmount(nextBillsText) != null &&
       parseAmount(nextOverflowText) != null
-    setPlan((current) =>
-      setMonthExtra(
+    setPlan((current) => {
+      const target = nextPaymentMonth(current, now)
+      return setMonthExtra(
         current,
-        now.getFullYear(),
-        now.getMonth(),
+        target.year,
+        target.month,
         ready ? leftForDebt(need, nextBillsText, nextOverflowText) : null,
-      ),
-    )
+      )
+    })
   }
 
   function updateSplitLine(id: string, patch: Partial<DebtSplitLine>) {

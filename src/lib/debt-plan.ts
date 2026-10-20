@@ -352,6 +352,14 @@ export function firstUnloggedPlannerMonth(plan: DebtPlanState, now: Date) {
   return { year: Math.floor(idx / 12), month: idx % 12 }
 }
 
+/** The next payment: this month, or the first month after it that isn't logged. */
+export function nextPaymentMonth(plan: DebtPlanState, now: Date) {
+  const logged = new Set(plan.loggedMonths ?? [])
+  let idx = ymIndex(now.getFullYear(), now.getMonth())
+  while (logged.has(monthKey(Math.floor(idx / 12), idx % 12))) idx += 1
+  return { year: Math.floor(idx / 12), month: idx % 12 }
+}
+
 export function chargedForDebt(
   plan: DebtPlanState,
   debtId: string,
@@ -1365,12 +1373,20 @@ export function projectDebtPlan(
       freedFromMinimums += Math.max(0, scheduled - minPay)
     }
 
-    const applyExtra = monthIdx >= nowIdx && locked.size === 0
     const cashForDebt = extraOverride(plan, year, month)
+    const applyExtra =
+      monthIdx >= nowIdx && (locked.size === 0 || cashForDebt != null)
+    let lockedExtra = 0
+    for (const [debtId, paid] of locked) {
+      const debt = debts.find((item) => item.id === debtId)
+      const charged = lines.find((line) => line.debtId === debtId)?.charged ?? 0
+      const scheduled = debt ? scheduledPayment(debt, plan, year, month, charged) : 0
+      lockedExtra += Math.max(0, paid - scheduled)
+    }
     let leftover = !applyExtra
       ? 0
       : cashForDebt != null
-        ? roundCents(cashForDebt + freedFromMinimums)
+        ? roundCents(Math.max(0, cashForDebt + freedFromMinimums - lockedExtra))
         : extraPool(plan, debts, payments, locked)
     const unlocked = owing.filter(
       (debt) => !locked.has(debt.id) && debt.id !== AFFIRM_DEBT_ID,
