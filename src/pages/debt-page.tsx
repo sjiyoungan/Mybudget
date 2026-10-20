@@ -506,7 +506,8 @@ function PlannerCard({
               loggedRow ? debtsPaidOffInMonth(loggedRow) : [],
             )
             const closing = budgetDebts.filter((debt) => paidOffIds.has(debt.id))
-            changePlan(withClosedDebts(logged, closing))
+            setUndoStack([])
+            onPlanChange(withClosedDebts(logged, closing))
             for (const debt of closing) removeDebt(debt.id)
             setEditingKey(null)
           }}
