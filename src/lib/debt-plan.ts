@@ -45,6 +45,8 @@ export type DebtPlanState = {
   recurringCharges: Record<string, number>
   chargesByMonth: Record<string, Record<string, number>>
   interestByMonth: Record<string, Record<string, number>>
+  /** Signed corrections so a month's end matches the bank. */
+  adjustmentsByMonth: Record<string, Record<string, number>>
   paymentsByMonth: Record<string, Record<string, number>>
   /** Month keys (`YYYY-MM`) whose paid amounts were saved. */
   loggedMonths: string[]
@@ -60,9 +62,18 @@ export type PlannerLine = {
   start: number
   interest: number
   charged: number
+  adjustment: number
   paid: number
   extra: number
   balance: number
+}
+
+function lineDue(
+  line: Pick<PlannerLine, 'start' | 'interest' | 'charged' | 'adjustment'>,
+) {
+  return roundCents(
+    Math.max(0, line.start + line.interest + line.charged + line.adjustment),
+  )
 }
 
 export type PlannerMonth = {
@@ -151,6 +162,7 @@ export function defaultDebtPlan(): DebtPlanState {
     recurringCharges: {},
     chargesByMonth: {},
     interestByMonth: {},
+    adjustmentsByMonth: {},
     paymentsByMonth: {},
     loggedMonths: [],
     loggedHistory: {},
@@ -346,6 +358,7 @@ export function parseDebtPlan(value: unknown): DebtPlanState | null {
         : {},
     chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
     interestByMonth: normalizeChargesByMonth(item.interestByMonth),
+    adjustmentsByMonth: normalizeChargesByMonth(item.adjustmentsByMonth),
     paymentsByMonth:
       hasLogging || Object.keys(loggedHistory).length > 0
         ? normalizeChargesByMonth(item.paymentsByMonth)
@@ -507,6 +520,7 @@ function asLoggedMonth(value: unknown): PlannerMonth | null {
         start: numberOrZero(item.start),
         interest: numberOrZero(item.interest),
         charged: numberOrZero(item.charged),
+        adjustment: numberOrZero(item.adjustment),
         paid: numberOrZero(item.paid),
         extra: numberOrZero(item.extra),
         balance: numberOrZero(item.balance),
@@ -602,6 +616,40 @@ export function interestOverride(
   return undefined
 }
 
+export function adjustmentOverride(
+  plan: DebtPlanState,
+  debtId: string,
+  year: number,
+  month: number,
+) {
+  const value = plan.adjustmentsByMonth?.[monthKey(year, month)]?.[debtId]
+  if (typeof value === 'number' && Number.isFinite(value)) return roundCents(value)
+  return undefined
+}
+
+export function setMonthAdjustment(
+  plan: DebtPlanState,
+  year: number,
+  month: number,
+  debtId: string,
+  amount: number | null,
+): DebtPlanState {
+  const key = monthKey(year, month)
+  const monthAdjustments = { ...plan.adjustmentsByMonth?.[key] }
+  if (amount == null || Math.abs(amount) <= 0.005) {
+    delete monthAdjustments[debtId]
+  } else {
+    monthAdjustments[debtId] = roundCents(amount)
+  }
+  const adjustmentsByMonth = { ...plan.adjustmentsByMonth }
+  if (Object.keys(monthAdjustments).length === 0) {
+    delete adjustmentsByMonth[key]
+  } else {
+    adjustmentsByMonth[key] = monthAdjustments
+  }
+  return { ...plan, adjustmentsByMonth }
+}
+
 export function setMonthCharge(
   plan: DebtPlanState,
   year: number,
@@ -688,6 +736,13 @@ export function logPlannerMonth(
     next = setMonthPayment(next, row.year, row.month, line.debtId, line.paid)
     next = setMonthCharge(next, row.year, row.month, line.debtId, line.charged)
     next = setMonthInterest(next, row.year, row.month, line.debtId, line.interest)
+    next = setMonthAdjustment(
+      next,
+      row.year,
+      row.month,
+      line.debtId,
+      line.adjustment,
+    )
   }
   const currentLogged = next.loggedMonths ?? []
   const loggedMonths = currentLogged.includes(key)
@@ -713,24 +768,29 @@ export function unlogPlannerMonth(
   return { ...plan, loggedMonths, loggedHistory }
 }
 
-export type PlannerValueField = 'interest' | 'charged' | 'paid'
+export type PlannerValueField = 'interest' | 'charged' | 'adjustment' | 'paid'
 
 function rewritePlannerLine(
   line: PlannerLine,
   field: PlannerValueField,
   amount: number | null,
 ): PlannerLine {
-  const nextValue = amount == null ? 0 : roundCents(Math.max(0, amount))
+  const nextValue =
+    amount == null
+      ? 0
+      : roundCents(field === 'adjustment' ? amount : Math.max(0, amount))
   const interest = field === 'interest' ? nextValue : line.interest
   const charged = field === 'charged' ? nextValue : line.charged
+  const adjustment = field === 'adjustment' ? nextValue : line.adjustment
   const paidRaw = field === 'paid' ? nextValue : line.paid
-  const due = roundCents(line.start + interest + charged)
-  const paid = roundCents(Math.min(paidRaw, Math.max(0, due)))
+  const due = lineDue({ start: line.start, interest, charged, adjustment })
+  const paid = roundCents(Math.min(paidRaw, due))
   const scheduled = Math.max(0, roundCents(line.paid - line.extra))
   return {
     ...line,
     interest,
     charged,
+    adjustment,
     paid,
     extra: extraPaidOnLine(paid, scheduled, due),
     balance: roundCents(Math.max(0, due - paid)),
@@ -772,6 +832,8 @@ export function applyPlannerMonthValue(
     next = setMonthInterest(next, year, month, debtId, amount)
   } else if (field === 'charged') {
     next = setMonthCharge(next, year, month, debtId, amount)
+  } else if (field === 'adjustment') {
+    next = setMonthAdjustment(next, year, month, debtId, amount)
   } else {
     next = setMonthPayment(next, year, month, debtId, amount)
   }
@@ -797,11 +859,11 @@ function snapshotLoggedMonth(
       return { ...line }
     }
     const override = paidOverrides[line.debtId]
-    const due = roundCents(line.start + line.interest + line.charged)
+    const due = lineDue(line)
     const paid =
       override == null
         ? line.paid
-        : roundCents(Math.min(Math.max(0, override), Math.max(0, due)))
+        : roundCents(Math.min(Math.max(0, override), due))
     const scheduled = Math.max(0, roundCents(line.paid - line.extra))
     return {
       ...line,
@@ -883,8 +945,8 @@ function rebaseLoggedMonth(
     const start = starts.has(line.debtId)
       ? (starts.get(line.debtId) ?? 0)
       : line.start
-    const due = roundCents(start + line.interest + line.charged)
-    const paid = roundCents(Math.min(Math.max(0, line.paid), Math.max(0, due)))
+    const due = lineDue({ ...line, start })
+    const paid = roundCents(Math.min(Math.max(0, line.paid), due))
     const scheduled = Math.max(0, roundCents(line.paid - line.extra))
     return {
       ...line,
@@ -1033,9 +1095,12 @@ function historyMonth(
   debts: Debt[],
   row: SeededHistoryMonth,
   previous: Map<string, number>,
+  plan: DebtPlanState,
 ): PlannerMonth {
   const mins = new Map(debts.map((debt) => [debt.id, paymentWithoutCharges(debt)]))
   const lines: PlannerLine[] = debts.map((debt) => {
+    const adjustment =
+      adjustmentOverride(plan, debt.id, row.year, row.month) ?? 0
     const tracked =
       Object.prototype.hasOwnProperty.call(row.paid, debt.id) ||
       Object.prototype.hasOwnProperty.call(row.balance, debt.id)
@@ -1046,25 +1111,32 @@ function historyMonth(
         start,
         interest: 0,
         charged: 0,
+        adjustment,
         paid: 0,
         extra: 0,
-        balance: start,
+        balance: roundCents(Math.max(0, start + adjustment)),
       }
     }
     const paid = row.paid[debt.id] ?? 0
     const interest = row.interest[debt.id] ?? 0
     const charged = row.charged[debt.id] ?? 0
-    const balance = row.balance[debt.id] ?? 0
+    const seededBalance = row.balance[debt.id] ?? 0
     const start =
-      previous.get(debt.id) ?? roundCents(balance + paid - interest - charged)
+      previous.get(debt.id) ??
+      roundCents(seededBalance + paid - interest - charged)
     return {
       debtId: debt.id,
       start,
       interest,
       charged,
+      adjustment,
       paid,
-      extra: extraPaidOnLine(paid, mins.get(debt.id) ?? 0, start + interest + charged),
-      balance,
+      extra: extraPaidOnLine(
+        paid,
+        mins.get(debt.id) ?? 0,
+        lineDue({ start, interest, charged, adjustment }),
+      ),
+      balance: roundCents(Math.max(0, seededBalance + adjustment)),
     }
   })
   return {
@@ -1093,7 +1165,7 @@ export function projectDebtPlan(
     ]),
   )
   const history = seededDebtHistory.map((row) => {
-    const month = historyMonth(debts, row, previous)
+    const month = historyMonth(debts, row, previous, plan)
     for (const line of month.lines) previous.set(line.debtId, line.balance)
     return month
   })
@@ -1130,6 +1202,7 @@ export function projectDebtPlan(
           start: 0,
           interest: 0,
           charged: 0,
+          adjustment: 0,
           paid: 0,
           extra: 0,
           balance: 0,
@@ -1140,13 +1213,21 @@ export function projectDebtPlan(
       const interest =
         interestOverride(plan, debt.id, year, month) ??
         roundCents((start * (effectiveApr(debt, year, month) / 100)) / 12)
+      const adjustment =
+        debt.id === AFFIRM_DEBT_ID
+          ? 0
+          : (adjustmentOverride(plan, debt.id, year, month) ?? 0)
       totalInterest += interest
-      afterInterest.set(debt.id, roundCents(start + interest + charged))
+      afterInterest.set(
+        debt.id,
+        lineDue({ start, interest, charged, adjustment }),
+      )
       lines.push({
         debtId: debt.id,
         start,
         interest,
         charged,
+        adjustment,
         paid: 0,
         extra: 0,
         balance: 0,
@@ -1435,7 +1516,8 @@ function appearsInHistoryMonths<T extends { id: string }>(
       line.start > 0.005 ||
       line.balance > 0.005 ||
       line.interest > 0.005 ||
-      Math.abs(line.charged) > 0.005
+      Math.abs(line.charged) > 0.005 ||
+      Math.abs(line.adjustment) > 0.005
     )
   })
 }

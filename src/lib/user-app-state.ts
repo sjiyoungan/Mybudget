@@ -354,6 +354,10 @@ export function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPla
       remote.interestByMonth,
       local.interestByMonth,
     ),
+    adjustmentsByMonth: mergeMonthMaps(
+      remote.adjustmentsByMonth ?? {},
+      local.adjustmentsByMonth ?? {},
+    ),
     recurringCharges:
       Object.keys(remote.recurringCharges).length >=
       Object.keys(local.recurringCharges).length

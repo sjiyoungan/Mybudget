@@ -58,6 +58,7 @@ import {
   applyPlannerMonthValue,
   monthWithLineValue,
   type PlannerValueField,
+  adjustmentOverride,
   chargeOverride,
   interestOverride,
   monthKey,
@@ -124,6 +125,7 @@ function lineHasDetail(line: PlannerLine) {
     line.paid > 0.005 ||
     line.interest > 0.005 ||
     Math.abs(line.charged) > 0.005 ||
+    Math.abs(line.adjustment) > 0.005 ||
     line.balance > 0.005
   )
 }
@@ -505,6 +507,19 @@ function PlannerCard({
               ),
             )
           }}
+          onAdjustmentChange={(year, month, debtId, amount) => {
+            if (discardPaidCommit.current) return
+            changePlan(
+              applyPlannerMonthValue(
+                plan,
+                year,
+                month,
+                debtId,
+                'adjustment',
+                amount,
+              ),
+            )
+          }}
         />
       </CardContent>
       <CustomOrderDialog
@@ -772,6 +787,7 @@ function MonthTable({
   onPaidChange,
   onChargeChange,
   onInterestChange,
+  onAdjustmentChange,
 }: {
   debts: { id: string; lender: string; apr: number }[]
   plan: DebtPlanState
@@ -798,6 +814,12 @@ function MonthTable({
     amount: number | null,
   ) => void
   onInterestChange: (
+    year: number,
+    month: number,
+    debtId: string,
+    amount: number | null,
+  ) => void
+  onAdjustmentChange: (
     year: number,
     month: number,
     debtId: string,
@@ -1146,6 +1168,7 @@ function MonthTable({
               onPaidChange={onPaidChange}
               onChargeChange={onChargeChange}
               onInterestChange={onInterestChange}
+              onAdjustmentChange={onAdjustmentChange}
             />
           ))}
         </tbody>
@@ -1262,6 +1285,7 @@ function YearGroupRows({
   onPaidChange,
   onChargeChange,
   onInterestChange,
+  onAdjustmentChange,
 }: {
   year: number
   months: PlannerMonth[]
@@ -1290,6 +1314,12 @@ function YearGroupRows({
     amount: number | null,
   ) => void
   onInterestChange: (
+    year: number,
+    month: number,
+    debtId: string,
+    amount: number | null,
+  ) => void
+  onAdjustmentChange: (
     year: number,
     month: number,
     debtId: string,
@@ -1337,6 +1367,7 @@ function YearGroupRows({
           onPaidChange={onPaidChange}
           onChargeChange={onChargeChange}
           onInterestChange={onInterestChange}
+          onAdjustmentChange={onAdjustmentChange}
         />
       ))}
     </>
@@ -1360,6 +1391,7 @@ function MonthBlock({
   onPaidChange,
   onChargeChange,
   onInterestChange,
+  onAdjustmentChange,
 }: {
   year: number
   debts: { id: string; lender: string }[]
@@ -1392,6 +1424,12 @@ function MonthBlock({
     debtId: string,
     amount: number | null,
   ) => void
+  onAdjustmentChange: (
+    year: number,
+    month: number,
+    debtId: string,
+    amount: number | null,
+  ) => void
 }) {
   const paidById = new Map(row.lines.map((line) => [line.debtId, line]))
   const label = formatMonthName(row.month)
@@ -1410,7 +1448,7 @@ function MonthBlock({
 
   function editField(
     debt: { id: string },
-    field: 'interest' | 'charged' | 'paid',
+    field: PlannerValueField,
     extras?: { muted?: boolean },
   ) {
     const line = paidById.get(debt.id)
@@ -1419,7 +1457,9 @@ function MonthBlock({
         ? (line?.interest ?? 0)
         : field === 'charged'
           ? (line?.charged ?? 0)
-          : (line?.paid ?? 0)
+          : field === 'adjustment'
+            ? (line?.adjustment ?? 0)
+            : (line?.paid ?? 0)
     if (debt.id === AFFIRM_DEBT_ID) {
       return (
         <AmountCell
@@ -1445,7 +1485,9 @@ function MonthBlock({
             ? interestOverride(plan, debt.id, row.year, row.month) != null
             : field === 'charged'
               ? chargeOverride(plan, debt.id, row.year, row.month) != null
-              : paymentOverride(plan, debt.id, row.year, row.month) != null
+              : field === 'adjustment'
+                ? adjustmentOverride(plan, debt.id, row.year, row.month) != null
+                : paymentOverride(plan, debt.id, row.year, row.month) != null
         }
         muted={extras?.muted}
         onCommit={(next) => {
@@ -1453,6 +1495,8 @@ function MonthBlock({
             onInterestChange(row.year, row.month, debt.id, next)
           } else if (field === 'charged') {
             onChargeChange(row.year, row.month, debt.id, next)
+          } else if (field === 'adjustment') {
+            onAdjustmentChange(row.year, row.month, debt.id, next)
           } else {
             onPaidChange(row.year, row.month, debt.id, next)
           }
@@ -1493,7 +1537,7 @@ function MonthBlock({
       <tr className={cn(editing && 'month-edit-row')}>
         <MonthCell
           label={label}
-          rowSpan={editing ? 4 : 2}
+          rowSpan={editing ? 5 : 2}
           action={
             monthAction === 'task' && !isLoggablePlannerMonth(row, now)
               ? null
@@ -1542,6 +1586,17 @@ function MonthBlock({
             <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
               {plannerUsd(
                 row.lines.reduce((sum, line) => sum + line.charged, 0),
+              )}
+            </td>
+          </tr>
+          <tr className="month-edit-row">
+            <LabelCell>Adjustment</LabelCell>
+            {debts.map((debt) =>
+              editField(debt, 'adjustment', { muted: true }),
+            )}
+            <td className="total-rule text-muted-foreground py-1.5 pr-4 pl-4 text-right tabular-nums">
+              {plannerUsd(
+                row.lines.reduce((sum, line) => sum + line.adjustment, 0),
               )}
             </td>
           </tr>
@@ -1777,7 +1832,7 @@ function PaidCell({
   onCommit,
 }: {
   debtId: string
-  field?: 'paid' | 'charged' | 'interest'
+  field?: PlannerValueField
   value: number
   overridden: boolean
   muted?: boolean
@@ -1796,7 +1851,7 @@ function PaidCell({
       if (overridden) onCommit(null)
       return
     }
-    const parsed = parseUsdInput(trimmed)
+    const parsed = parseUsdInput(trimmed, field === 'adjustment')
     if (parsed == null) return
     if (!overridden && Math.round(parsed) === Math.round(value)) return
     onCommit(parsed)
@@ -1834,7 +1889,9 @@ function PaidCell({
             ? 'Charged'
             : field === 'interest'
               ? 'Interest'
-              : 'Paid'
+              : field === 'adjustment'
+                ? 'Adjustment'
+                : 'Paid'
         }
         defaultValue={display}
         onFocus={(event) => {
@@ -1881,12 +1938,15 @@ function MonthDetailTip({
   onEnter: () => void
   onLeave: (event: PointerEvent<HTMLElement>) => void
 }) {
-  const rows = [
+  const rows: [string, number][] = [
     ['Paid', tip.line.paid],
     ['Interest', tip.line.interest],
     ['Charged', tip.line.charged],
+    ...(Math.abs(tip.line.adjustment) > 0.005
+      ? [['Adjustment', tip.line.adjustment] as [string, number]]
+      : []),
     ['End', tip.line.balance],
-  ] as const
+  ]
 
   return (
     <div
@@ -1910,9 +1970,10 @@ function MonthDetailTip({
   )
 }
 
-function parseUsdInput(raw: string) {
-  const parsed = Number(raw.replace(/[$,\s]/g, ''))
-  if (!Number.isFinite(parsed) || parsed < 0) return null
+function parseUsdInput(raw: string, allowNegative = false) {
+  const cleaned = raw.replace(/[$,\s]/g, '').replace(/^\((.*)\)$/, '-$1')
+  const parsed = Number(cleaned)
+  if (!Number.isFinite(parsed) || (!allowNegative && parsed < 0)) return null
   return Math.round(parsed * 100) / 100
 }
 
@@ -1927,12 +1988,18 @@ function applyFocusedPaidInput(plan: DebtPlanState, row: PlannerMonth) {
     return { plan, row }
   }
   const field = focused.dataset.field
-  if (field !== 'interest' && field !== 'charged' && field !== 'paid') {
+  if (
+    field !== 'interest' &&
+    field !== 'charged' &&
+    field !== 'adjustment' &&
+    field !== 'paid'
+  ) {
     return { plan, row }
   }
   const typed = field as PlannerValueField
   const raw = focused.value.trim()
-  const amount = raw === '' ? null : parseUsdInput(raw)
+  const amount =
+    raw === '' ? null : parseUsdInput(raw, typed === 'adjustment')
   focused.blur()
   return {
     plan: applyPlannerMonthValue(
