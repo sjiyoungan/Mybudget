@@ -154,6 +154,14 @@
 .planner-scroll {
   isolation: isolate;
 }
+/* The scroller clips overflow, so CSS sticky can't follow the page. Script sets the shift. */
+.planner-scroll thead > tr > * {
+  transform: translateY(var(--head-shift, 0px));
+}
+.planner-scroll thead > tr > td:not(.sticky) {
+  position: relative;
+  z-index: 30;
+}
 .planner-scroll-capped .drag-scroll {
   scrollbar-width: thin;
 }

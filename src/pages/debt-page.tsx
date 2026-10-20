@@ -93,6 +93,8 @@ type PlannerView = 'planner' | 'history'
 
 const MONTH_COL = 88
 const LABEL_COL = 64
+/** Height of the app shell's mobile header (`h-14`), which stays pinned. */
+const MOBILE_TOP_BAR = 56
 const EXTRA_FILL = 'bg-[#F3E6E9]'
 const EXTRA_LINE = 'bg-[#E0D0D3]'
 const EXTRA_DARK = 'text-[#3A121C]'
@@ -1013,6 +1015,38 @@ function MonthTable({
     scrollerRef.current?.scrollTo({ top: 0 })
   }, [lockHeight])
 
+  const pageScrollsHeader = !(lockHeight && bodyHeight != null)
+  useLayoutEffect(() => {
+    const wrap = tableWrapRef.current
+    if (!wrap) return
+    if (!pageScrollsHeader) {
+      wrap.style.removeProperty('--head-shift')
+      return
+    }
+    const desktop = window.matchMedia('(min-width: 1024px)')
+    function update() {
+      if (!wrap) return
+      const head = wrap.querySelector('thead')
+      if (!head) return
+      const topBar = desktop.matches ? 0 : MOBILE_TOP_BAR
+      const top = wrap.getBoundingClientRect().top
+      const room = wrap.offsetHeight - head.offsetHeight
+      const shift = Math.min(Math.max(0, topBar - top), Math.max(0, room))
+      wrap.style.setProperty('--head-shift', `${shift}px`)
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(wrap)
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+      wrap.style.removeProperty('--head-shift')
+    }
+  }, [pageScrollsHeader])
+
   useLayoutEffect(() => {
     const el = scrollerRef.current
     if (!el) return
@@ -1111,16 +1145,16 @@ function MonthTable({
           </colgroup>
           <thead>
             <tr className="text-muted-foreground text-left text-xs">
-              <th className="sticky top-0 left-0 z-30 bg-card pt-2 pr-3 pb-2 pl-4 font-medium">
+              <th className="sticky top-0 left-0 z-40 bg-card pt-2 pr-3 pb-2 pl-4 font-medium">
                 Month
               </th>
-              <th className="sticky top-0 z-30 bg-card pt-2 pr-4 pb-2 font-medium" style={{ left: MONTH_COL }}>
+              <th className="sticky top-0 z-40 bg-card pt-2 pr-4 pb-2 font-medium" style={{ left: MONTH_COL }}>
                 <span className="sr-only">Line</span>
               </th>
             {debts.map((debt) => (
               <th
                 key={debt.id}
-                className="sticky top-0 z-20 bg-card px-4 pt-2 pb-2 text-center font-medium"
+                className="sticky top-0 z-30 bg-card px-4 pt-2 pb-2 text-center font-medium"
               >
                 <div className="flex flex-col items-center whitespace-nowrap">
                   <span>{debt.lender}</span>
@@ -1128,7 +1162,7 @@ function MonthTable({
                 </div>
               </th>
             ))}
-            <th className="total-rule sticky top-0 z-20 bg-card pt-2 pr-4 pb-2 pl-4 text-right font-medium">
+            <th className="total-rule sticky top-0 z-30 bg-card pt-2 pr-4 pb-2 pl-4 text-right font-medium">
               Total
             </th>
           </tr>
