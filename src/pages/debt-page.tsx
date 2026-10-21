@@ -1777,10 +1777,7 @@ function MonthCell({
     >
       {extra != null && extra > 0.005 ? (
         <span
-          className={cn(
-            'absolute bottom-1.5 left-4 text-sm leading-5 font-normal tabular-nums',
-            EXTRA_DARK,
-          )}
+          className="text-muted-foreground absolute bottom-2 left-4 text-xs leading-4 font-normal tabular-nums"
           title="Extra toward debt this month"
         >
           {formatUsdWhole(Math.floor(extra + 1e-9))}
