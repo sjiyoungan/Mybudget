@@ -11,6 +11,7 @@ import {
   markPlanMigrationsApplied,
   parseDebtPlan,
   saveDebtPlan,
+  withoutSessionExtra,
   type DebtPlanState,
 } from '@/lib/debt-plan'
 import {
@@ -73,7 +74,7 @@ export function rememberBudget(budget: BudgetState) {
 }
 
 export function rememberPlan(plan: DebtPlanState) {
-  cache = { ...localAppState(), plan }
+  cache = { ...localAppState(), plan: withoutSessionExtra(plan) }
 }
 
 export function rememberSpending(spending: SpendingState) {
@@ -360,10 +361,7 @@ export function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPla
       ),
       ...(local.closedDebts ?? []),
     ],
-    extraByMonth: {
-      ...(remote.extraByMonth ?? {}),
-      ...(local.extraByMonth ?? {}),
-    },
+    extraByMonth: { ...(local.extraByMonth ?? {}) },
     adjustmentsByMonth: mergeMonthMaps(
       remote.adjustmentsByMonth ?? {},
       local.adjustmentsByMonth ?? {},

@@ -411,7 +411,7 @@ export function parseDebtPlan(value: unknown): DebtPlanState | null {
     chargesByMonth: normalizeChargesByMonth(item.chargesByMonth),
     interestByMonth: normalizeChargesByMonth(item.interestByMonth),
     adjustmentsByMonth: normalizeChargesByMonth(item.adjustmentsByMonth),
-    extraByMonth: normalizeMonthAmounts(item.extraByMonth),
+    extraByMonth: {},
     paymentsByMonth:
       hasLogging || Object.keys(loggedHistory).length > 0
         ? normalizeChargesByMonth(item.paymentsByMonth)
@@ -465,9 +465,14 @@ export function loadDebtPlan(): DebtPlanState {
 /** Affirm rolls a leftover of this size into the previous payment. */
 const AFFIRM_LEFTOVER_FOLD = 0.1
 
+/** The calculator's amount lives only as long as the calculator's inputs do. */
+export function withoutSessionExtra(state: DebtPlanState): DebtPlanState {
+  return { ...state, extraByMonth: {} }
+}
+
 export function saveDebtPlan(state: DebtPlanState) {
   const next = {
-    ...state,
+    ...withoutSessionExtra(state),
     affirmLoans: pruneExpiredAffirmLoans(state.affirmLoans),
   }
   localStorage.setItem(PLAN_KEY, JSON.stringify(next))
@@ -537,17 +542,6 @@ function normalizeChargesByMonth(value: unknown) {
       }
     }
     if (Object.keys(month).length > 0) next[key] = month
-  }
-  return next
-}
-
-function normalizeMonthAmounts(value: unknown) {
-  if (value == null || typeof value !== 'object') return {}
-  const next: Record<string, number> = {}
-  for (const [key, amount] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof amount === 'number' && Number.isFinite(amount)) {
-      next[key] = roundCents(Math.max(0, amount))
-    }
   }
   return next
 }
