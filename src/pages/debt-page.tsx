@@ -1580,6 +1580,7 @@ function MonthBlock({
               : monthAction
           }
           editing={editing}
+          extra={row.extraPaid}
           onEdit={() => onEditMonth(row)}
           onExit={onExitEdit}
         />
@@ -1753,6 +1754,7 @@ function MonthCell({
   rowSpan,
   action,
   editing = false,
+  extra,
   onEdit,
   onExit,
 }: {
@@ -1760,6 +1762,8 @@ function MonthCell({
   rowSpan: number
   action: 'task' | 'pencil' | null
   editing?: boolean
+  /** Total extra toward debt this month, shown on the End row. */
+  extra?: number
   onEdit?: () => void
   onExit?: () => void
 }) {
@@ -1771,7 +1775,18 @@ function MonthCell({
         editing && 'month-editing',
       )}
     >
-      <div className="flex flex-col items-start gap-1">
+      {extra != null && extra > 0.005 ? (
+        <span
+          className={cn(
+            'absolute bottom-1.5 left-4 text-sm leading-5 font-normal tabular-nums',
+            EXTRA_DARK,
+          )}
+          title="Extra toward debt this month"
+        >
+          {formatUsdWhole(Math.floor(extra + 1e-9))}
+        </span>
+      ) : null}
+      <div className="flex items-center gap-1">
         <span>{label}</span>
         {action ? (
           <button
