@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 
@@ -18,6 +18,7 @@ import {
   SelectTrigger,
 } from '@/components/ui/select'
 import {
+  VARIABLE_CATEGORY_ID,
   ceiledMonthlyAmount,
   isExpenseActiveInMonth,
   isHiddenExpense,
@@ -25,8 +26,21 @@ import {
 } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
 import { formatUsdWhole, formatUsdWholeUp } from '@/lib/format'
-import { INCOME_START_YEAR, monthName, recentFullMonthsNet } from '@/lib/income'
+import {
+  INCOME_START_YEAR,
+  monthName,
+  recentFullMonthsNet,
+  stubsForMonth,
+} from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
+import {
+  categoryExpenseIds,
+  isSpendingPurchase,
+  rolledSpendingCategoryId,
+  type SpendingCategory,
+  type SpendingTxn,
+} from '@/lib/spending'
+import { useSpending } from '@/lib/spending-context'
 import { cn } from '@/lib/utils'
 
 function monthKey(year: number, month: number) {
@@ -62,22 +76,102 @@ function expensesInMonth(
   expenses: RecurringExpense[],
   year: number,
   month: number,
-  exclude: string[] = [],
+  include: (item: RecurringExpense) => boolean = () => true,
 ) {
-  const skip = new Set(exclude)
   return expenses
     .filter(
       (item) =>
-        !skip.has(item.category) &&
+        include(item) &&
         !isHiddenExpense(item) &&
         isExpenseActiveInMonth(item, year, month),
     )
     .reduce((sum, item) => sum + ceiledMonthlyAmount(item), 0)
 }
 
+function isVariableExpense(item: RecurringExpense) {
+  return item.category === VARIABLE_CATEGORY_ID
+}
+
+/** Purchases tagged to a category budgeted only against fixed bills are already in fixed. */
+function variableSpent(
+  transactions: SpendingTxn[],
+  categories: SpendingCategory[],
+  expenses: RecurringExpense[],
+  key: string,
+) {
+  const variableIds = new Set(
+    expenses.filter(isVariableExpense).map((item) => item.id),
+  )
+  function coveredByFixed(categoryId: string | undefined) {
+    const rolled = rolledSpendingCategoryId(categoryId, categories)
+    const category = categories.find((item) => item.id === rolled)
+    if (!category) return false
+    const ids = categoryExpenseIds(category)
+    return ids.length > 0 && !ids.some((id) => variableIds.has(id))
+  }
+  const prefix = `${key}-`
+  return transactions
+    .filter(
+      (txn) =>
+        txn.date.startsWith(prefix) &&
+        isSpendingPurchase(txn) &&
+        !coveredByFixed(txn.categoryId),
+    )
+    .reduce((sum, txn) => sum + txn.amount, 0)
+}
+
+function budgetDeltaLabel(spent: number, budget: number) {
+  const delta = Math.ceil(spent - 1e-9) - Math.ceil(budget - 1e-9)
+  if (delta === 0) return { text: 'On budget', over: false }
+  if (delta > 0) return { text: `${formatUsdWhole(delta)} over`, over: true }
+  return { text: `${formatUsdWhole(-delta)} under`, over: false }
+}
+
+function MetricCard({
+  label,
+  to,
+  children,
+}: {
+  label: string
+  to?: string
+  children: ReactNode
+}) {
+  const card = (
+    <Card className={cn(to && 'hover-fill', 'h-full')}>
+      <CardHeader className="gap-5">
+        <div className="flex items-start justify-between gap-2">
+          <CardDescription>{label}</CardDescription>
+          {to ? <ChevronRight className="text-muted-foreground size-4" /> : null}
+        </div>
+        <CardTitle className="flex min-h-8 items-baseline text-2xl">
+          {children}
+        </CardTitle>
+      </CardHeader>
+    </Card>
+  )
+  if (!to) return card
+  return (
+    <Link
+      to={to}
+      className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
+      {card}
+    </Link>
+  )
+}
+
+function SectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="text-muted-foreground -mb-2 text-sm font-medium">
+      {children}
+    </h2>
+  )
+}
+
 export function DashboardPage() {
   const { paystubs } = usePaystubs()
   const { expenses } = useBudget()
+  const { transactions, categories } = useSpending()
   const now = useMemo(() => new Date(), [])
   const months = useMemo(() => dashboardMonths(now), [now])
   const yearGroups = useMemo(() => monthsByYear(months), [months])
@@ -91,6 +185,10 @@ export function DashboardPage() {
       month: now.getMonth(),
       key: monthKey(now.getFullYear(), now.getMonth()),
     }
+  const isCurrentMonth =
+    selected.year === now.getFullYear() && selected.month === now.getMonth()
+  const lastDay = new Date(selected.year, selected.month + 1, 0).getDate()
+  const monthClosed = !isCurrentMonth || now.getDate() >= lastDay
 
   const income = useMemo(
     () => recentFullMonthsNet(paystubs, selected.year, selected.month, 3, now),
@@ -102,6 +200,39 @@ export function DashboardPage() {
   )
   const leftOver = Math.floor(
     Math.round(income) - Math.ceil(expenseTotal - 1e-9) + 1e-9,
+  )
+
+  const earned = useMemo(
+    () =>
+      stubsForMonth(paystubs, selected.year, selected.month).reduce(
+        (sum, stub) => sum + stub.netPay,
+        0,
+      ),
+    [paystubs, selected.month, selected.year],
+  )
+  const fixedTotal = useMemo(
+    () =>
+      expensesInMonth(
+        expenses,
+        selected.year,
+        selected.month,
+        (item) => !isVariableExpense(item),
+      ),
+    [expenses, selected.month, selected.year],
+  )
+  const variableBudget = useMemo(
+    () =>
+      expensesInMonth(expenses, selected.year, selected.month, isVariableExpense),
+    [expenses, selected.month, selected.year],
+  )
+  const spent = useMemo(
+    () => variableSpent(transactions, categories, expenses, selected.key),
+    [transactions, categories, expenses, selected.key],
+  )
+  const delta =
+    variableBudget > 0 ? budgetDeltaLabel(spent, variableBudget) : null
+  const actualLeftOver = Math.floor(
+    earned - Math.ceil(fixedTotal - 1e-9) - Math.ceil(spent - 1e-9) + 1e-9,
   )
 
   return (
@@ -145,49 +276,53 @@ export function DashboardPage() {
         </Select>
       </div>
 
+      <SectionHeading>Planned</SectionHeading>
       <section className="grid gap-4 lg:grid-cols-3">
-        <Link
-          to="/income"
-          className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-        >
-          <Card className="hover-fill">
-            <CardHeader className="gap-5">
-              <div className="flex items-start justify-between gap-2">
-                <CardDescription>Income · 3-month avg</CardDescription>
-                <ChevronRight className="text-muted-foreground size-4" />
-              </div>
-              <CardTitle className="text-2xl">
-                {formatUsdWhole(income)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </Link>
-        <Link
-          to="/expenses"
-          className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-        >
-          <Card className="hover-fill">
-            <CardHeader className="gap-5">
-              <div className="flex items-start justify-between gap-2">
-                <CardDescription>Expenses</CardDescription>
-                <ChevronRight className="text-muted-foreground size-4" />
-              </div>
-              <CardTitle className="text-2xl">
-                {formatUsdWholeUp(expenseTotal)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </Link>
-        <Card>
-          <CardHeader className="gap-5">
-            <CardDescription>Left over</CardDescription>
-            <CardTitle
-              className={cn('text-2xl', leftOver < 0 && 'text-destructive')}
+        <MetricCard label="Income · 3-month avg" to="/income">
+          {formatUsdWhole(income)}
+        </MetricCard>
+        <MetricCard label="Expenses" to="/expenses">
+          {formatUsdWholeUp(expenseTotal)}
+        </MetricCard>
+        <MetricCard label="Left over">
+          <span className={cn(leftOver < 0 && 'text-destructive')}>
+            {formatUsdWhole(leftOver)}
+          </span>
+        </MetricCard>
+      </section>
+
+      <SectionHeading>{isCurrentMonth ? 'So far this month' : 'Actual'}</SectionHeading>
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard label="Income" to="/income">
+          {formatUsdWhole(earned)}
+        </MetricCard>
+        <MetricCard label="Fixed bills" to="/expenses">
+          {formatUsdWholeUp(fixedTotal)}
+        </MetricCard>
+        <MetricCard label="Day-to-day spending" to="/spending">
+          <span>{formatUsdWholeUp(spent)}</span>
+          {delta ? (
+            <span
+              className={cn(
+                'ml-1.5 text-sm font-normal',
+                delta.over ? 'text-destructive' : 'text-muted-foreground',
+              )}
             >
-              {formatUsdWhole(leftOver)}
-            </CardTitle>
-          </CardHeader>
-        </Card>
+              {delta.text}
+            </span>
+          ) : null}
+        </MetricCard>
+        <MetricCard label="Left over">
+          {monthClosed ? (
+            <span className={cn(actualLeftOver < 0 && 'text-destructive')}>
+              {formatUsdWhole(actualLeftOver)}
+            </span>
+          ) : (
+            <span className="text-muted-foreground text-sm font-normal">
+              Shows {monthName(selected.month).slice(0, 3)} {lastDay}
+            </span>
+          )}
+        </MetricCard>
       </section>
 
       <DebtsCard />
