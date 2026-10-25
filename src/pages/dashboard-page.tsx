@@ -3,12 +3,8 @@ import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 
 import { DebtsCard } from '@/components/budget-cards'
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { MetricStrip } from '@/components/metric-strip'
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -127,7 +123,36 @@ function budgetDeltaLabel(spent: number, budget: number) {
   return { text: `${formatUsdWhole(-delta)} under`, over: false }
 }
 
-function MetricCard({
+/** Same look as the Debt card's header and metric row. */
+function SummaryCard({
+  title,
+  columns,
+  children,
+}: {
+  title: string
+  columns: 3 | 4
+  children: ReactNode
+}) {
+  return (
+    <Card className="gap-0 pt-0">
+      <CardHeader className="pt-(--card-spacing)">
+        <CardTitle className="text-xl font-semibold tracking-tight">
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <div className="px-(--card-spacing) pt-4">
+        <MetricStrip
+          className={columns === 4 ? 'metric-grid-row' : undefined}
+          columns={columns === 3 ? 3 : undefined}
+        >
+          {children}
+        </MetricStrip>
+      </div>
+    </Card>
+  )
+}
+
+function SummaryMetric({
   label,
   to,
   children,
@@ -136,35 +161,25 @@ function MetricCard({
   to?: string
   children: ReactNode
 }) {
-  const card = (
-    <Card className={cn(to && 'hover-fill', 'h-full')}>
-      <CardHeader className="gap-5">
-        <div className="flex items-start justify-between gap-2">
-          <CardDescription>{label}</CardDescription>
-          {to ? <ChevronRight className="text-muted-foreground size-4" /> : null}
-        </div>
-        <CardTitle className="flex min-h-8 items-baseline text-2xl">
-          {children}
-        </CardTitle>
-      </CardHeader>
-    </Card>
+  const body = (
+    <>
+      <p className="text-muted-foreground flex items-center gap-1 text-sm">
+        {label}
+        {to ? <ChevronRight className="size-3.5" /> : null}
+      </p>
+      <div className="mt-2 flex min-h-7 items-baseline text-xl font-medium tabular-nums">
+        {children}
+      </div>
+    </>
   )
-  if (!to) return card
+  if (!to) return <div>{body}</div>
   return (
     <Link
       to={to}
-      className="block cursor-pointer rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="hover-fill -mx-2 block rounded-lg px-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      {card}
+      {body}
     </Link>
-  )
-}
-
-function SectionHeading({ children }: { children: ReactNode }) {
-  return (
-    <h2 className="text-muted-foreground -mb-2 text-sm font-medium">
-      {children}
-    </h2>
   )
 }
 
@@ -276,30 +291,31 @@ export function DashboardPage() {
         </Select>
       </div>
 
-      <SectionHeading>Planned</SectionHeading>
-      <section className="grid gap-4 lg:grid-cols-3">
-        <MetricCard label="Income · 3-month avg" to="/income">
+      <SummaryCard title="Planned" columns={3}>
+        <SummaryMetric label="Income · 3-month avg" to="/income">
           {formatUsdWhole(income)}
-        </MetricCard>
-        <MetricCard label="Expenses" to="/expenses">
+        </SummaryMetric>
+        <SummaryMetric label="Expenses" to="/expenses">
           {formatUsdWholeUp(expenseTotal)}
-        </MetricCard>
-        <MetricCard label="Left over">
+        </SummaryMetric>
+        <SummaryMetric label="Left over">
           <span className={cn(leftOver < 0 && 'text-destructive')}>
             {formatUsdWhole(leftOver)}
           </span>
-        </MetricCard>
-      </section>
+        </SummaryMetric>
+      </SummaryCard>
 
-      <SectionHeading>{isCurrentMonth ? 'So far this month' : 'Actual'}</SectionHeading>
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard label="Income" to="/income">
+      <SummaryCard
+        title={isCurrentMonth ? 'So far this month' : 'Actual'}
+        columns={4}
+      >
+        <SummaryMetric label="Income" to="/income">
           {formatUsdWhole(earned)}
-        </MetricCard>
-        <MetricCard label="Fixed bills" to="/expenses">
+        </SummaryMetric>
+        <SummaryMetric label="Fixed bills" to="/expenses">
           {formatUsdWholeUp(fixedTotal)}
-        </MetricCard>
-        <MetricCard label="Day-to-day spending" to="/spending">
+        </SummaryMetric>
+        <SummaryMetric label="Day-to-day spending" to="/spending">
           <span>{formatUsdWholeUp(spent)}</span>
           {delta ? (
             <span
@@ -311,8 +327,8 @@ export function DashboardPage() {
               {delta.text}
             </span>
           ) : null}
-        </MetricCard>
-        <MetricCard label="Left over">
+        </SummaryMetric>
+        <SummaryMetric label="Left over">
           {monthClosed ? (
             <span className={cn(actualLeftOver < 0 && 'text-destructive')}>
               {formatUsdWhole(actualLeftOver)}
@@ -322,8 +338,8 @@ export function DashboardPage() {
               Shows {monthName(selected.month).slice(0, 3)} {lastDay}
             </span>
           )}
-        </MetricCard>
-      </section>
+        </SummaryMetric>
+      </SummaryCard>
 
       <DebtsCard />
     </main>
