@@ -205,21 +205,22 @@ function monthRowsForYear(
   now = new Date(),
 ) {
   const totals = Array.from({ length: 12 }, () => 0)
+  const logged = Array.from({ length: 12 }, () => false)
   for (const txn of transactions) {
-    if (!txn.date.startsWith(`${year}-`) || !isSpendingPurchase(txn)) continue
+    if (!txn.date.startsWith(`${year}-`)) continue
     const month = Number.parseInt(txn.date.slice(5, 7), 10) - 1
-    if (month >= 0 && month < 12) totals[month] += txn.amount
+    if (month < 0 || month > 11) continue
+    logged[month] = true
+    if (isSpendingPurchase(txn)) totals[month] += txn.amount
   }
-  const currentYear = now.getFullYear()
-  const lastMonth = year === currentYear ? now.getMonth() : 11
-  return totals
+  const rows = totals
     .map((amount, month) => ({ month, amount }))
-    .filter(({ month, amount }) => {
-      if (year > currentYear) return amount > 0
-      if (year === currentYear) return month <= lastMonth
-      return true
-    })
+    .filter(({ month }) => logged[month])
     .toReversed()
+  if (rows.length === 0 && year === now.getFullYear()) {
+    return [{ month: now.getMonth(), amount: 0 }]
+  }
+  return rows
 }
 
 export function SpendingPage() {
