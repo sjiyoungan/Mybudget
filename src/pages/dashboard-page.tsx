@@ -129,7 +129,7 @@ function SummaryCard({
   columns,
   children,
 }: {
-  title: string
+  title: ReactNode
   columns: 3 | 4
   children: ReactNode
 }) {
@@ -252,44 +252,7 @@ export function DashboardPage() {
 
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-4 pb-8 lg:px-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="font-heading text-3xl font-medium">Dashboard</h1>
-        <Select value={selected.key} onValueChange={setSelectedKey}>
-          <SelectTrigger
-            aria-label="Dashboard month"
-            size="sm"
-            className="h-8 pr-8 text-base"
-          >
-            {showYearLabels
-              ? `${monthName(selected.month)} ${selected.year}`
-              : monthName(selected.month)}
-          </SelectTrigger>
-          <SelectContent
-            position="popper"
-            align="start"
-            side="bottom"
-            sideOffset={4}
-            className="w-(--radix-select-trigger-width) min-w-(--radix-select-trigger-width) rounded-md"
-          >
-            {yearGroups.map((group) => (
-              <SelectGroup key={group.year}>
-                {showYearLabels ? (
-                  <SelectLabel>{group.year}</SelectLabel>
-                ) : null}
-                {group.items.map((item) => (
-                  <SelectItem
-                    key={item.key}
-                    value={item.key}
-                    className="text-base"
-                  >
-                    {monthName(item.month)}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <h1 className="font-heading text-3xl font-medium">Dashboard</h1>
 
       <SummaryCard title="Planned" columns={3}>
         <SummaryMetric label="Income · 3-month avg" to="/income">
@@ -306,7 +269,42 @@ export function DashboardPage() {
       </SummaryCard>
 
       <SummaryCard
-        title={isCurrentMonth ? 'So far this month' : 'Actual'}
+        title={
+          <Select value={selected.key} onValueChange={setSelectedKey}>
+            <SelectTrigger
+              aria-label="Month"
+              className="font-heading !h-auto gap-1 border-0 bg-transparent p-0 text-xl font-semibold tracking-tight shadow-none hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 dark:hover:bg-transparent"
+            >
+              {showYearLabels
+                ? `${monthName(selected.month)} ${selected.year}`
+                : monthName(selected.month)}
+            </SelectTrigger>
+            <SelectContent
+              position="popper"
+              align="start"
+              side="bottom"
+              sideOffset={4}
+              className="min-w-36 rounded-md"
+            >
+              {yearGroups.map((group) => (
+                <SelectGroup key={group.year}>
+                  {showYearLabels ? (
+                    <SelectLabel>{group.year}</SelectLabel>
+                  ) : null}
+                  {group.items.map((item) => (
+                    <SelectItem
+                      key={item.key}
+                      value={item.key}
+                      className="text-base"
+                    >
+                      {monthName(item.month)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
+        }
         columns={4}
       >
         <SummaryMetric label="Income" to="/income">
