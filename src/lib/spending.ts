@@ -260,6 +260,67 @@ export function isJunkStatementTxn(
   )
 }
 
+const DELIVERY_FOOD =
+  /\b(grubhub|doordash|door\s*dash|uber\s*eats|ubereats|postmates|seamless|take[\s-]?out)\b/i
+
+/** Delivery and takeout, which come out of Spending rather than groceries. */
+export function isDeliveryFood(
+  txn: Pick<SpendingTxn, 'description' | 'merchant'>,
+) {
+  return DELIVERY_FOOD.test(`${txn.description} ${txn.merchant}`)
+}
+
+export type VariableBucket = 'food' | 'gas' | 'spending'
+
+/** Which variable allowance an expense plans for, matched on its name. */
+export function variableBucketForExpense(name: string): VariableBucket {
+  const label = name.trim().toLowerCase()
+  if (label === 'food' || label === 'grocery' || label === 'groceries') {
+    return 'food'
+  }
+  if (label === 'gas' || label === 'fuel' || label === 'gasoline') return 'gas'
+  return 'spending'
+}
+
+function bucketForCategoryName(name: string): VariableBucket | null {
+  const label = name.trim().toLowerCase()
+  if (DELIVERY_FOOD.test(label)) return 'spending'
+  if (
+    label === 'food' ||
+    label === 'grocery' ||
+    label === 'groceries' ||
+    /\bgrocer/.test(label)
+  ) {
+    return 'food'
+  }
+  if (label === 'gas' || label === 'fuel' || label === 'gasoline' || /\bgas\b|\bfuel\b/.test(label)) {
+    return 'gas'
+  }
+  return null
+}
+
+/**
+ * Groceries count as food and gas as gas. Delivery apps count as spending
+ * even when they're filed under groceries. Everything else is spending.
+ */
+export function variableBucketForTxn(
+  txn: Pick<SpendingTxn, 'description' | 'merchant' | 'categoryId'>,
+  categories: SpendingCategory[],
+): VariableBucket {
+  if (isDeliveryFood(txn)) return 'spending'
+  const ids = [
+    txn.categoryId,
+    rolledSpendingCategoryId(txn.categoryId, categories),
+  ]
+  for (const id of ids) {
+    if (!id) continue
+    const category = categories.find((item) => item.id === id)
+    const bucket = category ? bucketForCategoryName(category.name) : null
+    if (bucket) return bucket
+  }
+  return 'spending'
+}
+
 /** Purchases that count toward spending totals (excludes interest, transfers, deposits). */
 export function isSpendingPurchase(
   txn: Pick<SpendingTxn, 'description' | 'merchant' | 'amount'>,

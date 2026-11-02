@@ -35,7 +35,9 @@ import {
 } from '@/components/ui/select'
 import {
   DEBT_CATEGORY_ID,
+  VARIABLE_CATEGORY_ID,
   billsAccount,
+  isExpenseActiveInMonth,
   isHiddenExpense,
   isLiveExpense,
   monthlyAmount,
@@ -55,6 +57,8 @@ import {
   isSpendingPurchase,
   rolledSpendingCategoryId,
   sortSpendingTxns,
+  variableBucketForExpense,
+  variableBucketForTxn,
   toSentenceCase,
   transactionsForUpload,
   visibleSpendingCategories,
@@ -392,6 +396,51 @@ export function SpendingPage() {
         : monthOver
           ? `${formatUsd(monthDelta)} over`
           : `${formatUsd(-monthDelta)} left`
+  const variableLeft = useMemo(() => {
+    if (activeMonth == null) return []
+    const planned = expenses.filter(
+      (item) =>
+        item.category === VARIABLE_CATEGORY_ID &&
+        !isHiddenExpense(item) &&
+        isExpenseActiveInMonth(item, selectedYear, activeMonth),
+    )
+    const hasFood = planned.some(
+      (item) => variableBucketForExpense(item.name) === 'food',
+    )
+    const hasGas = planned.some(
+      (item) => variableBucketForExpense(item.name) === 'gas',
+    )
+    const spent = { food: 0, gas: 0, spending: 0 }
+    for (const txn of spentTxns) {
+      let bucket = variableBucketForTxn(txn, categories)
+      if (bucket === 'food' && !hasFood) bucket = 'spending'
+      if (bucket === 'gas' && !hasGas) bucket = 'spending'
+      spent[bucket] += txn.amount
+    }
+    const order = ['food', 'gas', 'spending'] as const
+    return order.flatMap((bucket) => {
+      const items = planned.filter(
+        (item) => variableBucketForExpense(item.name) === bucket,
+      )
+      if (items.length === 0) return []
+      const budget = items.reduce((sum, item) => sum + monthlyAmount(item), 0)
+      const accountIds = new Set(items.map((item) => item.accountId))
+      const account =
+        accountIds.size === 1
+          ? accounts.find((item) => item.id === items[0]?.accountId)?.name
+          : undefined
+      const amount = spent[bucket]
+      return [
+        {
+          bucket,
+          name: items.length === 1 ? items[0].name : 'Spending',
+          account,
+          budget,
+          left: budget - amount,
+        },
+      ]
+    })
+  }, [accounts, activeMonth, categories, expenses, selectedYear, spentTxns])
 
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-4 pb-8 lg:px-6">
@@ -558,6 +607,42 @@ export function SpendingPage() {
           </CardContent>
         </Card>
       </section>
+
+      {variableLeft.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Left</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {variableLeft.map((item) => {
+                const over = item.left < -0.005
+                return (
+                  <div key={item.bucket}>
+                    <p className="text-muted-foreground text-sm">
+                      {item.name}
+                      {item.account ? ` · ${item.account}` : ''}
+                    </p>
+                    <p
+                      className={cn(
+                        'mt-2 text-xl font-medium tabular-nums',
+                        over && 'text-destructive',
+                      )}
+                    >
+                      {over
+                        ? `${formatUsd(-item.left)} over`
+                        : formatUsd(item.left)}
+                    </p>
+                    <p className="text-muted-foreground text-xs tabular-nums">
+                      of {formatUsd(item.budget)}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
