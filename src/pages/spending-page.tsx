@@ -271,7 +271,8 @@ export function SpendingPage() {
       : defaultMonth
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [adding, setAdding] = useState(false)
-  const [expandedDays, setExpandedDays] = useState<string[]>([])
+  /** null means every day is open. */
+  const [expandedDays, setExpandedDays] = useState<string[] | null>(null)
   const [expandedStatementMonth, setExpandedStatementMonth] = useState<
     string | null
   >(null)
@@ -453,7 +454,7 @@ export function SpendingPage() {
               const next = Number(value)
               setYear(next)
               setSelectedMonth(null)
-              setExpandedDays([])
+              setExpandedDays(null)
             }}
           >
             <SelectTrigger
@@ -503,7 +504,7 @@ export function SpendingPage() {
                   aria-current={selected ? 'true' : undefined}
                   onClick={() => {
                     setSelectedMonth(row.month)
-                    setExpandedDays([])
+                    setExpandedDays(null)
                   }}
                   className={cn(
                     'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
@@ -663,15 +664,16 @@ export function SpendingPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    const anyOpen = dayRows.some((row) =>
-                      expandedDays.includes(row.date),
-                    )
+                    const anyOpen =
+                      expandedDays == null ||
+                      dayRows.some((row) => expandedDays.includes(row.date))
                     setExpandedDays(
-                      anyOpen ? [] : dayRows.map((row) => row.date),
+                      anyOpen ? [] : null,
                     )
                   }}
                 >
-                  {dayRows.some((row) => expandedDays.includes(row.date))
+                  {expandedDays == null ||
+                  dayRows.some((row) => expandedDays.includes(row.date))
                     ? 'Close all'
                     : 'Expand all'}
                 </Button>
@@ -686,18 +688,23 @@ export function SpendingPage() {
             </p>
           ) : null}
           {dayRows.map((row) => {
-            const expanded = expandedDays.includes(row.date)
+            const expanded =
+              expandedDays == null || expandedDays.includes(row.date)
             return (
               <div key={row.date}>
                 <button
                   type="button"
                   aria-expanded={expanded}
                   onClick={() => {
-                    setExpandedDays((current) =>
-                      current.includes(row.date)
-                        ? current.filter((date) => date !== row.date)
-                        : [...current, row.date],
-                    )
+                    setExpandedDays((current) => {
+                      const open =
+                        current == null
+                          ? dayRows.map((item) => item.date)
+                          : current
+                      return open.includes(row.date)
+                        ? open.filter((date) => date !== row.date)
+                        : [...open, row.date]
+                    })
                   }}
                   className="hover-fill hover-fill-plain grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_5.75rem_1rem] items-center gap-x-3 rounded-lg px-2.5 py-2 text-left"
                 >
@@ -896,7 +903,9 @@ export function SpendingPage() {
             setSelectedMonth(month)
           }
           setExpandedDays((current) =>
-            current.includes(input.date) ? current : [...current, input.date],
+            current == null || current.includes(input.date)
+              ? current
+              : [...current, input.date],
           )
           setAdding(false)
         }}
