@@ -37,11 +37,11 @@ import {
   DEBT_CATEGORY_ID,
   VARIABLE_CATEGORY_ID,
   billsAccount,
+  ceiledMonthlyAmount,
   isExpenseActiveInMonth,
   isHiddenExpense,
   isLiveExpense,
   monthlyAmount,
-  totalMonthlyExpensesExcluding,
   type ExpenseCategoryGroup,
   type RecurringExpense,
 } from '@/lib/budget'
@@ -53,6 +53,7 @@ import {
   categoryExpenseIds,
   displayMerchant,
   isActiveSpendingCategory,
+  isFixedOnlyPurchase,
   isGroupedSpendingCategory,
   isSpendingPurchase,
   rolledSpendingCategoryId,
@@ -203,10 +204,26 @@ function availableSpendingYears(transactions: SpendingTxn[], now = new Date()) {
   return [...years].sort((left, right) => right - left)
 }
 
+function variableBudgetForMonth(
+  expenses: RecurringExpense[],
+  year: number,
+  month: number,
+) {
+  return expenses
+    .filter(
+      (item) =>
+        item.category === VARIABLE_CATEGORY_ID &&
+        !isHiddenExpense(item) &&
+        isExpenseActiveInMonth(item, year, month),
+    )
+    .reduce((sum, item) => sum + ceiledMonthlyAmount(item), 0)
+}
+
 function monthRowsForYear(
   transactions: SpendingTxn[],
   year: number,
   now = new Date(),
+  counts: (txn: SpendingTxn) => boolean = isSpendingPurchase,
 ) {
   const totals = Array.from({ length: 12 }, () => 0)
   const logged = Array.from({ length: 12 }, () => false)
@@ -215,7 +232,7 @@ function monthRowsForYear(
     const month = Number.parseInt(txn.date.slice(5, 7), 10) - 1
     if (month < 0 || month > 11) continue
     logged[month] = true
-    if (isSpendingPurchase(txn)) totals[month] += txn.amount
+    if (counts(txn)) totals[month] += txn.amount
   }
   const rows = totals
     .map((amount, month) => ({ month, amount }))
@@ -256,9 +273,30 @@ export function SpendingPage() {
   const [year, setYear] = useState<number | null>(null)
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
   const selectedYear = year ?? latest?.year ?? now.getFullYear()
+  const variableExpenseIds = useMemo(
+    () =>
+      new Set(
+        expenses
+          .filter((item) => item.category === VARIABLE_CATEGORY_ID)
+          .map((item) => item.id),
+      ),
+    [expenses],
+  )
+  const countsAsVariable = useMemo(
+    () => (txn: SpendingTxn) =>
+      isSpendingPurchase(txn) &&
+      !isFixedOnlyPurchase(txn.categoryId, categories, variableExpenseIds),
+    [categories, variableExpenseIds],
+  )
   const monthRows = useMemo(
-    () => monthRowsForYear(transactions, selectedYear, now),
-    [now, selectedYear, transactions],
+    () =>
+      monthRowsForYear(transactions, selectedYear, now, countsAsVariable).map(
+        (row) => ({
+          ...row,
+          budget: variableBudgetForMonth(expenses, selectedYear, row.month),
+        }),
+      ),
+    [countsAsVariable, expenses, now, selectedYear, transactions],
   )
   const defaultMonth =
     monthRows.find((row) => row.amount > 0)?.month ??
@@ -324,13 +362,16 @@ export function SpendingPage() {
     }))
   }, [transactions, uploads])
   const spentTxns = useMemo(
-    () => monthTxns.filter(isSpendingPurchase),
-    [monthTxns],
+    () => monthTxns.filter(countsAsVariable),
+    [countsAsVariable, monthTxns],
   )
   const totalSpent = spentTxns.reduce((sum, txn) => sum + txn.amount, 0)
   const monthBudget = useMemo(
-    () => totalMonthlyExpensesExcluding(expenses, [DEBT_CATEGORY_ID]),
-    [expenses],
+    () =>
+      activeMonth == null
+        ? 0
+        : variableBudgetForMonth(expenses, selectedYear, activeMonth),
+    [activeMonth, expenses, selectedYear],
   )
   const slices = useMemo(() => {
     const totals = new Map(activeCategories.map((category) => [category.id, 0]))
@@ -343,11 +384,18 @@ export function SpendingPage() {
         uncategorized += txn.amount
       }
     }
-    const rows = activeCategories.map((category, index) => {
-      const linked = categoryExpenseIds(category)
+    const rows = activeCategories.flatMap((category, index) => {
+      const linkedIds = categoryExpenseIds(category)
+      if (
+        linkedIds.length > 0 &&
+        !linkedIds.some((id) => variableExpenseIds.has(id))
+      ) {
+        return []
+      }
+      const linked = linkedIds
         .map((id) => expenses.find((item) => item.id === id))
         .filter((item): item is (typeof expenses)[number] => item != null)
-      return {
+      return [{
         id: category.id,
         name: toSentenceCase(category.name),
         amount: totals.get(category.id) ?? 0,
@@ -356,7 +404,7 @@ export function SpendingPage() {
             ? linked.reduce((sum, item) => sum + monthlyAmount(item), 0)
             : null,
         color: SLICE_COLORS[index % SLICE_COLORS.length],
-      }
+      }]
     })
     if (uncategorized > 0) {
       rows.push({
@@ -371,7 +419,7 @@ export function SpendingPage() {
       (left, right) =>
         right.amount - left.amount || left.name.localeCompare(right.name),
     )
-  }, [activeCategories, categories, expenses, spentTxns])
+  }, [activeCategories, categories, expenses, spentTxns, variableExpenseIds])
   const dayRows = useMemo(() => {
     const byDay = new Map<string, SpendingTxn[]>()
     for (const txn of spentTxns) {
@@ -514,13 +562,16 @@ export function SpendingPage() {
                   <span className={selected ? 'font-medium' : undefined}>
                     {monthName(row.month)}
                   </span>
-                  <span
-                    className={cn(
-                      'tabular-nums',
-                      row.amount === 0 && 'text-muted-foreground',
-                    )}
-                  >
-                    {formatUsd(row.amount)}
+                  <span className="whitespace-nowrap tabular-nums">
+                    <span
+                      className={row.amount === 0 ? 'text-muted-foreground' : undefined}
+                    >
+                      {formatUsd(row.amount)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {' / '}
+                      {formatUsd(row.budget)}
+                    </span>
                   </span>
                 </button>
               )

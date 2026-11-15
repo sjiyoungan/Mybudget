@@ -42,6 +42,19 @@ export function isActiveSpendingCategory(category: SpendingCategory) {
   return category.enabled !== false
 }
 
+/** A purchase filed only under fixed bills, so it is not variable spending. */
+export function isFixedOnlyPurchase(
+  categoryId: string | undefined,
+  categories: SpendingCategory[],
+  variableExpenseIds: ReadonlySet<string>,
+) {
+  const rolled = rolledSpendingCategoryId(categoryId, categories)
+  const category = categories.find((item) => item.id === rolled)
+  if (!category) return false
+  const ids = categoryExpenseIds(category)
+  return ids.length > 0 && !ids.some((id) => variableExpenseIds.has(id))
+}
+
 export function categoryExpenseIds(category: SpendingCategory) {
   const ids: string[] = []
   for (const id of category.expenseIds ?? []) {
