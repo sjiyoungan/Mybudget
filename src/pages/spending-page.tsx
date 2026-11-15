@@ -696,7 +696,7 @@ export function SpendingPage() {
             return (
               <div
                 key={row.date}
-                className={cn(index > 0 && 'border-border border-t')}
+                className={cn('py-2', index > 0 && 'border-border border-t')}
               >
                 <button
                   type="button"
