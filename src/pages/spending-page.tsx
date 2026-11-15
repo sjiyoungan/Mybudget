@@ -958,13 +958,15 @@ function SpendingCalendar({
             const body = (
               <>
                 <span className="text-sm font-medium leading-5">{day}</span>
-                <span className="w-full truncate text-[11px] leading-4 tabular-nums">
-                  {openable ? formatUsd(spent) : '\u00a0'}
-                </span>
+                {openable ? (
+                  <span className="min-w-0 truncate text-[11px] leading-4 tabular-nums">
+                    {formatUsd(spent)}
+                  </span>
+                ) : null}
               </>
             )
             const className = cn(
-              'flex min-h-16 w-full flex-col items-start justify-between rounded-lg px-1.5 py-1.5 text-left sm:px-2',
+              'flex min-h-10 w-full items-center justify-between gap-1 rounded-lg px-1.5 py-1.5 text-left sm:px-2',
               !openable && 'text-muted-foreground/40',
               openable && 'hover-fill cursor-pointer',
               isToday && selected !== key && 'ring-1 ring-foreground/20',
