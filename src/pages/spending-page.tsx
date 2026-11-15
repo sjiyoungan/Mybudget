@@ -674,11 +674,14 @@ export function SpendingPage() {
               No purchases this month.
             </p>
           ) : null}
-          {dayRows.map((row) => {
+          {dayRows.map((row, index) => {
             const expanded =
               expandedDays == null || expandedDays.includes(row.date)
             return (
-              <div key={row.date}>
+              <div
+                key={row.date}
+                className={cn(index > 0 && 'border-border border-t')}
+              >
                 <button
                   type="button"
                   aria-expanded={expanded}
@@ -711,13 +714,14 @@ export function SpendingPage() {
                   </span>
                 </button>
                 {expanded ? (
-                  <ul className="hover-fill-active grid gap-0.5 rounded-lg">
-                    {row.items.map((txn) => (
+                  <ul>
+                    {row.items.map((txn, itemIndex) => (
                       <TransactionRow
                         key={txn.id}
                         txn={txn}
                         accounts={accounts}
                         categories={categories}
+                        divided={itemIndex > 0}
                         onClick={() => setEditing(txn)}
                       />
                     ))}
@@ -1028,6 +1032,7 @@ function TransactionRow({
   categories,
   showAccount = true,
   showDate = false,
+  divided = false,
   onClick,
 }: {
   txn: SpendingTxn
@@ -1035,11 +1040,12 @@ function TransactionRow({
   categories: SpendingCategory[]
   showAccount?: boolean
   showDate?: boolean
+  divided?: boolean
   onClick: () => void
 }) {
   const category = categoryName(txn.categoryId, categories)
   return (
-    <li className="min-w-0">
+    <li className={cn('min-w-0', divided && 'border-border border-t border-dotted')}>
       <button
         type="button"
         className={cn(
