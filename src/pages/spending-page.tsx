@@ -717,7 +717,12 @@ export function SpendingPage() {
                   <span className={expanded ? 'font-medium' : undefined}>
                     {formatDateWithoutYear(row.date, 'short')}
                   </span>
-                  <span className="w-[5.75rem] shrink-0 text-right tabular-nums">
+                  <span
+                    className={cn(
+                      'w-[5.75rem] shrink-0 text-right tabular-nums',
+                      expanded && 'font-medium',
+                    )}
+                  >
                     {formatUsd(row.amount)}
                   </span>
                   <span className="flex size-4 shrink-0 items-center justify-center">
