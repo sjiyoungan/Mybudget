@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -68,19 +68,14 @@ import {
 import { cn } from '@/lib/utils'
 
 const NONE = 'none'
-const SLICE_COLORS = [
-  'oklch(0.62 0.15 255)',
-  'oklch(0.66 0.13 175)',
-  'oklch(0.64 0.14 145)',
-  'oklch(0.66 0.15 5)',
-  'oklch(0.60 0.14 300)',
-  'oklch(0.68 0.12 230)',
-  'oklch(0.64 0.14 330)',
-  'oklch(0.58 0.13 265)',
-]
-const UNCATEGORIZED_COLOR = 'oklch(0.62 0.02 255)'
-const BUDGET_TRACK_COLOR = '#e4e4e4'
-const OVER_BUDGET_COLOR = 'oklch(0.60 0.18 27)'
+const DONUT_COLORS = {
+  spending: '#3D9EFF',
+  food: '#F5B431',
+  gas: '#2EC4B6',
+} as const
+const DONUT_OVER = '#F0434B'
+const DONUT_LEFT = '#E4E7EC'
+const SPENT_DAY_COLOR = DONUT_COLORS.spending
 
 function parseAmount(value: string) {
   const parsed = Number.parseFloat(value.replace(/[$,\s]/g, ''))
@@ -91,12 +86,6 @@ function formatTxnAmount(amount: number) {
   if (amount < 0) return `+${formatUsd(-amount)}`
   return formatUsd(amount)
 }
-
-function budgetDelta(spent: number, budget: number) {
-  return Math.round((spent - budget) * 100) / 100
-}
-
-const OVER_BUDGET_TEXT = 'text-[#7a2e2e]'
 
 function isSpendingExpense(expense: RecurringExpense) {
   return (
@@ -204,6 +193,58 @@ function availableSpendingYears(transactions: SpendingTxn[], now = new Date()) {
   return [...years].sort((left, right) => right - left)
 }
 
+const DELIVERY_FOOD =
+  /\b(grubhub|doordash|door\s*dash|uber\s*eats|ubereats|postmates|seamless|take[\s-]?out)\b/i
+
+type DonutKey = keyof typeof DONUT_COLORS
+
+function expenseDonutKey(name: string): DonutKey {
+  const label = name.trim().toLowerCase()
+  if (label === 'food' || label === 'grocery' || label === 'groceries') return 'food'
+  if (label === 'gas' || label === 'fuel' || label === 'gasoline') return 'gas'
+  return 'spending'
+}
+
+function categoryDonutKey(name: string): DonutKey | null {
+  const label = name.trim().toLowerCase()
+  if (DELIVERY_FOOD.test(label)) return 'spending'
+  if (
+    label === 'food' ||
+    label === 'grocery' ||
+    label === 'groceries' ||
+    /\bgrocer/.test(label)
+  ) {
+    return 'food'
+  }
+  if (
+    label === 'gas' ||
+    label === 'fuel' ||
+    label === 'gasoline' ||
+    /\bgas\b|\bfuel\b/.test(label)
+  ) {
+    return 'gas'
+  }
+  return null
+}
+
+function txnDonutKey(
+  txn: Pick<SpendingTxn, 'description' | 'merchant' | 'categoryId'>,
+  categories: SpendingCategory[],
+): DonutKey {
+  if (DELIVERY_FOOD.test(`${txn.description} ${txn.merchant}`)) return 'spending'
+  const ids = [
+    txn.categoryId,
+    rolledSpendingCategoryId(txn.categoryId, categories),
+  ]
+  for (const id of ids) {
+    if (!id) continue
+    const category = categories.find((item) => item.id === id)
+    const key = category ? categoryDonutKey(category.name) : null
+    if (key) return key
+  }
+  return 'spending'
+}
+
 function variableBudgetForMonth(
   expenses: RecurringExpense[],
   year: number,
@@ -257,10 +298,6 @@ export function SpendingPage() {
     removeUpload,
   } = useSpending()
   const { accounts, expenses, categories: expenseGroups } = useBudget()
-  const activeCategories = useMemo(
-    () => visibleSpendingCategories(categories),
-    [categories],
-  )
   const now = useMemo(() => new Date(), [])
   const years = useMemo(
     () => availableSpendingYears(transactions, now),
@@ -380,53 +417,26 @@ export function SpendingPage() {
         : variableBudgetForMonth(expenses, selectedYear, activeMonth),
     [activeMonth, expenses, selectedYear],
   )
-  const slices = useMemo(() => {
-    const totals = new Map(activeCategories.map((category) => [category.id, 0]))
-    let uncategorized = 0
-    for (const txn of spentTxns) {
-      const key = rolledSpendingCategoryId(txn.categoryId, categories) ?? ''
-      if (key && totals.has(key)) {
-        totals.set(key, (totals.get(key) ?? 0) + txn.amount)
-      } else {
-        uncategorized += txn.amount
+  const donutParts = useMemo(() => {
+    const budget = { spending: 0, food: 0, gas: 0 }
+    if (activeMonth != null) {
+      for (const item of expenses) {
+        if (item.category !== VARIABLE_CATEGORY_ID || isHiddenExpense(item)) continue
+        if (!isExpenseActiveInMonth(item, selectedYear, activeMonth)) continue
+        budget[expenseDonutKey(item.name)] += ceiledMonthlyAmount(item)
       }
     }
-    const rows = activeCategories.flatMap((category, index) => {
-      const linkedIds = categoryExpenseIds(category)
-      if (
-        linkedIds.length > 0 &&
-        !linkedIds.some((id) => variableExpenseIds.has(id))
-      ) {
-        return []
-      }
-      const linked = linkedIds
-        .map((id) => expenses.find((item) => item.id === id))
-        .filter((item): item is (typeof expenses)[number] => item != null)
-      return [{
-        id: category.id,
-        name: toSentenceCase(category.name),
-        amount: totals.get(category.id) ?? 0,
-        budget:
-          linked.length > 0
-            ? linked.reduce((sum, item) => sum + monthlyAmount(item), 0)
-            : null,
-        color: SLICE_COLORS[index % SLICE_COLORS.length],
-      }]
-    })
-    if (uncategorized > 0) {
-      rows.push({
-        id: '',
-        name: 'Uncategorized',
-        amount: uncategorized,
-        budget: null,
-        color: UNCATEGORIZED_COLOR,
-      })
-    }
-    return rows.sort(
-      (left, right) =>
-        right.amount - left.amount || left.name.localeCompare(right.name),
-    )
-  }, [activeCategories, categories, expenses, spentTxns, variableExpenseIds])
+    const spent = { spending: 0, food: 0, gas: 0 }
+    for (const txn of spentTxns) spent[txnDonutKey(txn, categories)] += txn.amount
+    const order: DonutKey[] = ['spending', 'food', 'gas']
+    return order.map((key) => ({
+      id: key,
+      name: key === 'food' ? 'Food' : key === 'gas' ? 'Gas' : 'Spending',
+      color: DONUT_COLORS[key],
+      spent: spent[key],
+      budget: budget[key],
+    }))
+  }, [activeMonth, categories, expenses, selectedYear, spentTxns])
   const dayRows = useMemo(() => {
     const byDay = new Map<string, SpendingTxn[]>()
     for (const txn of spentTxns) {
@@ -442,17 +452,6 @@ export function SpendingPage() {
         amount: items.reduce((sum, txn) => sum + txn.amount, 0),
       }))
   }, [spentTxns])
-  const monthDelta = monthBudget > 0 ? budgetDelta(totalSpent, monthBudget) : null
-  const monthOver = monthDelta != null && monthDelta > 0.005
-  const monthStatus =
-    monthDelta == null
-      ? null
-      : Math.abs(monthDelta) < 0.005
-        ? 'On budget'
-        : monthOver
-          ? `${formatUsd(monthDelta)} over`
-          : `${formatUsd(-monthDelta)} left`
-
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-4 pb-8 lg:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -555,84 +554,34 @@ export function SpendingPage() {
               </Button>
             </CardAction>
           </CardHeader>
-          <CardContent className="grid gap-5">
-            <p className="flex flex-wrap items-baseline gap-1.5 text-2xl font-medium tabular-nums">
-              <span>{formatUsd(totalSpent)}</span>
-              {monthStatus ? (
-                <span
-                  className={cn(
-                    'text-sm font-normal',
-                    monthOver ? OVER_BUDGET_TEXT : 'text-muted-foreground',
-                  )}
-                >
-                  {monthStatus}
-                </span>
-              ) : null}
-            </p>
-            <div className="flex flex-wrap items-center gap-6 lg:gap-12">
-              <div className="pl-2">
-                <CategoryPie
-                  slices={slices}
-                  total={totalSpent}
-                  budget={monthBudget}
-                />
-              </div>
-              <ul className="grid min-w-[12rem] flex-1 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-baseline gap-x-2 gap-y-2 text-sm">
-                {slices.map((slice) => {
-                  const delta =
-                    slice.budget != null
-                      ? budgetDelta(slice.amount, slice.budget)
-                      : null
-                  const over = delta != null && delta > 0.005
+          <CardContent>
+            <div className="flex flex-wrap items-center gap-8">
+              <BudgetDonut parts={donutParts} total={totalSpent} budget={monthBudget} />
+              <ul className="grid min-w-[14rem] flex-1 gap-3">
+                {donutParts.map((part) => {
+                  const over = part.spent - part.budget
                   return (
-                    <li
-                      key={slice.id || 'uncategorized'}
-                      className="contents"
-                    >
-                      <span
-                        className="size-2.5 shrink-0 self-center rounded-full"
-                        style={{ background: slice.color }}
-                      />
-                      <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-                        {slice.name}
-                        {slice.budget != null ? (
-                          <span className="text-muted-foreground text-xs">
-                            {' · '}
-                            {formatUsd(slice.budget)}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="text-right tabular-nums whitespace-nowrap">
-                        {formatUsd(slice.amount)}
-                      </span>
-                      <span
-                        className={cn(
-                          'text-right text-xs tabular-nums whitespace-nowrap',
-                          over ? OVER_BUDGET_TEXT : 'text-muted-foreground',
-                        )}
-                      >
-                        {delta == null
-                          ? null
-                          : over
-                            ? `${formatUsd(delta)} over`
-                            : `${formatUsd(Math.abs(delta))} left`}
-                      </span>
+                    <li key={part.id} className="grid gap-0.5">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span
+                          className="size-2.5 shrink-0 rounded-[3px]"
+                          style={{ background: part.color }}
+                        />
+                        <span>{part.name}</span>
+                        <span className="mb-1 min-w-4 flex-1 border-b border-dotted border-neutral-300" />
+                        <span className="tabular-nums">{formatUsd(part.spent)}</span>
+                      </div>
+                      {over > 0.005 ? (
+                        <p
+                          className="pl-5 text-xs tabular-nums"
+                          style={{ color: DONUT_OVER }}
+                        >
+                          {formatUsd(over)} over
+                        </p>
+                      ) : null}
                     </li>
                   )
                 })}
-                {monthBudget > 0 && totalSpent > monthBudget + 0.005 ? (
-                  <li className="contents">
-                    <span
-                      className="size-2.5 shrink-0 self-center rounded-full"
-                      style={{ background: OVER_BUDGET_COLOR }}
-                    />
-                    <span>Over</span>
-                    <span className="text-right tabular-nums whitespace-nowrap">
-                      {formatUsd(totalSpent - monthBudget)}
-                    </span>
-                    <span />
-                  </li>
-                ) : null}
               </ul>
             </div>
           </CardContent>
@@ -1003,7 +952,6 @@ export function SpendingPage() {
 }
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
-const SPENT_DAY_COLOR = SLICE_COLORS[0]
 const QUIET_DAY_COLOR = '#ececec'
 
 function SpendingCalendar({
@@ -1101,47 +1049,199 @@ function SpendingCalendar({
   )
 }
 
-function CategoryPie({
-  slices,
+const DONUT_SIZE = 176
+const DONUT_STROKE = 22
+
+function BudgetDonut({
+  parts,
   total,
   budget,
 }: {
-  slices: { amount: number; color: string }[]
+  parts: { id: string; color: string; spent: number; budget: number }[]
   total: number
   budget: number
 }) {
-  const spent = slices.filter((slice) => slice.amount > 0.005)
-  const stops: string[] = []
-  if (total > budget && total > 0) {
-    let start = ((total - Math.max(0, budget)) / total) * 100
-    stops.push(`${OVER_BUDGET_COLOR} 0% ${start}%`)
-    const room = 100 - start
-    for (const slice of spent) {
-      const end = start + (slice.amount / total) * room
-      stops.push(`${slice.color} ${start}% ${end}%`)
-      start = end
-    }
-  } else if (budget > 0) {
-    let start = 0
-    for (const slice of spent) {
-      const end = start + (slice.amount / budget) * 100
-      stops.push(`${slice.color} ${start}% ${end}%`)
-      start = end
-    }
-    if (start < 100) stops.push(`${BUDGET_TRACK_COLOR} ${start}% 100%`)
+  const left = budget - total
+  const whole = Math.max(budget, total)
+  const segments = parts
+    .filter((part) => part.spent > 0.005)
+    .map((part) => ({
+      spent: part.spent,
+      within: Math.min(part.spent, Math.max(0, part.budget)),
+      color: part.color,
+    }))
+  if (left > 0.005) {
+    segments.push({ spent: left, within: left, color: DONUT_LEFT })
   }
-  const background =
-    stops.length > 0
-      ? `conic-gradient(${stops.join(', ')})`
-      : BUDGET_TRACK_COLOR
+  const radius = (DONUT_SIZE - DONUT_STROKE) / 2
+  const center = DONUT_SIZE / 2
+  const cap = DONUT_STROKE / 2 / radius
+  const gap = cap + 8 / radius
+
+  function point(angle: number) {
+    return {
+      x: center + radius * Math.cos(angle),
+      y: center + radius * Math.sin(angle),
+    }
+  }
+
+  function arc(start: number, end: number) {
+    const sweep = end - start
+    if (sweep <= 0.001) return null
+    const from = point(start)
+    const to = point(end)
+    const large = sweep > Math.PI ? 1 : 0
+    return `M ${from.x} ${from.y} A ${radius} ${radius} 0 ${large} 1 ${to.x} ${to.y}`
+  }
+
+  const marks: { key: string; node: ReactNode }[] = []
+  if (whole <= 0.005 || segments.length === 0) {
+    marks.push({
+      key: 'empty',
+      node: (
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke={DONUT_LEFT}
+          strokeWidth={DONUT_STROKE}
+        />
+      ),
+    })
+  } else {
+    let cursor = -Math.PI / 2
+    const onlyLeft = segments.length === 1 && segments[0]?.color === DONUT_LEFT
+    if (onlyLeft) {
+      marks.push({
+        key: 'left',
+        node: (
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke={DONUT_LEFT}
+            strokeWidth={DONUT_STROKE}
+          />
+        ),
+      })
+    }
+    if (!onlyLeft) segments.forEach((segment, index) => {
+      const sweep = (segment.spent / whole) * Math.PI * 2
+      const inset = Math.min(gap / 2, Math.max(0, sweep / 2 - 0.02))
+      const start = cursor + inset
+      const end = cursor + sweep - inset
+      cursor += sweep
+      const mid = point(cursor - sweep / 2)
+      if (end - start < 0.08) {
+        marks.push({
+          key: `${index}-dot`,
+          node: (
+            <circle
+              cx={mid.x}
+              cy={mid.y}
+              r={DONUT_STROKE / 2}
+              fill={segment.within > 0.005 ? segment.color : DONUT_OVER}
+            />
+          ),
+        })
+        return
+      }
+      const over = segment.spent - segment.within
+      const split =
+        over > 0.005 && segment.within > 0.005
+          ? start + (segment.within / segment.spent) * (end - start)
+          : over > 0.005
+            ? start
+            : end
+      const startPoint = point(start)
+      marks.push({
+        key: `${index}-start`,
+        node: (
+          <circle
+            cx={startPoint.x}
+            cy={startPoint.y}
+            r={DONUT_STROKE / 2}
+            fill={segment.within > 0.005 ? segment.color : DONUT_OVER}
+          />
+        ),
+      })
+      if (split - start > 0.001) {
+        const d = arc(start, split)
+        if (d) {
+          marks.push({
+            key: `${index}-color`,
+            node: (
+              <path
+                d={d}
+                fill="none"
+                stroke={segment.color}
+                strokeWidth={DONUT_STROKE}
+                strokeLinecap="butt"
+              />
+            ),
+          })
+        }
+      }
+      if (end - split > 0.001) {
+        const d = arc(split, end)
+        if (d) {
+          marks.push({
+            key: `${index}-over`,
+            node: (
+              <path
+                d={d}
+                fill="none"
+                stroke={DONUT_OVER}
+                strokeWidth={DONUT_STROKE}
+                strokeLinecap="butt"
+              />
+            ),
+          })
+        }
+      }
+      const endPoint = point(end)
+      marks.push({
+        key: `${index}-end`,
+        node: (
+          <circle
+            cx={endPoint.x}
+            cy={endPoint.y}
+            r={DONUT_STROKE / 2}
+            fill={over > 0.005 ? DONUT_OVER : segment.color}
+          />
+        ),
+      })
+    })
+  }
 
   return (
-    <div
-      className="relative size-36 shrink-0 rounded-full"
-      style={{ background }}
-      aria-hidden
-    >
-      <div className="bg-card absolute inset-[16px] rounded-full" />
+    <div className="relative size-44 shrink-0">
+      <svg
+        viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}
+        className="size-full"
+        aria-hidden
+      >
+        {marks.map((mark) => (
+          <g key={mark.key}>{mark.node}</g>
+        ))}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center">
+        <span className="text-xl font-semibold tabular-nums">
+          {formatUsd(total)}
+        </span>
+        <span
+          className={cn(
+            'text-xs tabular-nums',
+            left < -0.005 ? 'text-[#F0434B]' : 'text-muted-foreground',
+          )}
+        >
+          {left < -0.005
+            ? `${formatUsd(-left)} over`
+            : `${formatUsd(Math.max(0, left))} left`}
+        </span>
+      </div>
     </div>
   )
 }
