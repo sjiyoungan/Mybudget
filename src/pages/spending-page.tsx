@@ -99,8 +99,37 @@ function lighterShade(hex: string) {
   return mixHex(hex, 255, 0.62)
 }
 
-function overPatternId(hex: string) {
-  return `over-${hex.slice(1)}`
+function ringHalftone(
+  start: number,
+  end: number,
+  caps: { start: boolean; end: boolean },
+) {
+  const radius = (DONUT_SIZE - DONUT_STROKE) / 2
+  const origin = DONUT_SIZE / 2
+  const half = DONUT_STROKE / 2
+  const spacing = 4.6
+  const rows = 5
+  const dots: { cx: number; cy: number; r: number }[] = []
+  for (let row = 0; row < rows; row++) {
+    const across = (row + 0.5) / rows
+    const rr = radius - half + DONUT_STROKE * across
+    const fromCenter = Math.abs(rr - radius) / half
+    const presence = Math.pow(Math.max(0, 1 - fromCenter), 1.2)
+    const dotR = 0.42 + presence * 1.9
+    const step = spacing / rr
+    const pad = half / rr
+    const from = start - (caps.start ? pad : 0)
+    const to = end + (caps.end ? pad : 0)
+    const stagger = row % 2 === 1 ? step / 2 : 0
+    for (let angle = from + stagger; angle <= to + 0.0001; angle += step) {
+      dots.push({
+        cx: origin + rr * Math.cos(angle),
+        cy: origin + rr * Math.sin(angle),
+        r: dotR,
+      })
+    }
+  }
+  return dots
 }
 
 function parseAmount(value: string) {
@@ -1064,16 +1093,52 @@ function BudgetDonut({
     return `M ${from.x} ${from.y} A ${radius} ${radius} 0 ${large} 1 ${to.x} ${to.y}`
   }
 
-  const overColors = [
-    ...new Set(
-      segments
-        .filter((segment) => segment.spent - segment.within > 0.005)
-        .map((segment) => segment.color),
-    ),
-  ]
-
-  function overPaint(color: string) {
-    return `url(#${overPatternId(color)})`
+  function halftone(
+    id: string,
+    color: string,
+    start: number,
+    end: number,
+    path: string | null,
+    caps: { x: number; y: number }[],
+    round: { start: boolean; end: boolean },
+  ) {
+    const dots = ringHalftone(start, end, round)
+    return (
+      <g>
+        <mask id={id}>
+          <rect width={DONUT_SIZE} height={DONUT_SIZE} fill="black" />
+          {path ? (
+            <path
+              d={path}
+              fill="none"
+              stroke="white"
+              strokeWidth={DONUT_STROKE}
+              strokeLinecap="butt"
+            />
+          ) : null}
+          {caps.map((cap, index) => (
+            <circle
+              key={index}
+              cx={cap.x}
+              cy={cap.y}
+              r={DONUT_STROKE / 2}
+              fill="white"
+            />
+          ))}
+        </mask>
+        <g mask={`url(#${id})`}>
+          {dots.map((dot, index) => (
+            <circle
+              key={index}
+              cx={dot.cx}
+              cy={dot.cy}
+              r={dot.r}
+              fill={lighterShade(color)}
+            />
+          ))}
+        </g>
+      </g>
+    )
   }
 
   const marks: { key: string; node: ReactNode }[] = []
@@ -1117,15 +1182,29 @@ function BudgetDonut({
       cursor += sweep
       const mid = point(cursor - sweep / 2)
       if (end - start < 0.08) {
+        const fullyOver = segment.within <= 0.005
         marks.push({
           key: `${index}-dot`,
           node: (
-            <circle
-              cx={mid.x}
-              cy={mid.y}
-              r={DONUT_STROKE / 2}
-              fill={segment.within > 0.005 ? segment.color : overPaint(segment.color)}
-            />
+            <>
+              <circle
+                cx={mid.x}
+                cy={mid.y}
+                r={DONUT_STROKE / 2}
+                fill={fullyOver ? darkerShade(segment.color) : segment.color}
+              />
+              {fullyOver
+                ? halftone(
+                    `tone-${index}`,
+                    segment.color,
+                    start,
+                    end,
+                    null,
+                    [{ x: mid.x, y: mid.y }],
+                    { start: true, end: true },
+                  )
+                : null}
+            </>
           ),
         })
         return
@@ -1145,7 +1224,11 @@ function BudgetDonut({
             cx={startPoint.x}
             cy={startPoint.y}
             r={DONUT_STROKE / 2}
-            fill={segment.within > 0.005 ? segment.color : overPaint(segment.color)}
+            fill={
+              segment.within > 0.005
+                ? segment.color
+                : darkerShade(segment.color)
+            }
           />
         ),
       })
@@ -1175,7 +1258,7 @@ function BudgetDonut({
               <path
                 d={d}
                 fill="none"
-                stroke={overPaint(segment.color)}
+                stroke={darkerShade(segment.color)}
                 strokeWidth={DONUT_STROKE}
                 strokeLinecap="butt"
               />
@@ -1191,10 +1274,28 @@ function BudgetDonut({
             cx={endPoint.x}
             cy={endPoint.y}
             r={DONUT_STROKE / 2}
-            fill={over > 0.005 ? overPaint(segment.color) : segment.color}
+            fill={over > 0.005 ? darkerShade(segment.color) : segment.color}
           />
         ),
       })
+      if (over > 0.005) {
+        const fullyOver = segment.within <= 0.005
+        marks.push({
+          key: `${index}-tone`,
+          node: halftone(
+            `tone-${index}`,
+            segment.color,
+            split,
+            end,
+            arc(split, end),
+            [
+              ...(fullyOver ? [startPoint] : []),
+              endPoint,
+            ],
+            { start: fullyOver, end: true },
+          ),
+        })
+      }
     })
   }
 
@@ -1205,25 +1306,6 @@ function BudgetDonut({
         className="size-full"
         aria-hidden
       >
-        <defs>
-          {overColors.map((color) => (
-            <pattern
-              key={color}
-              id={overPatternId(color)}
-              width="10"
-              height="10"
-              patternUnits="userSpaceOnUse"
-            >
-              <rect width="10" height="10" fill={darkerShade(color)} />
-              <path
-                d="M0 0 L10 10 M-2 8 L2 12 M8 -2 L12 2 M0 10 L10 0 M-2 2 L2 -2 M8 12 L12 8"
-                fill="none"
-                stroke={lighterShade(color)}
-                strokeWidth="1.45"
-              />
-            </pattern>
-          ))}
-        </defs>
         {marks.map((mark) => (
           <g key={mark.key}>{mark.node}</g>
         ))}
