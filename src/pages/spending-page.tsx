@@ -1,4 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { Check, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -556,29 +564,53 @@ export function SpendingPage() {
           <CardContent>
             <div className="flex flex-wrap items-center gap-8">
               <BudgetDonut parts={donutParts} total={totalSpent} budget={monthBudget} />
-              <ul className="grid min-w-[14rem] flex-1 gap-3">
-                {donutParts.map((part) => {
-                  const over = part.spent - part.budget
+              <ul className="grid min-w-[14rem] flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 text-sm">
+                {donutParts.map((part, index) => {
+                  const delta = part.spent - part.budget
+                  const over = delta > 0.005
+                  const under = delta < -0.005
                   return (
-                    <li key={part.id} className="grid gap-0.5">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span
-                          className="size-2.5 shrink-0 rounded-[3px]"
-                          style={{ background: part.color }}
-                        />
+                    <Fragment key={part.id}>
+                      <span
+                        className={cn(
+                          'size-2.5 rounded-[3px]',
+                          index > 0 && 'mt-3',
+                        )}
+                        style={{ background: part.color }}
+                      />
+                      <span
+                        className={cn(
+                          'flex min-w-0 items-center gap-2',
+                          index > 0 && 'mt-3',
+                        )}
+                      >
                         <span>{part.name}</span>
                         <span className="mb-1 min-w-4 flex-1 border-b border-dotted border-neutral-300" />
-                        <span className="tabular-nums">{formatUsd(part.spent)}</span>
-                      </div>
-                      {over > 0.005 ? (
-                        <p
-                          className="pl-5 text-xs tabular-nums"
-                          style={{ color: DONUT_OVER }}
+                      </span>
+                      <span
+                        className={cn(
+                          'justify-self-end tabular-nums',
+                          index > 0 && 'mt-3',
+                        )}
+                      >
+                        {formatUsd(part.spent)}
+                      </span>
+                      <span />
+                      <span />
+                      {over || under ? (
+                        <span
+                          className={cn(
+                            'justify-self-start text-xs tabular-nums',
+                            under && 'text-muted-foreground',
+                          )}
+                          style={over ? { color: DONUT_OVER } : undefined}
                         >
-                          {formatUsd(over)} over
-                        </p>
-                      ) : null}
-                    </li>
+                          {formatUsd(Math.abs(delta))} {over ? 'over' : 'under'}
+                        </span>
+                      ) : (
+                        <span />
+                      )}
+                    </Fragment>
                   )
                 })}
               </ul>
@@ -989,7 +1021,8 @@ function SpendingCalendar({
 }
 
 const DONUT_SIZE = 176
-const DONUT_STROKE = 22
+const DONUT_STROKE = 18
+const DONUT_GAP_PX = 8
 
 function BudgetDonut({
   parts,
@@ -1015,7 +1048,7 @@ function BudgetDonut({
   const radius = (DONUT_SIZE - DONUT_STROKE) / 2
   const center = DONUT_SIZE / 2
   const cap = DONUT_STROKE / 2 / radius
-  const gap = cap + 8 / radius
+  const gap = 2 * cap + DONUT_GAP_PX / radius
 
   function point(angle: number) {
     return {
