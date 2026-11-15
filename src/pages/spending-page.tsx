@@ -77,11 +77,11 @@ import { cn } from '@/lib/utils'
 
 const NONE = 'none'
 const DONUT_COLORS = {
-  spending: '#3D9EFF',
-  food: '#F5B431',
+  spending: '#22D4BC',
+  food: '#F8C42A',
   gas: '#2EC4B6',
 } as const
-const DONUT_OVER = '#F0434B'
+const DONUT_OVER = '#F94BA4'
 const DONUT_LEFT = '#E4E7EC'
 
 function parseAmount(value: string) {
@@ -987,12 +987,12 @@ function SpendingCalendar({
               !future && !openable && 'text-muted-foreground',
               openable && 'hover-fill cursor-pointer',
               isToday && selected !== key && 'ring-1 ring-foreground/20',
-              selected === key && 'ring-2 ring-[#3D9EFF]',
+              selected === key && 'ring-2 ring-[#22D4BC]',
             )
             const style = future
               ? undefined
               : {
-                  background: openable ? '#E8F3FF' : QUIET_DAY_COLOR,
+                  background: openable ? '#E5F7F5' : QUIET_DAY_COLOR,
                 }
             if (!openable) {
               return (
@@ -1206,7 +1206,7 @@ function BudgetDonut({
         <span
           className={cn(
             'text-xs tabular-nums',
-            left < -0.005 ? 'text-[#F0434B]' : 'text-muted-foreground',
+            left < -0.005 ? 'text-[#F94BA4]' : 'text-muted-foreground',
           )}
         >
           {left < -0.005
