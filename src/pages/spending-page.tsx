@@ -898,7 +898,6 @@ export function SpendingPage() {
 }
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
-const QUIET_DAY_COLOR = '#ececec'
 
 function formatWeekdayDate(iso: string) {
   const [year, month, day] = iso.split('-').map(Number)
@@ -966,17 +965,12 @@ function SpendingCalendar({
             )
             const className = cn(
               'flex min-h-16 w-full flex-col items-start justify-between rounded-lg px-1.5 py-1.5 text-left sm:px-2',
-              future && 'text-muted-foreground/40',
-              !future && !openable && 'text-muted-foreground',
+              !openable && 'text-muted-foreground/40',
               openable && 'hover-fill cursor-pointer',
               isToday && selected !== key && 'ring-1 ring-foreground/20',
               selected === key && 'ring-2 ring-[#22D4BC]',
             )
-            const style = future
-              ? undefined
-              : {
-                  background: openable ? '#E5F7F5' : QUIET_DAY_COLOR,
-                }
+            const style = openable ? { background: '#E5F7F5' } : undefined
             if (!openable) {
               return (
                 <div key={key} className={className} style={style}>
