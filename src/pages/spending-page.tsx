@@ -564,39 +564,24 @@ export function SpendingPage() {
           <CardContent>
             <div className="flex flex-wrap items-center gap-8">
               <BudgetDonut parts={donutParts} total={totalSpent} budget={monthBudget} />
-              <ul className="grid min-w-[14rem] flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 text-sm">
-                {donutParts.map((part, index) => {
+              <ul className="grid min-w-[14rem] flex-1 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-baseline gap-x-2 gap-y-2.5 text-sm">
+                {donutParts.map((part) => {
                   const delta = part.spent - part.budget
                   const over = delta > 0.005
                   const under = delta < -0.005
                   return (
                     <Fragment key={part.id}>
                       <span
-                        className={cn(
-                          'size-2.5 rounded-[3px]',
-                          index > 0 && 'mt-3',
-                        )}
+                        className="size-2.5 self-center rounded-[3px]"
                         style={{ background: part.color }}
                       />
-                      <span
-                        className={cn(
-                          'flex min-w-0 items-center gap-2',
-                          index > 0 && 'mt-3',
-                        )}
-                      >
+                      <span className="flex min-w-0 items-center gap-2">
                         <span>{part.name}</span>
                         <span className="mb-1 min-w-4 flex-1 border-b border-dotted border-neutral-300" />
                       </span>
-                      <span
-                        className={cn(
-                          'justify-self-end tabular-nums',
-                          index > 0 && 'mt-3',
-                        )}
-                      >
+                      <span className="justify-self-end tabular-nums">
                         {formatUsd(part.spent)}
                       </span>
-                      <span />
-                      <span />
                       {over || under ? (
                         <span
                           className={cn(
@@ -1021,8 +1006,8 @@ function SpendingCalendar({
 }
 
 const DONUT_SIZE = 176
-const DONUT_STROKE = 18
-const DONUT_GAP_PX = 8
+const DONUT_STROKE = 14
+const DONUT_GAP_PX = 5
 
 function BudgetDonut({
   parts,
