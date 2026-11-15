@@ -71,16 +71,18 @@ import { cn } from '@/lib/utils'
 
 const NONE = 'none'
 const SLICE_COLORS = [
-  'oklch(0.62 0.07 250)',
-  'oklch(0.64 0.065 155)',
-  'oklch(0.66 0.07 70)',
-  'oklch(0.60 0.065 30)',
-  'oklch(0.62 0.06 320)',
-  'oklch(0.58 0.055 200)',
-  'oklch(0.65 0.065 50)',
-  'oklch(0.58 0.055 280)',
+  'oklch(0.62 0.15 255)',
+  'oklch(0.66 0.13 175)',
+  'oklch(0.64 0.14 145)',
+  'oklch(0.66 0.15 5)',
+  'oklch(0.60 0.14 300)',
+  'oklch(0.68 0.12 230)',
+  'oklch(0.64 0.14 330)',
+  'oklch(0.58 0.13 265)',
 ]
-const UNCATEGORIZED_COLOR = '#f4f4f4'
+const UNCATEGORIZED_COLOR = 'oklch(0.62 0.02 255)'
+const BUDGET_TRACK_COLOR = '#e4e4e4'
+const OVER_BUDGET_COLOR = 'oklch(0.60 0.18 27)'
 
 function parseAmount(value: string) {
   const parsed = Number.parseFloat(value.replace(/[$,\s]/g, ''))
@@ -609,7 +611,11 @@ export function SpendingPage() {
             </p>
             <div className="flex flex-wrap items-center gap-6 lg:gap-12">
               <div className="pl-2">
-                <CategoryPie slices={slices} total={totalSpent} />
+                <CategoryPie
+                  slices={slices}
+                  total={totalSpent}
+                  budget={monthBudget}
+                />
               </div>
               <ul className="grid min-w-[12rem] flex-1 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-baseline gap-x-2 gap-y-2 text-sm">
                 {slices.map((slice) => {
@@ -654,6 +660,19 @@ export function SpendingPage() {
                     </li>
                   )
                 })}
+                {monthBudget > 0 && totalSpent > monthBudget + 0.005 ? (
+                  <li className="contents">
+                    <span
+                      className="size-2.5 shrink-0 self-center rounded-full"
+                      style={{ background: OVER_BUDGET_COLOR }}
+                    />
+                    <span>Over</span>
+                    <span className="text-right tabular-nums whitespace-nowrap">
+                      {formatUsd(totalSpent - monthBudget)}
+                    </span>
+                    <span />
+                  </li>
+                ) : null}
               </ul>
             </div>
           </CardContent>
@@ -1044,32 +1063,44 @@ export function SpendingPage() {
 function CategoryPie({
   slices,
   total,
+  budget,
 }: {
   slices: { amount: number; color: string }[]
   total: number
+  budget: number
 }) {
-  const gradient =
-    total <= 0
-      ? 'var(--muted)'
-      : (() => {
-          let start = 0
-          return slices
-            .map((slice) => {
-              const end = start + (slice.amount / total) * 100
-              const stop = `${slice.color} ${start}% ${end}%`
-              start = end
-              return stop
-            })
-            .join(', ')
-        })()
+  const spent = slices.filter((slice) => slice.amount > 0.005)
+  const stops: string[] = []
+  if (total > budget && total > 0) {
+    let start = ((total - Math.max(0, budget)) / total) * 100
+    stops.push(`${OVER_BUDGET_COLOR} 0% ${start}%`)
+    const room = 100 - start
+    for (const slice of spent) {
+      const end = start + (slice.amount / total) * room
+      stops.push(`${slice.color} ${start}% ${end}%`)
+      start = end
+    }
+  } else if (budget > 0) {
+    let start = 0
+    for (const slice of spent) {
+      const end = start + (slice.amount / budget) * 100
+      stops.push(`${slice.color} ${start}% ${end}%`)
+      start = end
+    }
+    if (start < 100) stops.push(`${BUDGET_TRACK_COLOR} ${start}% 100%`)
+  }
+  const background =
+    stops.length > 0
+      ? `conic-gradient(${stops.join(', ')})`
+      : BUDGET_TRACK_COLOR
 
   return (
     <div
       className="relative size-36 shrink-0 rounded-full"
-      style={{ background: `conic-gradient(${gradient})` }}
+      style={{ background }}
       aria-hidden
     >
-      <div className="bg-card absolute inset-[8px] rounded-full" />
+      <div className="bg-card absolute inset-[16px] rounded-full" />
     </div>
   )
 }
