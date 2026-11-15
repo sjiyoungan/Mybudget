@@ -366,6 +366,13 @@ export function SpendingPage() {
     [countsAsVariable, monthTxns],
   )
   const totalSpent = spentTxns.reduce((sum, txn) => sum + txn.amount, 0)
+  const spentByDay = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const txn of spentTxns) {
+      totals.set(txn.date, (totals.get(txn.date) ?? 0) + txn.amount)
+    }
+    return totals
+  }, [spentTxns])
   const monthBudget = useMemo(
     () =>
       activeMonth == null
@@ -631,6 +638,15 @@ export function SpendingPage() {
           </CardContent>
         </Card>
       </section>
+
+      {activeMonth != null ? (
+        <SpendingCalendar
+          year={selectedYear}
+          month={activeMonth}
+          spentByDay={spentByDay}
+          now={now}
+        />
+      ) : null}
 
       <Card>
         <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
@@ -978,6 +994,105 @@ export function SpendingPage() {
         </DialogContent>
       </Dialog>
     </main>
+  )
+}
+
+const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+const SPENT_DAY_COLOR = SLICE_COLORS[0]
+const QUIET_DAY_COLOR = '#ececec'
+
+function SpendingCalendar({
+  year,
+  month,
+  spentByDay,
+  now,
+}: {
+  year: number
+  month: number
+  spentByDay: Map<string, number>
+  now: Date
+}) {
+  const firstWeekday = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells: (number | null)[] = [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+  ]
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          {year === now.getFullYear()
+            ? monthName(month)
+            : `${monthName(month)} ${year}`}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid max-w-sm grid-cols-7 gap-y-1.5 text-center text-sm">
+          {WEEKDAYS.map((label, index) => (
+            <div key={index} className="text-muted-foreground pb-1 text-xs">
+              {label}
+            </div>
+          ))}
+          {cells.map((day, index) => {
+            if (day == null) return <div key={`pad-${index}`} />
+            const date = new Date(year, month, day)
+            const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+            const spent = spentByDay.get(key) ?? 0
+            const future = date > today
+            const isToday = date.getTime() === today.getTime()
+            return (
+              <div key={key} className="flex justify-center">
+                <span
+                  className={cn(
+                    'flex size-8 items-center justify-center rounded-full tabular-nums',
+                    future && 'text-muted-foreground/40',
+                    !future && spent <= 0.005 && 'text-muted-foreground',
+                    isToday && 'ring-1 ring-foreground/25',
+                  )}
+                  style={
+                    future
+                      ? undefined
+                      : {
+                          background:
+                            spent > 0.005 ? SPENT_DAY_COLOR : QUIET_DAY_COLOR,
+                          color: spent > 0.005 ? '#fff' : undefined,
+                        }
+                  }
+                  title={
+                    future
+                      ? undefined
+                      : spent > 0.005
+                        ? formatUsd(spent)
+                        : 'No spending'
+                  }
+                >
+                  {day}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+        <div className="text-muted-foreground mt-4 flex gap-4 text-xs">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="size-2.5 rounded-full"
+              style={{ background: SPENT_DAY_COLOR }}
+            />
+            Spent
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span
+              className="size-2.5 rounded-full"
+              style={{ background: QUIET_DAY_COLOR }}
+            />
+            No spending
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
