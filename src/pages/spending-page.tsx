@@ -75,7 +75,6 @@ const DONUT_COLORS = {
 } as const
 const DONUT_OVER = '#F0434B'
 const DONUT_LEFT = '#E4E7EC'
-const SPENT_DAY_COLOR = DONUT_COLORS.spending
 
 function parseAmount(value: string) {
   const parsed = Number.parseFloat(value.replace(/[$,\s]/g, ''))
@@ -346,8 +345,7 @@ export function SpendingPage() {
       : defaultMonth
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [adding, setAdding] = useState(false)
-  /** null means every day is open. */
-  const [expandedDays, setExpandedDays] = useState<string[] | null>(null)
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [expandedStatementMonth, setExpandedStatementMonth] = useState<
     string | null
   >(null)
@@ -452,6 +450,7 @@ export function SpendingPage() {
         amount: items.reduce((sum, txn) => sum + txn.amount, 0),
       }))
   }, [spentTxns])
+  const selectedRow = dayRows.find((row) => row.date === selectedDay) ?? null
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-4 pb-8 lg:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -463,7 +462,7 @@ export function SpendingPage() {
               const next = Number(value)
               setYear(next)
               setSelectedMonth(null)
-              setExpandedDays(null)
+              setSelectedDay(null)
             }}
           >
             <SelectTrigger
@@ -513,7 +512,7 @@ export function SpendingPage() {
                   aria-current={selected ? 'true' : undefined}
                   onClick={() => {
                     setSelectedMonth(row.month)
-                    setExpandedDays(null)
+                    setSelectedDay(null)
                   }}
                   className={cn(
                     'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
@@ -594,112 +593,46 @@ export function SpendingPage() {
           month={activeMonth}
           spentByDay={spentByDay}
           now={now}
+          selected={selectedDay}
+          onSelect={setSelectedDay}
         />
       ) : null}
 
       <Card>
         <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
-          <CardTitle>Transactions</CardTitle>
+          <CardTitle>
+            {selectedRow ? formatWeekdayDate(selectedRow.date) : 'Transactions'}
+          </CardTitle>
           <CardAction>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setAdding(true)}
-              >
-                Add
-              </Button>
-              {dayRows.length > 0 ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const anyOpen =
-                      expandedDays == null ||
-                      dayRows.some((row) => expandedDays.includes(row.date))
-                    setExpandedDays(
-                      anyOpen ? [] : null,
-                    )
-                  }}
-                >
-                  {expandedDays == null ||
-                  dayRows.some((row) => expandedDays.includes(row.date))
-                    ? 'Close all'
-                    : 'Expand all'}
-                </Button>
-              ) : null}
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAdding(true)}
+            >
+              Add
+            </Button>
           </CardAction>
         </CardHeader>
-        <CardContent className="grid gap-1">
-          {dayRows.length === 0 ? (
+        <CardContent>
+          {selectedRow == null ? (
             <p className="text-muted-foreground px-2.5 py-2 text-sm">
-              No purchases this month.
+              Choose a day with spending.
             </p>
-          ) : null}
-          {dayRows.map((row, index) => {
-            const expanded =
-              expandedDays == null || expandedDays.includes(row.date)
-            return (
-              <div
-                key={row.date}
-                className={cn('py-2', index > 0 && 'border-border border-t')}
-              >
-                <button
-                  type="button"
-                  aria-expanded={expanded}
-                  onClick={() => {
-                    setExpandedDays((current) => {
-                      const open =
-                        current == null
-                          ? dayRows.map((item) => item.date)
-                          : current
-                      return open.includes(row.date)
-                        ? open.filter((date) => date !== row.date)
-                        : [...open, row.date]
-                    })
-                  }}
-                  className="hover-fill hover-fill-plain grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_5.75rem_1rem] items-center gap-x-3 rounded-lg px-2.5 py-2 text-left"
-                >
-                  <span className={expanded ? 'font-medium' : undefined}>
-                    {formatDateWithoutYear(row.date, 'short')}
-                  </span>
-                  <span
-                    className={cn(
-                      'w-[5.75rem] shrink-0 text-right tabular-nums',
-                      expanded && 'font-medium',
-                    )}
-                  >
-                    {formatUsd(row.amount)}
-                  </span>
-                  <span className="flex size-4 shrink-0 items-center justify-center">
-                    <ChevronDown
-                      className={cn(
-                        'size-4 text-muted-foreground transition-transform',
-                        expanded && 'rotate-180',
-                      )}
-                    />
-                  </span>
-                </button>
-                {expanded ? (
-                  <ul>
-                    {row.items.map((txn, itemIndex) => (
-                      <TransactionRow
-                        key={txn.id}
-                        txn={txn}
-                        accounts={accounts}
-                        categories={categories}
-                        divided={itemIndex > 0}
-                        onClick={() => setEditing(txn)}
-                      />
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            )
-          })}
+          ) : (
+            <ul>
+              {selectedRow.items.map((txn, itemIndex) => (
+                <TransactionRow
+                  key={txn.id}
+                  txn={txn}
+                  accounts={accounts}
+                  categories={categories}
+                  divided={itemIndex > 0}
+                  onClick={() => setEditing(txn)}
+                />
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
@@ -863,11 +796,7 @@ export function SpendingPage() {
           if (Number.isFinite(month) && month >= 0 && month < 12) {
             setSelectedMonth(month)
           }
-          setExpandedDays((current) =>
-            current == null || current.includes(input.date)
-              ? current
-              : [...current, input.date],
-          )
+          setSelectedDay(input.date)
           setAdding(false)
         }}
       />
@@ -954,16 +883,29 @@ export function SpendingPage() {
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const QUIET_DAY_COLOR = '#ececec'
 
+function formatWeekdayDate(iso: string) {
+  const [year, month, day] = iso.split('-').map(Number)
+  return new Date(year, (month ?? 1) - 1, day).toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
 function SpendingCalendar({
   year,
   month,
   spentByDay,
   now,
+  selected,
+  onSelect,
 }: {
   year: number
   month: number
   spentByDay: Map<string, number>
   now: Date
+  selected: string | null
+  onSelect: (date: string) => void
 }) {
   const firstWeekday = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
@@ -983,9 +925,9 @@ function SpendingCalendar({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid max-w-sm grid-cols-7 gap-y-1.5 text-center text-sm">
+        <div className="grid grid-cols-7 gap-1.5">
           {WEEKDAYS.map((label, index) => (
-            <div key={index} className="text-muted-foreground pb-1 text-xs">
+            <div key={index} className="text-muted-foreground pb-1 text-center text-xs">
               {label}
             </div>
           ))}
@@ -996,53 +938,50 @@ function SpendingCalendar({
             const spent = spentByDay.get(key) ?? 0
             const future = date > today
             const isToday = date.getTime() === today.getTime()
-            return (
-              <div key={key} className="flex justify-center">
-                <span
-                  className={cn(
-                    'flex size-8 items-center justify-center rounded-full tabular-nums',
-                    future && 'text-muted-foreground/40',
-                    !future && spent <= 0.005 && 'text-muted-foreground',
-                    isToday && 'ring-1 ring-foreground/25',
-                  )}
-                  style={
-                    future
-                      ? undefined
-                      : {
-                          background:
-                            spent > 0.005 ? SPENT_DAY_COLOR : QUIET_DAY_COLOR,
-                          color: spent > 0.005 ? '#fff' : undefined,
-                        }
-                  }
-                  title={
-                    future
-                      ? undefined
-                      : spent > 0.005
-                        ? formatUsd(spent)
-                        : 'No spending'
-                  }
-                >
-                  {day}
+            const openable = !future && spent > 0.005
+            const weekday = date.toLocaleDateString('en-US', { weekday: 'short' })
+            const body = (
+              <>
+                <span className="text-[11px] leading-4">{weekday}</span>
+                <span className="text-sm font-medium leading-5">{day}</span>
+                <span className="w-full truncate text-[11px] leading-4 tabular-nums">
+                  {openable ? formatUsd(spent) : '\u00a0'}
                 </span>
-              </div>
+              </>
+            )
+            const className = cn(
+              'flex min-h-16 w-full flex-col items-start justify-between rounded-lg px-1.5 py-1.5 text-left sm:px-2',
+              future && 'text-muted-foreground/40',
+              !future && !openable && 'text-muted-foreground',
+              openable && 'hover-fill cursor-pointer',
+              isToday && selected !== key && 'ring-1 ring-foreground/20',
+              selected === key && 'ring-2 ring-[#3D9EFF]',
+            )
+            const style = future
+              ? undefined
+              : {
+                  background: openable ? '#E8F3FF' : QUIET_DAY_COLOR,
+                }
+            if (!openable) {
+              return (
+                <div key={key} className={className} style={style}>
+                  {body}
+                </div>
+              )
+            }
+            return (
+              <button
+                key={key}
+                type="button"
+                className={className}
+                style={style}
+                aria-pressed={selected === key}
+                onClick={() => onSelect(key)}
+              >
+                {body}
+              </button>
             )
           })}
-        </div>
-        <div className="text-muted-foreground mt-4 flex gap-4 text-xs">
-          <span className="flex items-center gap-1.5">
-            <span
-              className="size-2.5 rounded-full"
-              style={{ background: SPENT_DAY_COLOR }}
-            />
-            Spent
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span
-              className="size-2.5 rounded-full"
-              style={{ background: QUIET_DAY_COLOR }}
-            />
-            No spending
-          </span>
         </div>
       </CardContent>
     </Card>
