@@ -956,10 +956,8 @@ function SpendingCalendar({
             const future = date > today
             const isToday = date.getTime() === today.getTime()
             const openable = !future && spent > 0.005
-            const weekday = date.toLocaleDateString('en-US', { weekday: 'short' })
             const body = (
               <>
-                <span className="text-[11px] leading-4">{weekday}</span>
                 <span className="text-sm font-medium leading-5">{day}</span>
                 <span className="w-full truncate text-[11px] leading-4 tabular-nums">
                   {openable ? formatUsd(spent) : '\u00a0'}
