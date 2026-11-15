@@ -77,12 +77,31 @@ import { cn } from '@/lib/utils'
 
 const NONE = 'none'
 const DONUT_COLORS = {
-  spending: '#22D4BC',
+  spending: '#F94BA4',
   food: '#F8C42A',
   gas: '#2EC4B6',
 } as const
-const DONUT_OVER = '#F94BA4'
 const DONUT_LEFT = '#E4E7EC'
+
+function mixHex(hex: string, target: number, amount: number) {
+  const value = Number.parseInt(hex.slice(1), 16)
+  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255].map(
+    (channel) => Math.round(channel + (target - channel) * amount),
+  )
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
+}
+
+function darkerShade(hex: string) {
+  return mixHex(hex, 0, 0.22)
+}
+
+function lighterShade(hex: string) {
+  return mixHex(hex, 255, 0.62)
+}
+
+function overPatternId(hex: string) {
+  return `over-${hex.slice(1)}`
+}
 
 function parseAmount(value: string) {
   const parsed = Number.parseFloat(value.replace(/[$,\s]/g, ''))
@@ -588,7 +607,7 @@ export function SpendingPage() {
                             'justify-self-start text-xs tabular-nums',
                             under && 'text-muted-foreground',
                           )}
-                          style={over ? { color: DONUT_OVER } : undefined}
+                          style={over ? { color: darkerShade(part.color) } : undefined}
                         >
                           {formatUsd(Math.abs(delta))} {over ? 'over' : 'under'}
                         </span>
@@ -1045,6 +1064,18 @@ function BudgetDonut({
     return `M ${from.x} ${from.y} A ${radius} ${radius} 0 ${large} 1 ${to.x} ${to.y}`
   }
 
+  const overColors = [
+    ...new Set(
+      segments
+        .filter((segment) => segment.spent - segment.within > 0.005)
+        .map((segment) => segment.color),
+    ),
+  ]
+
+  function overPaint(color: string) {
+    return `url(#${overPatternId(color)})`
+  }
+
   const marks: { key: string; node: ReactNode }[] = []
   if (whole <= 0.005 || segments.length === 0) {
     marks.push({
@@ -1093,7 +1124,7 @@ function BudgetDonut({
               cx={mid.x}
               cy={mid.y}
               r={DONUT_STROKE / 2}
-              fill={segment.within > 0.005 ? segment.color : DONUT_OVER}
+              fill={segment.within > 0.005 ? segment.color : overPaint(segment.color)}
             />
           ),
         })
@@ -1114,7 +1145,7 @@ function BudgetDonut({
             cx={startPoint.x}
             cy={startPoint.y}
             r={DONUT_STROKE / 2}
-            fill={segment.within > 0.005 ? segment.color : DONUT_OVER}
+            fill={segment.within > 0.005 ? segment.color : overPaint(segment.color)}
           />
         ),
       })
@@ -1144,7 +1175,7 @@ function BudgetDonut({
               <path
                 d={d}
                 fill="none"
-                stroke={DONUT_OVER}
+                stroke={overPaint(segment.color)}
                 strokeWidth={DONUT_STROKE}
                 strokeLinecap="butt"
               />
@@ -1160,7 +1191,7 @@ function BudgetDonut({
             cx={endPoint.x}
             cy={endPoint.y}
             r={DONUT_STROKE / 2}
-            fill={over > 0.005 ? DONUT_OVER : segment.color}
+            fill={over > 0.005 ? overPaint(segment.color) : segment.color}
           />
         ),
       })
@@ -1174,6 +1205,25 @@ function BudgetDonut({
         className="size-full"
         aria-hidden
       >
+        <defs>
+          {overColors.map((color) => (
+            <pattern
+              key={color}
+              id={overPatternId(color)}
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+            >
+              <rect width="6" height="6" fill={darkerShade(color)} />
+              <path
+                d="M-1 1 L1 -1 M0 6 L6 0 M5 7 L7 5"
+                fill="none"
+                stroke={lighterShade(color)}
+                strokeWidth="1.1"
+              />
+            </pattern>
+          ))}
+        </defs>
         {marks.map((mark) => (
           <g key={mark.key}>{mark.node}</g>
         ))}
@@ -1185,7 +1235,7 @@ function BudgetDonut({
         <span
           className={cn(
             'text-xs tabular-nums',
-            left < -0.005 ? 'text-[#F94BA4]' : 'text-muted-foreground',
+            left < -0.005 ? undefined : 'text-muted-foreground',
           )}
         >
           {left < -0.005
