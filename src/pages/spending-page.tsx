@@ -1210,17 +1210,13 @@ function BudgetDonut({
             <pattern
               key={color}
               id={overPatternId(color)}
-              width="6"
-              height="6"
+              width="5"
+              height="5"
               patternUnits="userSpaceOnUse"
             >
-              <rect width="6" height="6" fill={darkerShade(color)} />
-              <path
-                d="M-1 1 L1 -1 M0 6 L6 0 M5 7 L7 5"
-                fill="none"
-                stroke={lighterShade(color)}
-                strokeWidth="1.1"
-              />
+              <rect width="5" height="5" fill={darkerShade(color)} />
+              <circle cx="1.3" cy="1.3" r="1.05" fill={lighterShade(color)} />
+              <circle cx="3.8" cy="3.8" r="1.05" fill={lighterShade(color)} />
             </pattern>
           ))}
         </defs>
