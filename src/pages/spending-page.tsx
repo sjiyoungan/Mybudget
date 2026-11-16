@@ -1176,6 +1176,7 @@ function SpendingCalendar({
             const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
             const spent = spentByDay.get(key) ?? 0
             const future = date > today
+            const past = date < today
             const isToday = date.getTime() === today.getTime()
             const openable = !future && spent > 0.005
             const body = (
@@ -1190,7 +1191,8 @@ function SpendingCalendar({
             )
             const className = cn(
               'flex min-h-10 w-full items-center justify-between gap-1 rounded-lg px-1.5 py-1.5 text-left sm:px-2',
-              !openable && !isToday && 'text-muted-foreground/40',
+              future && 'text-muted-foreground/40',
+              past && 'text-[#404040]',
               openable && 'spent-day cursor-pointer',
               isToday && 'text-black ring-1 ring-black',
             )
