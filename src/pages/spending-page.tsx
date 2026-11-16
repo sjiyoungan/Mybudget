@@ -1100,9 +1100,10 @@ function SpendingCalendar({
               !openable && !isToday && 'text-muted-foreground/40',
               openable && 'hover-fill cursor-pointer',
               isToday && 'text-black ring-2 ring-black',
-              !isToday && selected === key && 'ring-2 ring-[#22D4BC]',
             )
-            const style = openable ? { background: '#E5F7F5' } : undefined
+            const style = openable
+              ? { background: selected === key ? '#C5E8E3' : '#E5F7F5' }
+              : undefined
             if (!openable) {
               return (
                 <div key={key} className={className} style={style}>
