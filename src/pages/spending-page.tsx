@@ -638,7 +638,7 @@ export function SpendingPage() {
                           )}
                           style={over ? { color: darkerShade(part.color) } : undefined}
                         >
-                          {formatUsd(Math.abs(delta))} {over ? 'over' : 'under'}
+                          {formatUsd(Math.abs(delta))} {over ? 'over' : 'left'}
                         </span>
                       ) : (
                         <span />
