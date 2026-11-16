@@ -70,6 +70,7 @@ type SpendingContextValue = {
     accountId: string
     amount: number
     categoryId?: string
+    affirmLoanId?: string
   }) => string
   updateTransaction: (
     id: string,
@@ -188,6 +189,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
           ...(categoryId ? { categoryId } : {}),
           customName: true,
           customCategory: true,
+          ...(input.affirmLoanId ? { affirmLoanId: input.affirmLoanId } : {}),
           updatedAt: nowIso(),
         }
         setState((current) => ({

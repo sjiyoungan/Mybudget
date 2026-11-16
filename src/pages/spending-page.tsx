@@ -54,7 +54,9 @@ import {
   type RecurringExpense,
 } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
-import { formatDateWithoutYear, formatUsd, formatUsdWholeUp } from '@/lib/format'
+import { useDebtPlan } from '@/lib/debt-plan-context'
+import type { AffirmLoan } from '@/lib/debt-plan'
+import { formatDateWithoutYear, formatLongDate, formatUsd, formatUsdWholeUp } from '@/lib/format'
 import { monthName } from '@/lib/income'
 import { useSpending } from '@/lib/spending-context'
 import {
@@ -352,6 +354,7 @@ export function SpendingPage() {
     uploads,
     removeUpload,
   } = useSpending()
+  const { plan } = useDebtPlan()
   const { accounts, expenses, categories: expenseGroups } = useBudget()
   const now = useMemo(() => new Date(), [])
   const years = useMemo(
@@ -411,6 +414,9 @@ export function SpendingPage() {
   const [removeUploadId, setRemoveUploadId] = useState<string | null>(null)
   const [editCategoriesOpen, setEditCategoriesOpen] = useState(false)
   const [statementsOpen, setStatementsOpen] = useState(false)
+  const [affirmOpen, setAffirmOpen] = useState(false)
+  const [affirmIds, setAffirmIds] = useState<string[]>([])
+  const [affirmIndex, setAffirmIndex] = useState(0)
 
   const monthPrefix =
     activeMonth == null
@@ -509,6 +515,28 @@ export function SpendingPage() {
       }))
   }, [spentTxns])
   const selectedRow = dayRows.find((row) => row.date === selectedDay) ?? null
+  const pendingAffirm = useMemo(() => {
+    const linked = new Set(
+      transactions.flatMap((txn) => (txn.affirmLoanId ? [txn.affirmLoanId] : [])),
+    )
+    return plan.affirmLoans
+      .filter((loan) => loan.startingBalance > 0.005 && !linked.has(loan.id))
+      .sort((left, right) =>
+        (right.startDate ?? right.startMonth).localeCompare(
+          left.startDate ?? left.startMonth,
+        ),
+      )
+  }, [plan.affirmLoans, transactions])
+  const affirmLoan =
+    affirmIds
+      .slice(affirmIndex)
+      .map((id) => plan.affirmLoans.find((loan) => loan.id === id))
+      .find((loan) => loan != null) ?? null
+  const affirmAccountId =
+    billsAccount(accounts)?.id ??
+    accounts.find((account) => account.kind === 'checking')?.id ??
+    accounts[0]?.id ??
+    ''
   return (
     <main className="mx-auto grid max-w-5xl gap-6 px-4 pb-8 lg:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -555,6 +583,27 @@ export function SpendingPage() {
           Statement
         </Button>
       </div>
+
+      {pendingAffirm.length > 0 ? (
+        <div className="border-border flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
+          <p className="text-sm">
+            You have {pendingAffirm.length} unconfirmed Affirm{' '}
+            {pendingAffirm.length === 1 ? 'purchase' : 'purchases'}.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setAffirmIds(pendingAffirm.map((loan) => loan.id))
+              setAffirmIndex(0)
+              setAffirmOpen(true)
+            }}
+          >
+            Log
+          </Button>
+        </div>
+      ) : null}
 
       <section className="grid items-start gap-4 lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
         <Card>
@@ -945,6 +994,32 @@ export function SpendingPage() {
               : [...current, input.date],
           )
           setAdding(false)
+        }}
+      />
+
+      <AffirmLogDialog
+        open={affirmOpen && affirmLoan != null}
+        loan={affirmLoan}
+        step={affirmIndex + 1}
+        total={affirmIds.length}
+        categories={categories}
+        onClose={() => setAffirmOpen(false)}
+        onSave={(categoryId, date) => {
+          if (!affirmLoan) return
+          addTransaction({
+            date,
+            merchant: affirmLoan.name,
+            description: affirmLoan.loanId
+              ? `${affirmLoan.name} (${affirmLoan.loanId})`
+              : affirmLoan.name,
+            accountId: affirmAccountId,
+            amount: affirmLoan.startingBalance,
+            ...(categoryId ? { categoryId } : {}),
+            affirmLoanId: affirmLoan.id,
+          })
+          const nextIndex = affirmIds.findIndex((_, index) => index > affirmIndex)
+          if (nextIndex === -1) setAffirmOpen(false)
+          else setAffirmIndex(nextIndex)
         }}
       />
 
@@ -1476,6 +1551,140 @@ function TransactionRow({
         </span>
       </button>
     </li>
+  )
+}
+
+function AffirmLogDialog({
+  open,
+  loan,
+  step,
+  total,
+  categories,
+  onClose,
+  onSave,
+}: {
+  open: boolean
+  loan: AffirmLoan | null
+  step: number
+  total: number
+  categories: SpendingCategory[]
+  onClose: () => void
+  onSave: (categoryId: string, date: string) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        {open && loan ? (
+          <AffirmLogForm
+            key={loan.id}
+            loan={loan}
+            step={step}
+            total={total}
+            categories={categories}
+            onClose={onClose}
+            onSave={onSave}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function AffirmLogForm({
+  loan,
+  step,
+  total,
+  categories,
+  onClose,
+  onSave,
+}: {
+  loan: AffirmLoan
+  step: number
+  total: number
+  categories: SpendingCategory[]
+  onClose: () => void
+  onSave: (categoryId: string, date: string) => void
+}) {
+  const [categoryId, setCategoryId] = useState('')
+  const [date, setDate] = useState('')
+  const categoryOptions = visibleSpendingCategories(categories)
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{loan.name}</DialogTitle>
+        <DialogDescription>
+          {formatUsd(loan.startingBalance)}
+          {total > 1 ? ` · ${step} of ${total}` : ''}
+          {loan.startDate
+            ? `. Affirm date ${formatLongDate(loan.startDate)}.`
+            : '.'}{' '}
+          The purchase date is the day you bought it.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-3">
+        <label className="grid gap-1.5">
+          <span className="text-muted-foreground text-xs">Category</span>
+          <Select
+            value={categoryId || NONE}
+            onValueChange={(value) => setCategoryId(value === NONE ? '' : value)}
+          >
+            <SelectTrigger className="w-full" aria-label="Category">
+              <SelectValue placeholder="Uncategorized" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>Uncategorized</SelectItem>
+              {categoryOptions.map((category) => {
+                const children = categories.filter(
+                  (item) => item.parentId === category.id,
+                )
+                if (children.length === 0) {
+                  return (
+                    <SelectItem key={category.id} value={category.id}>
+                      {toSentenceCase(category.name)}
+                    </SelectItem>
+                  )
+                }
+                return (
+                  <SelectGroup key={category.id} className="p-0">
+                    <SelectLabel>{toSentenceCase(category.name)}</SelectLabel>
+                    {children.map((child) => (
+                      <SelectItem
+                        key={child.id}
+                        value={child.id}
+                        className="pl-3.5"
+                      >
+                        {toSentenceCase(child.name)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )
+              })}
+            </SelectContent>
+          </Select>
+        </label>
+        <label className="grid gap-1.5">
+          <span className="text-muted-foreground text-xs">Purchase date</span>
+          <Input
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+            autoFocus
+          />
+        </label>
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          disabled={!date}
+          onClick={() => onSave(categoryId, date)}
+        >
+          Log
+        </Button>
+      </DialogFooter>
+    </>
   )
 }
 

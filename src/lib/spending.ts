@@ -16,6 +16,8 @@ export type SpendingTxn = {
   customName?: boolean
   /** When true, rename rules leave `categoryId` alone. */
   customCategory?: boolean
+  /** Affirm loan this purchase confirms. */
+  affirmLoanId?: string
   updatedAt?: string
 }
 
@@ -403,6 +405,9 @@ function normalizeTxn(value: unknown): SpendingTxn | null {
       : {}),
     ...(customName ? { customName: true } : {}),
     ...(row.customCategory === true ? { customCategory: true } : {}),
+    ...(typeof row.affirmLoanId === 'string' && row.affirmLoanId
+      ? { affirmLoanId: row.affirmLoanId }
+      : {}),
     ...(updatedAt ? { updatedAt } : {}),
   }
 }
