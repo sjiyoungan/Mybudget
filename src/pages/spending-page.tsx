@@ -101,10 +101,15 @@ function lighterShade(hex: string) {
   return mixHex(hex, 255, 0.45)
 }
 
+function hintShade(hex: string) {
+  return mixHex(hex, 255, 0.16)
+}
+
 function ringHalftone(
   start: number,
   end: number,
   caps: { start: boolean; end: boolean },
+  tone: 'shadow' | 'hint',
 ) {
   const radius = (DONUT_SIZE - DONUT_STROKE) / 2
   const origin = DONUT_SIZE / 2
@@ -115,20 +120,25 @@ function ringHalftone(
   for (let row = 0; row < rows; row++) {
     const across = (row + 0.5) / rows
     const rr = radius - half + DONUT_STROKE * across
-    const fromCenter = Math.abs(rr - radius) / half
-    const presence = Math.pow(Math.max(0, 1 - fromCenter), 1.2)
-    const dotR = 0.18 + presence * 0.72
     const step = spacing / rr
     const pad = half / rr
     const from = start - (caps.start ? pad : 0)
     const to = end + (caps.end ? pad : 0)
-    const stagger = row % 2 === 1 ? step / 2 : 0
-    for (let angle = from + stagger; angle <= to + 0.0001; angle += step) {
-      dots.push({
-        cx: origin + rr * Math.cos(angle),
-        cy: origin + rr * Math.sin(angle),
-        r: dotR,
-      })
+    const shift = row % 2 === 1 ? 0.5 : 0
+    const first = Math.ceil(from / step - shift - 1e-6)
+    for (let index = first; ; index += 1) {
+      const angle = (index + shift) * step
+      if (angle > to + 0.0001) break
+      const clamped = Math.min(end, Math.max(start, angle))
+      const axisX = origin + radius * Math.cos(clamped)
+      const axisY = origin + radius * Math.sin(clamped)
+      const x = origin + rr * Math.cos(angle)
+      const y = origin + rr * Math.sin(angle)
+      const fromCenter = Math.min(1, Math.hypot(x - axisX, y - axisY) / half)
+      const presence = Math.pow(Math.max(0, 1 - fromCenter), tone === 'hint' ? 1.8 : 1.35)
+      const dotR = presence * (tone === 'hint' ? 0.36 : 0.8)
+      if (dotR < 0.08) continue
+      dots.push({ cx: x, cy: y, r: dotR })
     }
   }
   return dots
@@ -1259,8 +1269,10 @@ function BudgetDonut({
     path: string | null,
     caps: { x: number; y: number }[],
     round: { start: boolean; end: boolean },
+    tone: 'shadow' | 'hint',
   ) {
-    const dots = ringHalftone(start, end, round)
+    const dots = ringHalftone(start, end, round, tone)
+    const dotColor = tone === 'hint' ? hintShade(color) : lighterShade(color)
     return (
       <g>
         <mask id={id}>
@@ -1291,7 +1303,7 @@ function BudgetDonut({
               cx={dot.cx}
               cy={dot.cy}
               r={dot.r}
-              fill={lighterShade(color)}
+              fill={dotColor}
             />
           ))}
         </g>
@@ -1351,7 +1363,7 @@ function BudgetDonut({
                 r={DONUT_STROKE / 2}
                 fill={fullyOver ? darkerShade(segment.color) : segment.color}
               />
-              {fullyOver
+              {segment.color !== DONUT_LEFT
                 ? halftone(
                     `tone-${index}`,
                     segment.color,
@@ -1360,6 +1372,7 @@ function BudgetDonut({
                     null,
                     [{ x: mid.x, y: mid.y }],
                     { start: true, end: true },
+                    fullyOver ? 'shadow' : 'hint',
                   )
                 : null}
             </>
@@ -1436,6 +1449,21 @@ function BudgetDonut({
           />
         ),
       })
+      if (segment.color !== DONUT_LEFT && split - start > 0.001) {
+        marks.push({
+          key: `${index}-hint`,
+          node: halftone(
+            `hint-${index}`,
+            segment.color,
+            start,
+            split,
+            arc(start, split),
+            over > 0.005 ? [startPoint] : [startPoint, endPoint],
+            { start: true, end: over <= 0.005 },
+            'hint',
+          ),
+        })
+      }
       if (over > 0.005) {
         const fullyOver = segment.within <= 0.005
         marks.push({
@@ -1451,6 +1479,7 @@ function BudgetDonut({
               endPoint,
             ],
             { start: fullyOver, end: true },
+            'shadow',
           ),
         })
       }
