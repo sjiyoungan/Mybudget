@@ -426,14 +426,14 @@
 .spent-day:hover,
 .spent-day:focus-visible,
 .spent-day:active {
-  background-color: #bddfd8 !important;
-  background-image: linear-gradient(to bottom right, #c9e6e0, #b3d6ce) !important;
+  background-color: #F0B4D0 !important;
+  background-image: linear-gradient(to bottom right, #F6C4DC, #E8A4C4) !important;
 }
 .spent-day[aria-pressed='true']:hover,
 .spent-day[aria-pressed='true']:focus-visible,
 .spent-day[aria-pressed='true']:active {
-  background-color: #b7ddd6 !important;
-  background-image: linear-gradient(to bottom right, #c5e6e0, #a9d5ce) !important;
+  background-color: #EAA8C8 !important;
+  background-image: linear-gradient(to bottom right, #F2B8D4, #E098BC) !important;
 }
 
 .nav-group {

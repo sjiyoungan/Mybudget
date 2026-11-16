@@ -1197,7 +1197,7 @@ function SpendingCalendar({
               isToday && 'text-black ring-1 ring-black',
             )
             const style = openable
-              ? { background: selected === key ? '#C5E8E3' : '#E5F7F5' }
+              ? { background: selected === key ? '#F6C6DB' : '#FDE4EF' }
               : undefined
             if (!openable) {
               return (
