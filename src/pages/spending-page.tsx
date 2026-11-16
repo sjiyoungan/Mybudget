@@ -102,7 +102,7 @@ function lighterShade(hex: string) {
 }
 
 function hintShade(hex: string) {
-  return mixHex(hex, 0, 0.2)
+  return mixHex(hex, 255, 0.34)
 }
 
 function ringHalftone(
@@ -137,7 +137,7 @@ function ringHalftone(
       const fromCenter = Math.min(1, Math.hypot(x - axisX, y - axisY) / half)
       const presence =
         tone === 'hint'
-          ? Math.pow(fromCenter, 1.15)
+          ? Math.pow(Math.max(0, 1 - fromCenter), 0.7)
           : Math.pow(Math.max(0, 1 - fromCenter), 1.35)
       const dotR = presence * (tone === 'hint' ? 0.7 : 0.8)
       if (dotR < 0.08) continue
