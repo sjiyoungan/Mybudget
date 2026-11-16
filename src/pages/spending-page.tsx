@@ -402,6 +402,8 @@ export function SpendingPage() {
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [adding, setAdding] = useState(false)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  /** null means every day is open. */
+  const [expandedDays, setExpandedDays] = useState<string[] | null>(null)
   const [expandedStatementMonth, setExpandedStatementMonth] = useState<
     string | null
   >(null)
@@ -519,6 +521,7 @@ export function SpendingPage() {
               setYear(next)
               setSelectedMonth(null)
               setSelectedDay(null)
+              setExpandedDays(null)
             }}
           >
             <SelectTrigger
@@ -569,6 +572,7 @@ export function SpendingPage() {
                   onClick={() => {
                     setSelectedMonth(row.month)
                     setSelectedDay(null)
+                    setExpandedDays(null)
                   }}
                   className={cn(
                     'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
@@ -659,7 +663,12 @@ export function SpendingPage() {
           spentByDay={spentByDay}
           now={now}
           selected={selectedDay}
-          onSelect={setSelectedDay}
+          onSelect={(date) => {
+            setSelectedDay((current) => (current === date ? null : date))
+            setExpandedDays((current) =>
+              current == null || current.includes(date) ? current : [...current, date],
+            )
+          }}
         />
       ) : null}
 
@@ -669,35 +678,103 @@ export function SpendingPage() {
             {selectedRow ? formatWeekdayDate(selectedRow.date) : 'Transactions'}
           </CardTitle>
           <CardAction>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setAdding(true)}
-            >
-              Add
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAdding(true)}
+              >
+                Add
+              </Button>
+              {selectedRow == null && dayRows.length > 0 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const anyOpen =
+                      expandedDays == null ||
+                      dayRows.some((row) => expandedDays.includes(row.date))
+                    setExpandedDays(anyOpen ? [] : null)
+                  }}
+                >
+                  {expandedDays == null ||
+                  dayRows.some((row) => expandedDays.includes(row.date))
+                    ? 'Close all'
+                    : 'Expand all'}
+                </Button>
+              ) : null}
+            </div>
           </CardAction>
         </CardHeader>
-        <CardContent>
-          {selectedRow == null ? (
+        <CardContent className="grid gap-1">
+          {selectedRow == null && dayRows.length === 0 ? (
             <p className="text-muted-foreground px-2.5 py-2 text-sm">
-              Choose a day with spending.
+              No purchases this month.
             </p>
-          ) : (
-            <ul>
-              {selectedRow.items.map((txn, itemIndex) => (
-                <TransactionRow
-                  key={txn.id}
-                  txn={txn}
-                  accounts={accounts}
-                  categories={categories}
-                  divided={itemIndex > 0}
-                  onClick={() => setEditing(txn)}
-                />
-              ))}
-            </ul>
-          )}
+          ) : null}
+          {(selectedRow ? [selectedRow] : dayRows).map((row, index) => {
+            const expanded =
+              expandedDays == null || expandedDays.includes(row.date)
+            return (
+              <div
+                key={row.date}
+                className={cn('py-2', index > 0 && 'border-border border-t')}
+              >
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    setExpandedDays((current) => {
+                      const open =
+                        current == null
+                          ? dayRows.map((item) => item.date)
+                          : current
+                      return open.includes(row.date)
+                        ? open.filter((date) => date !== row.date)
+                        : [...open, row.date]
+                    })
+                  }}
+                  className="hover-fill hover-fill-plain grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_5.75rem_1rem] items-center gap-x-3 rounded-lg px-2.5 py-2 text-left"
+                >
+                  <span className={expanded ? 'font-medium' : undefined}>
+                    {formatDateWithoutYear(row.date, 'short')}
+                  </span>
+                  <span
+                    className={cn(
+                      'w-[5.75rem] shrink-0 text-right tabular-nums',
+                      expanded && 'font-medium',
+                    )}
+                  >
+                    {formatUsd(row.amount)}
+                  </span>
+                  <span className="flex size-4 shrink-0 items-center justify-center">
+                    <ChevronDown
+                      className={cn(
+                        'size-4 text-muted-foreground transition-transform',
+                        expanded && 'rotate-180',
+                      )}
+                    />
+                  </span>
+                </button>
+                {expanded ? (
+                  <ul>
+                    {row.items.map((txn, itemIndex) => (
+                      <TransactionRow
+                        key={txn.id}
+                        txn={txn}
+                        accounts={accounts}
+                        categories={categories}
+                        divided={itemIndex > 0}
+                        onClick={() => setEditing(txn)}
+                      />
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            )
+          })}
         </CardContent>
       </Card>
 
@@ -862,6 +939,11 @@ export function SpendingPage() {
             setSelectedMonth(month)
           }
           setSelectedDay(input.date)
+          setExpandedDays((current) =>
+            current == null || current.includes(input.date)
+              ? current
+              : [...current, input.date],
+          )
           setAdding(false)
         }}
       />
