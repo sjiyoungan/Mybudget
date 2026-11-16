@@ -62,6 +62,8 @@ export type SeededAffirmLoan = {
   startingBalance: number
   monthly: number
   remaining: number
+  /** Set on loans added after spending confirmation existed. */
+  needsSpending?: boolean
 }
 
 export const seededAffirmLoans: SeededAffirmLoan[] = [

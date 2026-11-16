@@ -530,7 +530,12 @@ export function SpendingPage() {
       transactions.flatMap((txn) => (txn.affirmLoanId ? [txn.affirmLoanId] : [])),
     )
     return plan.affirmLoans
-      .filter((loan) => loan.startingBalance > 0.005 && !linked.has(loan.id))
+      .filter(
+        (loan) =>
+          loan.needsSpending &&
+          loan.startingBalance > 0.005 &&
+          !linked.has(loan.id),
+      )
       .sort((left, right) =>
         (right.startDate ?? right.startMonth).localeCompare(
           left.startDate ?? left.startMonth,

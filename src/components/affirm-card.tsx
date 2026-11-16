@@ -617,6 +617,7 @@ type AffirmEditDraft = {
   startMonth: string
   startingBalance: string
   monthly: string
+  needsSpending?: boolean
 }
 
 function draftFromStored(loan: AffirmLoan): AffirmEditDraft {
@@ -628,6 +629,7 @@ function draftFromStored(loan: AffirmLoan): AffirmEditDraft {
     startMonth: loan.startMonth,
     startingBalance: loan.startingBalance.toFixed(2),
     monthly: loan.monthly.toFixed(2),
+    ...(loan.needsSpending ? { needsSpending: true } : {}),
   }
 }
 
@@ -640,6 +642,7 @@ function emptyAffirmDraft(now: Date): AffirmEditDraft {
     startMonth: '',
     startingBalance: '',
     monthly: '',
+    needsSpending: true,
   }
 }
 
@@ -657,6 +660,7 @@ function previewAffirmDraft(draft: AffirmEditDraft, now: Date) {
       startMonth: draft.startMonth || undefined,
       startingBalance,
       monthly,
+      needsSpending: draft.needsSpending,
     },
     now,
   )
@@ -1053,10 +1057,11 @@ function AffirmLoanDrawer({
         startMonth: loan?.startMonth,
         startingBalance,
         monthly,
+        needsSpending: creating || loan?.needsSpending,
       },
       now,
     )
-  }, [draft, loan, now])
+  }, [creating, draft, loan, now])
 
   function cancel() {
     if (creating) {
@@ -1082,6 +1087,7 @@ function AffirmLoanDrawer({
           startMonth: loan?.startMonth,
           startingBalance,
           monthly,
+          needsSpending: creating || loan?.needsSpending,
         },
         now,
       ),

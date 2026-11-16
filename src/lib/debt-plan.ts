@@ -1837,6 +1837,7 @@ export function completeAffirmLoan(
     startMonth?: string
     startingBalance: number
     monthly: number
+    needsSpending?: boolean
   },
   now: Date,
 ): AffirmLoan {
@@ -1877,6 +1878,7 @@ export function completeAffirmLoan(
     startingBalance,
     monthly,
     remaining,
+    ...(input.needsSpending ? { needsSpending: true } : {}),
   }
 }
 
