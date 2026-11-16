@@ -1015,10 +1015,10 @@ function SpendingCalendar({
             )
             const className = cn(
               'flex min-h-10 w-full items-center justify-between gap-1 rounded-lg px-1.5 py-1.5 text-left sm:px-2',
-              !openable && 'text-muted-foreground/40',
+              !openable && !isToday && 'text-muted-foreground/40',
               openable && 'hover-fill cursor-pointer',
-              isToday && selected !== key && 'ring-1 ring-foreground/20',
-              selected === key && 'ring-2 ring-[#22D4BC]',
+              isToday && 'text-black ring-2 ring-black',
+              !isToday && selected === key && 'ring-2 ring-[#22D4BC]',
             )
             const style = openable ? { background: '#E5F7F5' } : undefined
             if (!openable) {
