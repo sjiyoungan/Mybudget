@@ -102,7 +102,7 @@ function lighterShade(hex: string) {
 }
 
 function hintShade(hex: string) {
-  return mixHex(hex, 255, 0.34)
+  return mixHex(hex, 0, 0.2)
 }
 
 function ringHalftone(
