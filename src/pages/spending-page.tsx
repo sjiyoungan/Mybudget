@@ -92,11 +92,11 @@ function mixHex(hex: string, target: number, amount: number) {
 }
 
 function darkerShade(hex: string) {
-  return mixHex(hex, 0, 0.22)
+  return mixHex(hex, 0, 0.32)
 }
 
 function lighterShade(hex: string) {
-  return mixHex(hex, 255, 0.62)
+  return mixHex(hex, 255, 0.45)
 }
 
 function ringHalftone(
