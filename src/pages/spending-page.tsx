@@ -1188,8 +1188,8 @@ function SpendingCalendar({
             const className = cn(
               'flex min-h-10 w-full items-center justify-between gap-1 rounded-lg px-1.5 py-1.5 text-left sm:px-2',
               !openable && !isToday && 'text-muted-foreground/40',
-              openable && 'hover-fill cursor-pointer',
-              isToday && 'text-black ring-2 ring-black',
+              openable && 'spent-day cursor-pointer',
+              isToday && 'text-black ring-1 ring-black',
             )
             const style = openable
               ? { background: selected === key ? '#C5E8E3' : '#E5F7F5' }

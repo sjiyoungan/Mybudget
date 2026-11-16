@@ -420,6 +420,22 @@
   background-image: none !important;
 }
 
+.spent-day {
+  transition: background-color 150ms ease, background-image 150ms ease;
+}
+.spent-day:hover,
+.spent-day:focus-visible,
+.spent-day:active {
+  background-color: #d3ebe6 !important;
+  background-image: linear-gradient(to bottom right, #d7f0eb, #c5e4de) !important;
+}
+.spent-day[aria-pressed='true']:hover,
+.spent-day[aria-pressed='true']:focus-visible,
+.spent-day[aria-pressed='true']:active {
+  background-color: #b7ddd6 !important;
+  background-image: linear-gradient(to bottom right, #c5e6e0, #a9d5ce) !important;
+}
+
 .nav-group {
   --nav-tree-gutter: 33px;
   --nav-tree-line: 15px;
