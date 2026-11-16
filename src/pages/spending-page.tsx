@@ -136,7 +136,7 @@ function ringHalftone(
       const y = origin + rr * Math.sin(angle)
       const fromCenter = Math.min(1, Math.hypot(x - axisX, y - axisY) / half)
       const presence = Math.pow(Math.max(0, 1 - fromCenter), tone === 'hint' ? 1.45 : 1.35)
-      const dotR = presence * (tone === 'hint' ? 0.62 : 0.8)
+      const dotR = presence * (tone === 'hint' ? 0.7 : 0.8)
       if (dotR < 0.08) continue
       dots.push({ cx: x, cy: y, r: dotR })
     }
