@@ -2298,6 +2298,7 @@ function AddTxnForm({
     categoryId?: string
   }) => void
 }) {
+  const [name, setName] = useState('')
   const [merchant, setMerchant] = useState('')
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(defaultDate)
@@ -2314,17 +2315,25 @@ function AddTxnForm({
       <DialogHeader>
         <DialogTitle>Add transaction</DialogTitle>
         <DialogDescription>
-          Enter a purchase that is not on a statement.
+          Enter what you bought and where you bought it.
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
         <label className="grid gap-1.5">
           <span className="text-muted-foreground text-xs">Name</span>
           <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Sunscreen"
+            autoFocus
+          />
+        </label>
+        <label className="grid gap-1.5">
+          <span className="text-muted-foreground text-xs">Merchant</span>
+          <Input
             value={merchant}
             onChange={(event) => setMerchant(event.target.value)}
-            placeholder="Merchant"
-            autoFocus
+            placeholder="Amazon"
           />
         </label>
         <CategoryPairFields
@@ -2373,6 +2382,7 @@ function AddTxnForm({
         <Button
           type="button"
           disabled={
+            !name.trim() ||
             !merchant.trim() ||
             parsedAmount == null ||
             parsedAmount <= 0 ||
@@ -2381,11 +2391,10 @@ function AddTxnForm({
           }
           onClick={() => {
             if (parsedAmount == null) return
-            const name = toSentenceCase(merchant)
             onSave({
               date,
-              description: name,
-              merchant: name,
+              description: toSentenceCase(name),
+              merchant: toSentenceCase(merchant),
               accountId,
               amount: parsedAmount,
               ...(categoryId ? { categoryId } : {}),
@@ -2458,6 +2467,10 @@ function EditTxnForm({
   ) => void
   onDelete: (id: string) => void
 }) {
+  const [name, setName] = useState(() => {
+    const shown = displayMerchant(txn)
+    return txn.description && txn.description !== shown ? txn.description : shown
+  })
   const [merchant, setMerchant] = useState(() => displayMerchant(txn))
   const [amount, setAmount] = useState(Math.abs(txn.amount).toFixed(2))
   const [date, setDate] = useState(txn.date)
@@ -2480,15 +2493,25 @@ function EditTxnForm({
         <DialogDescription>
           {fromStatement
             ? `From ${fromStatement}`
-            : txn.description !== txn.merchant
-              ? txn.description
-              : 'Change the name, category, or amount.'}
+            : 'Change the name, merchant, category, or amount.'}
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
         <label className="grid gap-1.5">
           <span className="text-muted-foreground text-xs">Name</span>
-          <Input value={merchant} onChange={(event) => setMerchant(event.target.value)} />
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Sunscreen"
+          />
+        </label>
+        <label className="grid gap-1.5">
+          <span className="text-muted-foreground text-xs">Merchant</span>
+          <Input
+            value={merchant}
+            onChange={(event) => setMerchant(event.target.value)}
+            placeholder="Amazon"
+          />
         </label>
         <CategoryPairFields
           categories={categories}
@@ -2550,7 +2573,7 @@ function EditTxnForm({
               />
             </label>
             <p className="text-muted-foreground text-xs">
-              Matching purchases will be named {merchant.trim() || 'this'}
+              Matching purchases will use the merchant {merchant.trim() || 'this'}
               {categoryId
                 ? ` and filed under ${categoryName(categoryId, categories)}`
                 : ''}
@@ -2567,6 +2590,7 @@ function EditTxnForm({
         <Button
           type="button"
           disabled={
+            !name.trim() ||
             !merchant.trim() ||
             parsedAmount == null ||
             parsedAmount <= 0 ||
@@ -2577,23 +2601,26 @@ function EditTxnForm({
             if (parsedAmount == null) return
             const signed = deposit ? -parsedAmount : parsedAmount
             const nextCategory = categoryId || undefined
-            const nextName = toSentenceCase(merchant)
+            const nextName = toSentenceCase(name)
+            const nextMerchant = toSentenceCase(merchant)
             onSave(
               txn.id,
               {
-                merchant: nextName,
+                description: nextName,
+                merchant: nextMerchant,
                 amount: signed,
                 date,
                 accountId,
                 categoryId: nextCategory,
-                customName: nextName !== displayMerchant(txn) ? true : txn.customName,
+                customName:
+                  nextMerchant !== displayMerchant(txn) ? true : txn.customName,
                 customCategory:
                   nextCategory !== txn.categoryId ? true : txn.customCategory,
               },
               createRule
                 ? {
                     match: match.trim(),
-                    merchant: nextName,
+                    merchant: nextMerchant,
                     categoryId: nextCategory,
                   }
                 : undefined,
