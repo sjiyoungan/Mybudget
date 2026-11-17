@@ -11,7 +11,6 @@ import {
 import { useAuth } from '@/lib/auth-context'
 import {
   applySpendingRules,
-  emptySpending,
   importSpendingTxns,
   loadSpending,
   mergeSpending,
@@ -34,25 +33,6 @@ import {
   scheduleUserAppStatePush,
   syncUserAppStateFromCloud,
 } from '@/lib/user-app-state'
-
-const SPENDING_WIPE_KEY = 'mybudget.spending.wiped'
-const SPENDING_WIPE_TOKEN = '2026-09-04-all'
-
-function spendingNeedsWipe() {
-  try {
-    return localStorage.getItem(SPENDING_WIPE_KEY) !== SPENDING_WIPE_TOKEN
-  } catch {
-    return false
-  }
-}
-
-function markSpendingWiped() {
-  try {
-    localStorage.setItem(SPENDING_WIPE_KEY, SPENDING_WIPE_TOKEN)
-  } catch {
-    // ignore
-  }
-}
 
 type SpendingContextValue = {
   transactions: SpendingTxn[]
@@ -114,21 +94,22 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
     firstPersist.current = false
     applyingCloud.current = false
     const next = skipStamp ? state : touchSpending(state)
-    saveSpending(next)
-    rememberSpending(next)
+    const stored = saveSpending(next)
+    rememberSpending(stored)
     scheduleUserAppStatePush()
+    if (
+      stored.transactions.length !== state.transactions.length ||
+      stored.categories.length !== state.categories.length ||
+      stored.rules.length !== state.rules.length ||
+      (stored.uploads?.length ?? 0) !== (state.uploads?.length ?? 0)
+    ) {
+      setState(stored)
+    }
   }, [state])
 
   useEffect(() => {
     if (loading) return
     if (!supabase || !user) {
-      if (spendingNeedsWipe()) {
-        markSpendingWiped()
-        const empty = touchSpending(emptySpending())
-        saveSpending(empty)
-        rememberSpending(empty)
-        setState(empty)
-      }
       if (!supabase) markCloudReady()
       else resetUserAppStateSync()
       return
@@ -137,7 +118,6 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const synced = await syncUserAppStateFromCloud()
       if (cancelled) return
-      if (spendingNeedsWipe()) markSpendingWiped()
       applyingCloud.current = true
       setState((current) => {
         const merged = mergeSpending(synced.spending, current)
@@ -203,6 +183,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
         setState((current) => ({
           ...current,
           transactions: current.transactions.filter((txn) => txn.id !== id),
+          removedTransactionIds: [...new Set([...(current.removedTransactionIds ?? []), id])],
         }))
       },
       removeUpload(id) {
@@ -262,6 +243,14 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
         setState((current) => ({
           ...current,
           categories: next,
+          removedCategoryIds: [
+            ...new Set([
+              ...(current.removedCategoryIds ?? []),
+              ...current.categories
+                .filter((item) => !ids.has(item.id))
+                .map((item) => item.id),
+            ]),
+          ],
           transactions: current.transactions.map((txn) => {
             if (!txn.categoryId || ids.has(txn.categoryId)) return txn
             const old = current.categories.find((item) => item.id === txn.categoryId)
@@ -333,6 +322,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
           return {
             ...current,
             rules,
+            removedRuleIds: [...new Set([...(current.removedRuleIds ?? []), id])],
             transactions: applySpendingRules(current.transactions, rules),
           }
         })

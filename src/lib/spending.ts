@@ -203,6 +203,11 @@ export type SpendingState = {
   rules: SpendingRule[]
   categories: SpendingCategory[]
   uploads: SpendingUpload[]
+  /** Purchases the user deleted. Sync must not bring these back. */
+  removedTransactionIds?: string[]
+  removedUploadIds?: string[]
+  removedCategoryIds?: string[]
+  removedRuleIds?: string[]
   updatedAt?: string
 }
 
@@ -485,6 +490,15 @@ function normalizeUpload(value: unknown): SpendingUpload | null {
   return { id, name, uploadedAt }
 }
 
+function stringIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return [
+    ...new Set(
+      value.filter((item): item is string => typeof item === 'string' && item.length > 0),
+    ),
+  ]
+}
+
 export function parseSpendingState(value: unknown): SpendingState | null {
   const row = asRecord(value)
   if (!row || !Array.isArray(row.transactions) || !Array.isArray(row.rules)) {
@@ -517,6 +531,10 @@ export function parseSpendingState(value: unknown): SpendingState | null {
           .map(normalizeUpload)
           .filter((item): item is SpendingUpload => item != null)
       : [],
+    removedTransactionIds: stringIds(row.removedTransactionIds),
+    removedUploadIds: stringIds(row.removedUploadIds),
+    removedCategoryIds: stringIds(row.removedCategoryIds),
+    removedRuleIds: stringIds(row.removedRuleIds),
     ...(typeof row.updatedAt === 'string' && row.updatedAt
       ? { updatedAt: row.updatedAt }
       : {}),
@@ -534,7 +552,16 @@ export function loadSpending(): SpendingState {
 }
 
 export function saveSpending(state: SpendingState) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  let existing = emptySpending()
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) existing = parseSpendingState(JSON.parse(raw)) ?? existing
+  } catch {
+    existing = emptySpending()
+  }
+  const next = mergeSpending(existing, state)
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  return next
 }
 
 export function descriptionMatchesRule(description: string, match: string) {
@@ -576,19 +603,65 @@ export function applySpendingRules(
   })
 }
 
-/** Pick one spending document. An empty list must not replace one that still has purchases. */
+function unionIds(...lists: (string[] | undefined)[]) {
+  return [...new Set(lists.flatMap((list) => list ?? []))]
+}
+
+function unionRecords<T extends { id: string; updatedAt?: string }>(
+  remote: T[],
+  local: T[],
+  removed: ReadonlySet<string>,
+) {
+  const merged = new Map<string, T>()
+  for (const item of [...remote, ...local]) {
+    if (removed.has(item.id)) continue
+    const current = merged.get(item.id)
+    if (!current || stamp(item.updatedAt) >= stamp(current.updatedAt)) {
+      merged.set(item.id, item)
+    }
+  }
+  return [...merged.values()]
+}
+
+/** Keep every saved record from either copy. A newer empty list cannot erase purchases. */
 export function mergeSpending(
   remote: SpendingState,
   local: SpendingState,
 ): SpendingState {
-  const remoteCount = remote.transactions.length
-  const localCount = local.transactions.length
-  if (remoteCount === 0 && localCount > 0) return local
-  if (localCount === 0 && remoteCount > 0) return remote
+  const removedTransactionIds = unionIds(
+    remote.removedTransactionIds,
+    local.removedTransactionIds,
+  )
+  const removedUploadIds = unionIds(remote.removedUploadIds, local.removedUploadIds)
+  const removedCategoryIds = unionIds(
+    remote.removedCategoryIds,
+    local.removedCategoryIds,
+  )
+  const removedRuleIds = unionIds(remote.removedRuleIds, local.removedRuleIds)
   const remoteAt = stamp(remote.updatedAt)
   const localAt = stamp(local.updatedAt)
-  if (localAt !== remoteAt) return localAt > remoteAt ? local : remote
-  return local
+  return {
+    transactions: unionRecords(
+      remote.transactions,
+      local.transactions,
+      new Set(removedTransactionIds),
+    ),
+    rules: unionRecords(remote.rules, local.rules, new Set(removedRuleIds)),
+    categories: unionRecords(
+      remote.categories,
+      local.categories,
+      new Set(removedCategoryIds),
+    ),
+    uploads: unionRecords(remote.uploads ?? [], local.uploads ?? [], new Set(removedUploadIds)),
+    removedTransactionIds,
+    removedUploadIds,
+    removedCategoryIds,
+    removedRuleIds,
+    updatedAt:
+      localAt >= remoteAt
+        ? local.updatedAt ?? remote.updatedAt
+        : remote.updatedAt ?? local.updatedAt,
+  }
 }
 
 export function touchSpending(state: SpendingState): SpendingState {
@@ -634,14 +707,16 @@ export function removeSpendingUpload(
   const upload = uploads.find((item) => item.id === uploadId)
   if (!upload) return current
   const removeIds = new Set(
-    transactionsForUpload(current.transactions, upload, uploads).map(
-      (txn) => txn.id,
-    ),
+    transactionsForUpload(current.transactions, upload, uploads).map((txn) => txn.id),
   )
   return {
     ...current,
     uploads: uploads.filter((item) => item.id !== uploadId),
     transactions: current.transactions.filter((txn) => !removeIds.has(txn.id)),
+    removedUploadIds: [...new Set([...(current.removedUploadIds ?? []), uploadId])],
+    removedTransactionIds: [
+      ...new Set([...(current.removedTransactionIds ?? []), ...removeIds]),
+    ],
   }
 }
 

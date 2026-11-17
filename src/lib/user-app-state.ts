@@ -297,35 +297,24 @@ function stampTime(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function unionById<T extends { id: string }>(preferred: T[], other: T[]) {
+  const merged = new Map(other.map((item) => [item.id, item]))
+  for (const item of preferred) merged.set(item.id, item)
+  return [...merged.values()]
+}
+
 export function mergeBudgets(remote: BudgetState, local: BudgetState): BudgetState {
   const remoteAt = stampTime(remote.updatedAt)
   const localAt = stampTime(local.updatedAt)
-  if (localAt > remoteAt) {
-    return {
-      ...local,
-      debts: mergeDebts(remote.debts, local.debts, 'local'),
-    }
-  }
-  if (remoteAt > localAt) {
-    return {
-      ...remote,
-      debts: mergeDebts(remote.debts, local.debts, 'remote'),
-    }
-  }
-  const remoteExpenses = remote.expenses.length
-  const localExpenses = local.expenses.length
+  const newer = localAt > remoteAt ? local : remote
+  const older = newer === local ? remote : local
   return {
-    accounts:
-      remote.accounts.length >= local.accounts.length
-        ? remote.accounts
-        : local.accounts,
-    expenses: remoteExpenses >= localExpenses ? remote.expenses : local.expenses,
-    debts: mergeDebts(remote.debts, local.debts, 'local'),
-    categories:
-      remote.categories.length >= local.categories.length
-        ? remote.categories
-        : local.categories,
-    updatedAt: local.updatedAt ?? remote.updatedAt,
+    ...newer,
+    accounts: unionById(newer.accounts, older.accounts),
+    expenses: unionById(newer.expenses, older.expenses),
+    categories: unionById(newer.categories, older.categories),
+    debts: mergeDebts(remote.debts, local.debts, localAt >= remoteAt ? 'local' : 'remote'),
+    updatedAt: newer.updatedAt ?? older.updatedAt,
   }
 }
 
@@ -337,10 +326,14 @@ export function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPla
     ...remote,
     customOrder:
       remote.customOrder.length > 0 ? remote.customOrder : local.customOrder,
-    affirmLoans:
+    affirmLoans: unionById(
       remote.affirmLoans.length >= local.affirmLoans.length
         ? remote.affirmLoans
         : local.affirmLoans,
+      remote.affirmLoans.length >= local.affirmLoans.length
+        ? local.affirmLoans
+        : remote.affirmLoans,
+    ),
     loggedMonths,
     loggedHistory: {
       ...(remote.loggedHistory ?? {}),
@@ -361,7 +354,10 @@ export function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPla
       ),
       ...(local.closedDebts ?? []),
     ],
-    extraByMonth: { ...(local.extraByMonth ?? {}) },
+    extraByMonth: {
+      ...(remote.extraByMonth ?? {}),
+      ...(local.extraByMonth ?? {}),
+    },
     adjustmentsByMonth: mergeMonthMaps(
       remote.adjustmentsByMonth ?? {},
       local.adjustmentsByMonth ?? {},
@@ -369,8 +365,8 @@ export function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPla
     recurringCharges:
       Object.keys(remote.recurringCharges).length >=
       Object.keys(local.recurringCharges).length
-        ? remote.recurringCharges
-        : local.recurringCharges,
+        ? { ...local.recurringCharges, ...remote.recurringCharges }
+        : { ...remote.recurringCharges, ...local.recurringCharges },
   }
 }
 
