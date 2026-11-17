@@ -287,7 +287,7 @@ function sheetExpenses(accountId: string): RecurringExpense[] {
     row('sheet-holidays', 'Holidays', 67, 'recurring'),
     row('sheet-unnes-phone', "Unne's phone", 160, 'recurring'),
     row('sheet-spending', 'Spending', 300, 'variable'),
-    row('sheet-food', 'Food', 500, 'variable'),
+    row('sheet-food', 'Groceries', 500, 'variable'),
     row('sheet-gas', 'Gas', 75, 'variable'),
   ]
 }

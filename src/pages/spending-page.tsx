@@ -182,6 +182,11 @@ function accountName(
   return accounts.find((account) => account.id === accountId)?.name ?? 'Unknown'
 }
 
+function categoryLabel(name: string) {
+  if (categoryDonutKey(name) === 'food') return 'Groceries'
+  return toSentenceCase(name)
+}
+
 function categoryName(
   categoryId: string | undefined,
   categories: SpendingCategory[],
@@ -189,11 +194,8 @@ function categoryName(
   if (!categoryId) return 'Uncategorized'
   const current = categories.find((item) => item.id === categoryId)
   if (!current) return 'Uncategorized'
-  const childName = toSentenceCase(current.name)
-  if (!current.parentId) return childName || 'Uncategorized'
-  const parent = categories.find((item) => item.id === current.parentId)
-  const parentName = parent ? toSentenceCase(parent.name) : ''
-  return parentName ? `${parentName} · ${childName}` : childName
+  if (current.parentId) return toSentenceCase(current.name) || 'Uncategorized'
+  return categoryLabel(current.name) || 'Uncategorized'
 }
 
 function localIsoDate(date: Date) {
@@ -378,7 +380,7 @@ function spendingBreakdown(
     const rest = row('spending-rest', 'No subcategory', 1)
     if (rest.total > 0.005) rows.push(rest)
   }
-  rows.push(row('food', 'Food', 0), row('gas', 'Gas', 0), row('total', 'Total', 0))
+  rows.push(row('food', 'Groceries', 0), row('gas', 'Gas', 0), row('total', 'Total', 0))
   return rows
 }
 
@@ -625,7 +627,7 @@ export function SpendingPage() {
     const order: DonutKey[] = ['spending', 'food', 'gas']
     return order.map((key) => ({
       id: key,
-      name: key === 'food' ? 'Food' : key === 'gas' ? 'Gas' : 'Spending',
+      name: key === 'food' ? 'Groceries' : key === 'gas' ? 'Gas' : 'Spending',
       color: DONUT_COLORS[key],
       spent: spent[key],
       budget: budget[key],
@@ -1247,7 +1249,7 @@ function calendarCategoryOptions(categories: SpendingCategory[]) {
   ).sort((left, right) => left.name.localeCompare(right.name))
   const rows: { id: string; label: string; depth: number }[] = []
   for (const main of ordered) {
-    rows.push({ id: main.id, label: toSentenceCase(main.name), depth: 0 })
+    rows.push({ id: main.id, label: categoryLabel(main.name), depth: 0 })
     if (main.id !== spending?.id) continue
     for (const child of children) {
       rows.push({ id: child.id, label: toSentenceCase(child.name), depth: 1 })
@@ -2863,7 +2865,7 @@ function ensureMainGroupDrafts(groups: GroupDraft[]) {
     })
   }
   if (!next.some((group) => isSpendingMainName(group.name))) add('Spending', true)
-  if (!next.some((group) => categoryDonutKey(group.name) === 'food')) add('Food', false)
+  if (!next.some((group) => categoryDonutKey(group.name) === 'food')) add('Groceries', false)
   if (!next.some((group) => categoryDonutKey(group.name) === 'gas')) add('Gas', false)
   const rank = (group: GroupDraft) => {
     if (isSpendingMainName(group.name)) return 0
