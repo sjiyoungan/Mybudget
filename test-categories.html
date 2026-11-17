@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Category Dropdown Logic</title>
+</head>
+<body>
+  <h1>Category Dropdown Test</h1>
+  <pre id="output"></pre>
+  
+  <script>
+    // Simulate the category structure based on user's description
+    const categories = [
+      // Parent groups
+      { id: 'spending-a', name: 'Spending a', grouped: true },
+      { id: 'spending-b', name: 'Spending b', grouped: true },
+      { id: 'gas-a', name: 'Gas a', grouped: true },
+      { id: 'gas-b', name: 'Gas b', grouped: true },
+      { id: 'groceries', name: 'Groceries', grouped: true },
+      
+      // Subcategories under Spending a
+      { id: 'frivolous', name: 'Frivolous', parentId: 'spending-a' },
+      { id: 'rollo', name: 'Rollo', parentId: 'spending-a' },
+      
+      // Subcategories under Spending b
+      { id: 'hobbies', name: 'Hobbies', parentId: 'spending-b' },
+      { id: 'skincare', name: 'Skincare', parentId: 'spending-b' },
+    ];
+
+    function isActiveSpendingCategory(category) {
+      if (category.grouped) return true;
+      return category.enabled !== false;
+    }
+
+    function isSpendingMainName(name) {
+      return name.trim().toLowerCase() === 'spending';
+    }
+
+    function categoryDonutKey(name) {
+      const key = name.trim().toLowerCase();
+      if (key.includes('food') || key.includes('groceries')) return 'food';
+      if (key.includes('gas')) return 'gas';
+      return null;
+    }
+
+    function categoryLabel(name) {
+      if (categoryDonutKey(name) === 'food') return 'Groceries';
+      return toSentenceCase(name);
+    }
+
+    function toSentenceCase(text) {
+      const collapsed = text.replace(/\s+/g, ' ').trim();
+      if (!collapsed) return '';
+      return collapsed.toLowerCase().replace(/^\p{L}/u, (ch) => ch.toUpperCase());
+    }
+
+    function calendarCategoryOptions(categories) {
+      const tops = categories.filter(
+        (item) => !item.parentId && isActiveSpendingCategory(item),
+      );
+      const spending = tops.find((item) => isSpendingMainName(item.name));
+      const food = tops.find((item) => categoryDonutKey(item.name) === 'food');
+      const gas = tops.find((item) => categoryDonutKey(item.name) === 'gas');
+      const rest = tops
+        .filter((item) => item !== spending && item !== food && item !== gas)
+        .sort((left, right) => left.name.localeCompare(right.name));
+      const ordered = [
+        spending ?? { id: '__spending__', name: 'Spending' },
+        ...(food ? [food] : []),
+        ...(gas ? [gas] : []),
+        ...rest,
+      ];
+      const rows = [];
+      for (const main of ordered) {
+        rows.push({ id: main.id, label: categoryLabel(main.name), depth: 0 });
+        const children = categories
+          .filter(
+            (item) =>
+              item.parentId === main.id && isActiveSpendingCategory(item),
+          )
+          .sort((left, right) => left.name.localeCompare(right.name));
+        for (const child of children) {
+          rows.push({ id: child.id, label: toSentenceCase(child.name), depth: 1 });
+        }
+      }
+      return rows;
+    }
+
+    const result = calendarCategoryOptions(categories);
+    const output = document.getElementById('output');
+    output.textContent = JSON.stringify(result, null, 2);
+    
+    console.log('Test results:');
+    result.forEach(item => {
+      const indent = '  '.repeat(item.depth);
+      console.log(`${indent}${item.label} (id: ${item.id}, depth: ${item.depth})`);
+    });
+  </script>
+</body>
+</html>

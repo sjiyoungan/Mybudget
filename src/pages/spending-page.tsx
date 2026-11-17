@@ -1239,6 +1239,9 @@ function calendarCategoryOptions(categories: SpendingCategory[]) {
     ...(gas ? [gas] : []),
     ...rest,
   ]
+  console.log('[calendarCategoryOptions] All categories:', categories)
+  console.log('[calendarCategoryOptions] Top-level categories:', tops.map(c => ({ id: c.id, name: c.name })))
+  console.log('[calendarCategoryOptions] Ordered:', ordered.map(c => ({ id: c.id, name: c.name })))
   const rows: { id: string; label: string; depth: number }[] = []
   for (const main of ordered) {
     rows.push({ id: main.id, label: categoryLabel(main.name), depth: 0 })
@@ -1248,10 +1251,14 @@ function calendarCategoryOptions(categories: SpendingCategory[]) {
           item.parentId === main.id && isActiveSpendingCategory(item),
       )
       .sort((left, right) => left.name.localeCompare(right.name))
+    if (children.length > 0) {
+      console.log(`[calendarCategoryOptions] Children of "${main.name}" (${main.id}):`, children.map(c => ({ id: c.id, name: c.name, parentId: c.parentId })))
+    }
     for (const child of children) {
       rows.push({ id: child.id, label: toSentenceCase(child.name), depth: 1 })
     }
   }
+  console.log('[calendarCategoryOptions] Final rows:', rows)
   return rows
 }
 
