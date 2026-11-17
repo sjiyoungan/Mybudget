@@ -37,6 +37,7 @@ import {
   SelectGroup,
   SelectItem,
   SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -1075,6 +1076,7 @@ export function SpendingPage() {
           ''
         }
         onClose={() => setAdding(false)}
+        onEditCategories={() => setEditCategoriesOpen(true)}
         onSave={(input) => {
           addTransaction(input)
           const year = Number.parseInt(input.date.slice(0, 4), 10)
@@ -1120,6 +1122,7 @@ export function SpendingPage() {
         categories={categories}
         uploads={uploads}
         onClose={() => setEditing(null)}
+        onEditCategories={() => setEditCategoriesOpen(true)}
         onSave={(id, patch, rule) => {
           updateTransaction(id, patch)
           if (rule) addRule(rule)
@@ -2011,11 +2014,14 @@ function CategoryPairFields({
   categories,
   categoryId,
   onChange,
+  onAddCategory,
 }: {
   categories: SpendingCategory[]
   categoryId: string
   onChange: (categoryId: string) => void
+  onAddCategory?: () => void
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
   const choices = calendarCategoryOptions(categories).filter(
     (item) => item.id !== '__spending__',
   )
@@ -2026,6 +2032,8 @@ function CategoryPairFields({
     <label className="grid gap-1.5">
       <span className="text-muted-foreground text-xs">Category</span>
       <Select
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
         value={categoryId || NONE}
         onValueChange={(value) => onChange(value === NONE ? '' : value)}
       >
@@ -2048,6 +2056,23 @@ function CategoryPairFields({
               {category.label}
             </SelectItem>
           ))}
+          {onAddCategory ? (
+            <>
+              <SelectSeparator />
+              <button
+                type="button"
+                className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-left text-sm outline-hidden"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setMenuOpen(false)
+                  onAddCategory()
+                }}
+              >
+                <Plus className="size-3.5" />
+                Add category
+              </button>
+            </>
+          ) : null}
         </SelectContent>
       </Select>
     </label>
@@ -2298,6 +2323,7 @@ function AddTxnDialog({
   defaultAccountId,
   onClose,
   onSave,
+  onEditCategories,
 }: {
   open: boolean
   accounts: PaymentAccount[]
@@ -2313,6 +2339,7 @@ function AddTxnDialog({
     amount: number
     categoryId?: string
   }) => void
+  onEditCategories: () => void
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -2326,6 +2353,7 @@ function AddTxnDialog({
             defaultAccountId={defaultAccountId}
             onClose={onClose}
             onSave={onSave}
+            onEditCategories={onEditCategories}
           />
         ) : null}
       </DialogContent>
@@ -2340,6 +2368,7 @@ function AddTxnForm({
   defaultAccountId,
   onClose,
   onSave,
+  onEditCategories,
 }: {
   accounts: PaymentAccount[]
   categories: SpendingCategory[]
@@ -2354,6 +2383,7 @@ function AddTxnForm({
     amount: number
     categoryId?: string
   }) => void
+  onEditCategories: () => void
 }) {
   const [name, setName] = useState('')
   const [merchant, setMerchant] = useState('')
@@ -2393,6 +2423,7 @@ function AddTxnForm({
           categories={categories}
           categoryId={categoryId}
           onChange={setCategoryId}
+          onAddCategory={onEditCategories}
         />
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1.5">
@@ -2459,6 +2490,7 @@ function EditTxnDialog({
   onClose,
   onSave,
   onDelete,
+  onEditCategories,
 }: {
   txn: SpendingTxn | null
   accounts: PaymentAccount[]
@@ -2471,6 +2503,7 @@ function EditTxnDialog({
     rule?: { match: string; merchant: string; categoryId?: string },
   ) => void
   onDelete: (id: string) => void
+  onEditCategories: () => void
 }) {
   return (
     <Dialog open={txn != null} onOpenChange={(open) => !open && onClose()}>
@@ -2487,6 +2520,7 @@ function EditTxnDialog({
             uploads={uploads}
             onSave={onSave}
             onDelete={onDelete}
+            onEditCategories={onEditCategories}
           />
         ) : null}
       </DialogContent>
@@ -2501,6 +2535,7 @@ function EditTxnForm({
   uploads,
   onSave,
   onDelete,
+  onEditCategories,
 }: {
   txn: SpendingTxn
   accounts: PaymentAccount[]
@@ -2512,6 +2547,7 @@ function EditTxnForm({
     rule?: { match: string; merchant: string; categoryId?: string },
   ) => void
   onDelete: (id: string) => void
+  onEditCategories: () => void
 }) {
   const [name, setName] = useState(() => {
     const shown = displayMerchant(txn)
@@ -2559,6 +2595,7 @@ function EditTxnForm({
           categories={categories}
           categoryId={categoryId}
           onChange={setCategoryId}
+          onAddCategory={onEditCategories}
         />
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1.5">
