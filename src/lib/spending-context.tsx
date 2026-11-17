@@ -29,7 +29,6 @@ import {
 import { supabase } from '@/lib/supabase'
 import {
   markCloudReady,
-  pushUserAppStateNow,
   rememberSpending,
   resetUserAppStateSync,
   scheduleUserAppStatePush,
@@ -138,16 +137,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const synced = await syncUserAppStateFromCloud()
       if (cancelled) return
-      if (spendingNeedsWipe()) {
-        const empty = touchSpending(emptySpending())
-        saveSpending(empty)
-        rememberSpending(empty)
-        setState(empty)
-        await pushUserAppStateNow()
-        markSpendingWiped()
-        markCloudReady()
-        return
-      }
+      if (spendingNeedsWipe()) markSpendingWiped()
       applyingCloud.current = true
       setState((current) => {
         const merged = mergeSpending(synced.spending, current)

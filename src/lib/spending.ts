@@ -576,11 +576,15 @@ export function applySpendingRules(
   })
 }
 
-/** Pick one spending document. Unioning lists revives deleted statements. */
+/** Pick one spending document. An empty list must not replace one that still has purchases. */
 export function mergeSpending(
   remote: SpendingState,
   local: SpendingState,
 ): SpendingState {
+  const remoteCount = remote.transactions.length
+  const localCount = local.transactions.length
+  if (remoteCount === 0 && localCount > 0) return local
+  if (localCount === 0 && remoteCount > 0) return remote
   const remoteAt = stamp(remote.updatedAt)
   const localAt = stamp(local.updatedAt)
   if (localAt !== remoteAt) return localAt > remoteAt ? local : remote
