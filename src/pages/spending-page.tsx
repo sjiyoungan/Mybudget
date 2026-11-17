@@ -2016,74 +2016,41 @@ function CategoryPairFields({
   categoryId: string
   onChange: (categoryId: string) => void
 }) {
-  const mains = mainCategoryChoices(categories)
+  const choices = calendarCategoryOptions(categories).filter(
+    (item) => item.id !== '__spending__',
+  )
+  const listed = choices.some((item) => item.id === categoryId)
   const selected = categories.find((item) => item.id === categoryId)
-  const parent = selected?.parentId
-    ? categories.find((item) => item.id === selected.parentId)
-    : selected
-  const parentId = parent && !parent.parentId ? parent.id : ''
-  const choices =
-    parent && !parent.parentId && !mains.some((item) => item.id === parent.id)
-      ? [...mains, parent]
-      : mains
-  const subcategories =
-    parent == null
-      ? []
-      : categories
-          .filter((item) => item.parentId === parent.id)
-          .sort((left, right) => left.name.localeCompare(right.name))
-  const showSubcategory =
-    parent != null &&
-    categoryDonutKey(parent.name) == null &&
-    (isSpendingMainName(parent.name) || subcategories.length > 0)
-  const subcategoryId =
-    showSubcategory && selected?.parentId === parent.id ? selected.id : ''
 
   return (
-    <>
-      <label className="grid gap-1.5">
-        <span className="text-muted-foreground text-xs">Category</span>
-        <Select
-          value={parentId || NONE}
-          onValueChange={(value) => onChange(value === NONE ? '' : value)}
-        >
-          <SelectTrigger className="w-full" aria-label="Category">
-            <SelectValue placeholder="Uncategorized" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>Uncategorized</SelectItem>
-            {choices.map((category) => (
-              <SelectItem key={category.id} value={category.id}>
-                {toSentenceCase(category.name)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </label>
-      {showSubcategory ? (
-        <label className="grid gap-1.5">
-          <span className="text-muted-foreground text-xs">Subcategory</span>
-          <Select
-            value={subcategoryId || NONE}
-            onValueChange={(value) =>
-              onChange(value === NONE ? parent.id : value)
-            }
-          >
-            <SelectTrigger className="w-full" aria-label="Subcategory">
-              <SelectValue placeholder="None" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE}>None</SelectItem>
-              {subcategories.map((category) => (
-                <SelectItem key={category.id} value={category.id}>
-                  {toSentenceCase(category.name)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-      ) : null}
-    </>
+    <label className="grid gap-1.5">
+      <span className="text-muted-foreground text-xs">Category</span>
+      <Select
+        value={categoryId || NONE}
+        onValueChange={(value) => onChange(value === NONE ? '' : value)}
+      >
+        <SelectTrigger className="w-full" aria-label="Category">
+          <SelectValue placeholder="Uncategorized" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NONE}>Uncategorized</SelectItem>
+          {selected && !listed ? (
+            <SelectItem value={selected.id}>
+              {toSentenceCase(selected.name)}
+            </SelectItem>
+          ) : null}
+          {choices.map((category) => (
+            <SelectItem
+              key={category.id}
+              value={category.id}
+              className={category.depth > 0 ? 'pl-6' : undefined}
+            >
+              {category.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
   )
 }
 
