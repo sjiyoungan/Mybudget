@@ -34,7 +34,9 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -42,6 +44,7 @@ import {
   VARIABLE_CATEGORY_ID,
   billsAccount,
   ceiledMonthlyAmount,
+  isCreditCardDebt,
   isExpenseActiveInMonth,
   isHiddenExpense,
   type RecurringExpense,
@@ -152,6 +155,12 @@ function parseAmount(value: string) {
 function formatTxnAmount(amount: number) {
   if (amount < 0) return `+${formatUsd(-amount)}`
   return formatUsd(amount)
+}
+
+type PaymentAccount = {
+  id: string
+  name: string
+  kind: 'checking' | 'credit'
 }
 
 function accountName(
@@ -414,7 +423,21 @@ export function SpendingPage() {
     removeUpload,
   } = useSpending()
   const { plan } = useDebtPlan()
-  const { accounts, expenses } = useBudget()
+  const { accounts, debts, expenses } = useBudget()
+  const paymentAccounts = useMemo(() => {
+    const list: PaymentAccount[] = accounts.map((account) => ({
+      id: account.id,
+      name: account.name,
+      kind: account.kind === 'credit' ? 'credit' : 'checking',
+    }))
+    const seen = new Set(list.map((account) => account.id))
+    for (const debt of debts) {
+      if (!isCreditCardDebt(debt) || seen.has(debt.id)) continue
+      list.push({ id: debt.id, name: debt.lender, kind: 'credit' })
+      seen.add(debt.id)
+    }
+    return list
+  }, [accounts, debts])
   const now = useMemo(() => new Date(), [])
   const years = useMemo(
     () => availableSpendingYears(transactions, now),
@@ -888,7 +911,7 @@ export function SpendingPage() {
                   <TransactionRow
                     key={txn.id}
                     txn={txn}
-                    accounts={accounts}
+                    accounts={paymentAccounts}
                     categories={categories}
                     divided={itemIndex > 0}
                     onClick={() => setEditing(txn)}
@@ -1016,7 +1039,7 @@ export function SpendingPage() {
                                         <TransactionRow
                                           key={txn.id}
                                           txn={txn}
-                                          accounts={accounts}
+                                          accounts={paymentAccounts}
                                           categories={categories}
                                           showAccount={false}
                                           showDate
@@ -1042,7 +1065,7 @@ export function SpendingPage() {
 
       <AddTxnDialog
         open={adding}
-        accounts={accounts}
+        accounts={paymentAccounts}
         categories={categories}
         defaultDate={defaultManualTxnDate(selectedYear, activeMonth, now)}
         defaultAccountId={
@@ -1093,7 +1116,7 @@ export function SpendingPage() {
 
       <EditTxnDialog
         txn={editing}
-        accounts={accounts}
+        accounts={paymentAccounts}
         categories={categories}
         uploads={uploads}
         onClose={() => setEditing(null)}
@@ -2251,6 +2274,55 @@ function AffirmLogForm({
   )
 }
 
+function AccountField({
+  accounts,
+  accountId,
+  onChange,
+}: {
+  accounts: PaymentAccount[]
+  accountId: string
+  onChange: (id: string) => void
+}) {
+  const known = accounts.some((account) => account.id === accountId)
+  const checking = accounts.filter((account) => account.kind !== 'credit')
+  const cards = accounts.filter((account) => account.kind === 'credit')
+  const options = (items: PaymentAccount[]) =>
+    items.map((account) => (
+      <SelectItem key={account.id} value={account.id}>
+        {account.name}
+      </SelectItem>
+    ))
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-muted-foreground text-xs">Account</span>
+      <Select value={accountId || undefined} onValueChange={onChange}>
+        <SelectTrigger className="w-full" aria-label="Account">
+          <SelectValue placeholder="Account" />
+        </SelectTrigger>
+        <SelectContent>
+          {accountId && !known ? (
+            <SelectItem value={accountId}>Unknown</SelectItem>
+          ) : null}
+          {cards.length > 0 ? (
+            <>
+              <SelectGroup>
+                <SelectLabel>Checking</SelectLabel>
+                {options(checking)}
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel>Credit card</SelectLabel>
+                {options(cards)}
+              </SelectGroup>
+            </>
+          ) : (
+            options(checking)
+          )}
+        </SelectContent>
+      </Select>
+    </label>
+  )
+}
+
 function AddTxnDialog({
   open,
   accounts,
@@ -2261,7 +2333,7 @@ function AddTxnDialog({
   onSave,
 }: {
   open: boolean
-  accounts: { id: string; name: string }[]
+  accounts: PaymentAccount[]
   categories: SpendingCategory[]
   defaultDate: string
   defaultAccountId: string
@@ -2302,7 +2374,7 @@ function AddTxnForm({
   onClose,
   onSave,
 }: {
-  accounts: { id: string; name: string }[]
+  accounts: PaymentAccount[]
   categories: SpendingCategory[]
   defaultDate: string
   defaultAccountId: string
@@ -2323,10 +2395,6 @@ function AddTxnForm({
   const [accountId, setAccountId] = useState(defaultAccountId)
   const [categoryId, setCategoryId] = useState('')
   const parsedAmount = parseAmount(amount)
-  const accountOptions =
-    accountId && !accounts.some((account) => account.id === accountId)
-      ? [{ id: accountId, name: 'Unknown' }, ...accounts]
-      : accounts
 
   return (
     <>
@@ -2377,21 +2445,11 @@ function AddTxnForm({
             />
           </label>
         </div>
-        <label className="grid gap-1.5">
-          <span className="text-muted-foreground text-xs">Account</span>
-          <Select value={accountId || undefined} onValueChange={setAccountId}>
-            <SelectTrigger className="w-full" aria-label="Account">
-              <SelectValue placeholder="Account" />
-            </SelectTrigger>
-            <SelectContent>
-              {accountOptions.map((account) => (
-                <SelectItem key={account.id} value={account.id}>
-                  {account.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
+        <AccountField
+          accounts={accounts}
+          accountId={accountId}
+          onChange={setAccountId}
+        />
       </div>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
@@ -2436,7 +2494,7 @@ function EditTxnDialog({
   onDelete,
 }: {
   txn: SpendingTxn | null
-  accounts: { id: string; name: string }[]
+  accounts: PaymentAccount[]
   categories: SpendingCategory[]
   uploads: SpendingUpload[]
   onClose: () => void
@@ -2478,7 +2536,7 @@ function EditTxnForm({
   onDelete,
 }: {
   txn: SpendingTxn
-  accounts: { id: string; name: string }[]
+  accounts: PaymentAccount[]
   categories: SpendingCategory[]
   uploads: SpendingUpload[]
   onSave: (
@@ -2502,10 +2560,6 @@ function EditTxnForm({
   const fromStatement = statementName(txn, uploads)
   const parsedAmount = parseAmount(amount)
   const deposit = txn.amount < 0
-  const accountOptions =
-    accountId && !accounts.some((account) => account.id === accountId)
-      ? [{ id: accountId, name: 'Unknown' }, ...accounts]
-      : accounts
 
   return (
     <>
@@ -2559,21 +2613,11 @@ function EditTxnForm({
             />
           </label>
         </div>
-        <label className="grid gap-1.5">
-          <span className="text-muted-foreground text-xs">Account</span>
-          <Select value={accountId || undefined} onValueChange={setAccountId}>
-            <SelectTrigger className="w-full" aria-label="Account">
-              <SelectValue placeholder="Account" />
-            </SelectTrigger>
-            <SelectContent>
-              {accountOptions.map((account) => (
-                <SelectItem key={account.id} value={account.id}>
-                  {account.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
+        <AccountField
+          accounts={accounts}
+          accountId={accountId}
+          onChange={setAccountId}
+        />
         <Button
           type="button"
           variant={createRule ? 'secondary' : 'outline'}
