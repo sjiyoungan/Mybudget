@@ -1239,19 +1239,21 @@ function calendarCategoryOptions(categories: SpendingCategory[]) {
     ...(gas ? [gas] : []),
     ...rest,
   ]
+  console.log('[calendarCategoryOptions] Ordered parent categories:', ordered.map(c => ({ id: c.id, name: c.name })))
   const rows: { id: string; label: string; depth: number }[] = []
   for (const main of ordered) {
     rows.push({ id: main.id, label: categoryLabel(main.name), depth: 0 })
-    const children = categories
-      .filter(
-        (item) =>
-          item.parentId === main.id && isActiveSpendingCategory(item),
-      )
-      .sort((left, right) => left.name.localeCompare(right.name))
+    const allChildren = categories.filter((item) => item.parentId === main.id)
+    const activeChildren = allChildren.filter((item) => isActiveSpendingCategory(item))
+    console.log(`[calendarCategoryOptions] Parent "${main.name}" (${main.id}):`)
+    console.log(`  - All children (${allChildren.length}):`, allChildren.map(c => ({ id: c.id, name: c.name, enabled: c.enabled, grouped: c.grouped })))
+    console.log(`  - Active children (${activeChildren.length}):`, activeChildren.map(c => c.name))
+    const children = activeChildren.sort((left, right) => left.name.localeCompare(right.name))
     for (const child of children) {
       rows.push({ id: child.id, label: toSentenceCase(child.name), depth: 1 })
     }
   }
+  console.log('[calendarCategoryOptions] Final rows:', rows.length, 'items')
   return rows
 }
 
@@ -2036,9 +2038,14 @@ function CategoryPairFields({
   onAddCategory?: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const choices = calendarCategoryOptions(categories).filter(
+  const allOptions = calendarCategoryOptions(categories)
+  console.log('[CategoryPairFields] Total categories received:', categories.length)
+  console.log('[CategoryPairFields] Categories with parentId:', categories.filter(c => c.parentId).map(c => ({ id: c.id, name: c.name, parentId: c.parentId, enabled: c.enabled, grouped: c.grouped, budget: c.budget })))
+  console.log('[CategoryPairFields] All dropdown options from calendarCategoryOptions:', allOptions)
+  const choices = allOptions.filter(
     (item) => item.id !== '__spending__',
   )
+  console.log('[CategoryPairFields] Filtered choices (after removing __spending__):', choices)
   const listed = choices.some((item) => item.id === categoryId)
   const selected = categories.find((item) => item.id === categoryId)
 
