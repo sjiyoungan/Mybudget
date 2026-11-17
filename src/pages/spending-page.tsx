@@ -171,19 +171,6 @@ function categoryName(
   return parentName ? `${parentName} · ${childName}` : childName
 }
 
-function categoryMerchant(
-  categoryId: string | undefined,
-  categories: SpendingCategory[],
-) {
-  if (!categoryId) return ''
-  const current = categories.find((item) => item.id === categoryId)
-  if (!current) return ''
-  if (current.merchant?.trim()) return toSentenceCase(current.merchant)
-  if (!current.parentId) return ''
-  const parent = categories.find((item) => item.id === current.parentId)
-  return parent?.merchant?.trim() ? toSentenceCase(parent.merchant) : ''
-}
-
 function localIsoDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
@@ -482,8 +469,6 @@ export function SpendingPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [calendarScope, setCalendarScope] = useState<'month' | 'year'>('month')
   const [calendarCategoryIds, setCalendarCategoryIds] = useState<string[]>([])
-  /** null means every day is open. */
-  const [expandedDays, setExpandedDays] = useState<string[] | null>(null)
   const [expandedStatementMonth, setExpandedStatementMonth] = useState<
     string | null
   >(null)
@@ -666,7 +651,6 @@ export function SpendingPage() {
               setSelectedMonth(null)
               setCalendarScope('month')
               setSelectedDay(null)
-              setExpandedDays(null)
             }}
           >
             <SelectTrigger
@@ -739,7 +723,6 @@ export function SpendingPage() {
                     setCalendarScope('month')
                     setSelectedMonth(row.month)
                     setSelectedDay(null)
-                    setExpandedDays(null)
                   }}
                   className={cn(
                     'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
@@ -843,7 +826,6 @@ export function SpendingPage() {
           onCategories={(ids) => {
             setCalendarCategoryIds(ids)
             setSelectedDay(null)
-            setExpandedDays(null)
           }}
           spentByDay={spentByDay}
           now={now}
@@ -852,13 +834,9 @@ export function SpendingPage() {
             setCalendarScope(next)
             if (nextMonth != null) setSelectedMonth(nextMonth)
             setSelectedDay(null)
-            setExpandedDays(null)
           }}
           onSelect={(date) => {
             setSelectedDay((current) => (current === date ? null : date))
-            setExpandedDays((current) =>
-              current == null || current.includes(date) ? current : [...current, date],
-            )
           }}
         />
       ) : null}
@@ -869,35 +847,15 @@ export function SpendingPage() {
             {selectedRow ? formatWeekdayDate(selectedRow.date) : 'Transactions'}
           </CardTitle>
           <CardAction>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="hidden lg:inline-flex"
-                onClick={() => setAdding(true)}
-              >
-                Add
-              </Button>
-              {selectedRow == null && dayRows.length > 0 ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const anyOpen =
-                      expandedDays == null ||
-                      dayRows.some((row) => expandedDays.includes(row.date))
-                    setExpandedDays(anyOpen ? [] : null)
-                  }}
-                >
-                  {expandedDays == null ||
-                  dayRows.some((row) => expandedDays.includes(row.date))
-                    ? 'Close all'
-                    : 'Expand all'}
-                </Button>
-              ) : null}
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="hidden lg:inline-flex"
+              onClick={() => setAdding(true)}
+            >
+              Add
+            </Button>
           </CardAction>
         </CardHeader>
         <CardContent className="grid gap-1">
@@ -906,67 +864,33 @@ export function SpendingPage() {
               No purchases this month.
             </p>
           ) : null}
-          {(selectedRow ? [selectedRow] : dayRows).map((row, index) => {
-            const expanded =
-              expandedDays == null || expandedDays.includes(row.date)
-            return (
-              <div
-                key={row.date}
-                className={cn('py-2', index > 0 && 'border-border border-t')}
-              >
-                <button
-                  type="button"
-                  aria-expanded={expanded}
-                  onClick={() => {
-                    setExpandedDays((current) => {
-                      const open =
-                        current == null
-                          ? dayRows.map((item) => item.date)
-                          : current
-                      return open.includes(row.date)
-                        ? open.filter((date) => date !== row.date)
-                        : [...open, row.date]
-                    })
-                  }}
-                  className="hover-fill hover-fill-plain grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_5.75rem_1rem] items-center gap-x-3 rounded-lg px-2.5 py-2 text-left"
-                >
-                  <span className={expanded ? 'font-medium' : undefined}>
-                    {formatDateWithoutYear(row.date, 'short')}
-                  </span>
-                  <span
-                    className={cn(
-                      'w-[5.75rem] shrink-0 text-right tabular-nums',
-                      expanded && 'font-medium',
-                    )}
-                  >
-                    {formatUsd(row.amount)}
-                  </span>
-                  <span className="flex size-4 shrink-0 items-center justify-center">
-                    <ChevronDown
-                      className={cn(
-                        'size-4 text-muted-foreground transition-transform',
-                        expanded && 'rotate-180',
-                      )}
-                    />
-                  </span>
-                </button>
-                {expanded ? (
-                  <ul>
-                    {row.items.map((txn, itemIndex) => (
-                      <TransactionRow
-                        key={txn.id}
-                        txn={txn}
-                        accounts={accounts}
-                        categories={categories}
-                        divided={itemIndex > 0}
-                        onClick={() => setEditing(txn)}
-                      />
-                    ))}
-                  </ul>
-                ) : null}
+          {(selectedRow ? [selectedRow] : dayRows).map((row, index) => (
+            <div
+              key={row.date}
+              className={cn('py-2', index > 0 && 'border-border border-t')}
+            >
+              <div className="grid w-full grid-cols-[minmax(0,1fr)_5.75rem] items-center gap-x-3 px-2.5 py-2 text-left">
+                <span className="font-medium">
+                  {formatDateWithoutYear(row.date, 'short')}
+                </span>
+                <span className="w-[5.75rem] shrink-0 text-right font-medium tabular-nums">
+                  {formatUsd(row.amount)}
+                </span>
               </div>
-            )
-          })}
+              <ul>
+                {row.items.map((txn, itemIndex) => (
+                  <TransactionRow
+                    key={txn.id}
+                    txn={txn}
+                    accounts={accounts}
+                    categories={categories}
+                    divided={itemIndex > 0}
+                    onClick={() => setEditing(txn)}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
         </CardContent>
       </Card>
 
@@ -1131,11 +1055,6 @@ export function SpendingPage() {
             setSelectedMonth(month)
           }
           setSelectedDay(input.date)
-          setExpandedDays((current) =>
-            current == null || current.includes(input.date)
-              ? current
-              : [...current, input.date],
-          )
           setAdding(false)
         }}
       />
@@ -1262,10 +1181,24 @@ const WEEKDAYS = [
   'Saturday',
 ]
 const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function calendarCategoryOptions(categories: SpendingCategory[]) {
-  const mains = mainCategoryChoices(categories)
-  const spending = mains.find((item) => isSpendingMainName(item.name))
+  const tops = categories.filter(
+    (item) => !item.parentId && isActiveSpendingCategory(item),
+  )
+  const spending = tops.find((item) => isSpendingMainName(item.name))
+  const food = tops.find((item) => categoryDonutKey(item.name) === 'food')
+  const gas = tops.find((item) => categoryDonutKey(item.name) === 'gas')
+  const rest = tops
+    .filter((item) => item !== spending && item !== food && item !== gas)
+    .sort((left, right) => left.name.localeCompare(right.name))
+  const ordered = [
+    spending ?? { id: '__spending__', name: 'Spending' },
+    ...(food ? [food] : []),
+    ...(gas ? [gas] : []),
+    ...rest,
+  ]
   const children = (
     spending
       ? categories.filter(
@@ -1275,7 +1208,7 @@ function calendarCategoryOptions(categories: SpendingCategory[]) {
       : []
   ).sort((left, right) => left.name.localeCompare(right.name))
   const rows: { id: string; label: string; depth: number }[] = []
-  for (const main of mains) {
+  for (const main of ordered) {
     rows.push({ id: main.id, label: toSentenceCase(main.name), depth: 0 })
     if (main.id !== spending?.id) continue
     for (const child of children) {
@@ -1293,7 +1226,18 @@ function txnInCalendarCategories(
   if (selectedIds.length === 0) return true
   if (txn.categoryId && selectedIds.includes(txn.categoryId)) return true
   const rolled = rolledSpendingCategoryId(txn.categoryId, categories)
-  return rolled != null && selectedIds.includes(rolled)
+  if (rolled != null && selectedIds.includes(rolled)) return true
+  const spending = categories.find(
+    (item) => !item.parentId && isSpendingMainName(item.name),
+  )
+  const spendingSelected =
+    selectedIds.includes('__spending__') ||
+    (spending != null && selectedIds.includes(spending.id))
+  return (
+    spendingSelected &&
+    txnDonutKey(txn, categories) === 'spending' &&
+    (!txn.categoryId || txn.categoryId === spending?.id)
+  )
 }
 
 function formatWeekdayDate(iso: string) {
@@ -1337,33 +1281,11 @@ function SpendingCalendar({
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={scope === 'year' ? 'year' : String(month)}
-            onValueChange={(value) => {
-              if (value === 'year') onScope('year')
-              else onScope('month', Number(value))
-            }}
-          >
-            <SelectTrigger aria-label="Calendar view" size="sm" className="h-8 text-base">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent
-              position="popper"
-              align="start"
-              side="bottom"
-              sideOffset={4}
-              className="max-h-80"
-            >
-              <SelectItem value="year" className="text-base">
-                Whole year
-              </SelectItem>
-              {Array.from({ length: 12 }, (_, index) => (
-                <SelectItem key={index} value={String(index)} className="text-base">
-                  {monthName(index)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <CalendarMonthPicker
+            scope={scope}
+            month={month}
+            onScope={onScope}
+          />
           <CalendarCategoryFilter
             categories={categories}
             selectedIds={categoryIds}
@@ -1388,6 +1310,70 @@ function SpendingCalendar({
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function CalendarMonthPicker({
+  scope,
+  month,
+  onScope,
+}: {
+  scope: 'month' | 'year'
+  month: number
+  onScope: (scope: 'month' | 'year', month?: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Calendar view"
+          className="flex h-8 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-base whitespace-nowrap outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          {scope === 'year' ? 'Whole year' : monthName(month)}
+          <ChevronDown className="size-4 text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-2">
+        <div className="grid grid-cols-3 gap-1">
+          {Array.from({ length: 12 }, (_, index) => {
+            const selected = scope === 'month' && month === index
+            return (
+              <button
+                key={index}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  onScope('month', index)
+                  setOpen(false)
+                }}
+                className={cn(
+                  'hover-fill rounded-md px-2 py-1.5 text-sm',
+                  selected && 'hover-fill-active font-medium',
+                )}
+              >
+                {SHORT_MONTHS[index]}
+              </button>
+            )
+          })}
+        </div>
+        <button
+          type="button"
+          aria-pressed={scope === 'year'}
+          onClick={() => {
+            onScope('year')
+            setOpen(false)
+          }}
+          className={cn(
+            'hover-fill mt-1 w-full rounded-md px-2 py-1.5 text-sm',
+            scope === 'year' && 'hover-fill-active font-medium',
+          )}
+        >
+          Whole year
+        </button>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -1424,13 +1410,19 @@ function CalendarCategoryFilter({
       <PopoverContent className="w-56 p-1">
         <button
           type="button"
-          aria-pressed={selectedIds.length === 0}
+          role="checkbox"
+          aria-checked={selectedIds.length === 0}
           onClick={() => onChange([])}
-          className={cn(
-            'hover-fill flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm',
-            selectedIds.length === 0 && 'hover-fill-active font-medium',
-          )}
+          className="hover-fill flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
         >
+          <span
+            className={cn(
+              'flex size-4 shrink-0 items-center justify-center rounded border border-foreground/30',
+              selectedIds.length === 0 && 'border-foreground bg-foreground text-background',
+            )}
+          >
+            {selectedIds.length === 0 ? <Check className="size-3" /> : null}
+          </span>
           All categories
         </button>
         {options.map((option) => {
@@ -1439,7 +1431,8 @@ function CalendarCategoryFilter({
             <button
               key={option.id}
               type="button"
-              aria-pressed={on}
+              role="checkbox"
+              aria-checked={on}
               onClick={() =>
                 onChange(
                   on
@@ -1450,11 +1443,17 @@ function CalendarCategoryFilter({
               className={cn(
                 'hover-fill flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
                 option.depth > 0 && 'pl-6',
-                on && 'hover-fill-active font-medium',
               )}
             >
+              <span
+                className={cn(
+                  'flex size-4 shrink-0 items-center justify-center rounded border border-foreground/30',
+                  on && 'border-foreground bg-foreground text-background',
+                )}
+              >
+                {on ? <Check className="size-3" /> : null}
+              </span>
               <span className="min-w-0 flex-1 truncate">{option.label}</span>
-              {on ? <Check className="size-3.5 shrink-0" /> : null}
             </button>
           )
         })}
@@ -1504,7 +1503,7 @@ function CalendarMonth({
             )}
           >
             <span className="lg:hidden">{WEEKDAY_LETTERS[index]}</span>
-            <span className="hidden truncate lg:inline">{label}</span>
+            <span className="hidden text-sm lg:inline">{WEEKDAY_SHORT[index]}</span>
           </div>
         ))}
         {cells.map((day, index) => {
@@ -1527,11 +1526,6 @@ function CalendarMonth({
               >
                 {day}
               </span>
-              {compact ? null : (
-                <span className="text-[10px] leading-none lg:hidden">
-                  {SHORT_MONTHS[month]}
-                </span>
-              )}
               {openable ? (
                 <span
                   className={cn(
@@ -1550,7 +1544,7 @@ function CalendarMonth({
             'flex w-full min-w-0 flex-col items-start justify-center gap-0.5 text-left',
             compact
               ? 'min-h-8 rounded-md px-1 py-0.5'
-              : 'min-h-12 rounded-lg px-1 py-1 lg:min-h-10 lg:flex-row lg:items-center lg:justify-between lg:gap-1 lg:px-1.5 lg:py-1.5',
+              : 'min-h-10 rounded-lg px-1 py-1 lg:flex-row lg:items-center lg:justify-between lg:gap-1 lg:px-1.5 lg:py-1.5',
             future && 'text-muted-foreground/40',
             past && 'text-[#404040]',
             openable && 'spent-day cursor-pointer',
@@ -1903,17 +1897,14 @@ function TransactionRow({
   divided?: boolean
   onClick: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const category = categoryName(txn.categoryId, categories)
-  const merchant = categoryMerchant(txn.categoryId, categories)
-  const name = displayMerchant(txn)
+  const merchant = displayMerchant(txn)
   const description =
-    txn.description && txn.description !== name ? txn.description : ''
+    txn.description && txn.description !== merchant ? txn.description : ''
   return (
     <li className={cn('min-w-0', divided && 'border-border border-t border-dotted')}>
       <button
         type="button"
-        aria-expanded={open}
         className={cn(
           'hover-fill group grid w-full min-w-0 items-start gap-x-3 rounded-lg px-2.5 py-2 text-left',
           'grid-cols-[minmax(0,1fr)_3.25rem_5.5rem]',
@@ -1926,16 +1917,10 @@ function TransactionRow({
           !showAccount && !showDate &&
             'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_5.75rem_1rem]',
         )}
-        onClick={() => {
-          if (window.matchMedia('(max-width: 1023px)').matches) {
-            setOpen((current) => !current)
-            return
-          }
-          onClick()
-        }}
+        onClick={onClick}
       >
         <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-          {name}
+          {description || merchant}
         </span>
         <span className="text-muted-foreground w-full min-w-0 truncate pt-0.5 text-xs lg:overflow-visible lg:whitespace-normal lg:break-words">
           {category}
@@ -1965,37 +1950,18 @@ function TransactionRow({
           <Pencil className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
         </span>
       </button>
-      {open ? (
-        <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 px-2.5 pb-2 text-xs lg:hidden">
-          <dt className="text-muted-foreground">Category</dt>
-          <dd className="min-w-0 break-words">{category}</dd>
-          <dt className="text-muted-foreground">Merchant</dt>
-          <dd className="min-w-0 break-words">{merchant || '—'}</dd>
-          <dt className="text-muted-foreground">Account</dt>
-          <dd className="min-w-0 break-words">
-            {accountName(txn.accountId, accounts)}
-          </dd>
-          <dt className="text-muted-foreground">Date</dt>
-          <dd>{formatDateWithoutYear(txn.date, 'short')}</dd>
-          {description ? (
-            <>
-              <dt className="text-muted-foreground">Description</dt>
-              <dd className="min-w-0 break-words [overflow-wrap:anywhere]">
-                {description}
-              </dd>
-            </>
-          ) : null}
-          <dd className="col-span-2 pt-1">
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={onClick}
-            >
-              Edit
-            </button>
-          </dd>
-        </dl>
-      ) : null}
+      <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 px-2.5 pb-2 text-xs lg:hidden">
+        <dt className="text-muted-foreground">Merchant</dt>
+        <dd className="min-w-0 break-words">{merchant}</dd>
+        <dt className="text-muted-foreground">Category</dt>
+        <dd className="min-w-0 break-words">{category}</dd>
+        <dt className="text-muted-foreground">Account</dt>
+        <dd className="min-w-0 break-words">
+          {accountName(txn.accountId, accounts)}
+        </dd>
+        <dt className="text-muted-foreground">Date</dt>
+        <dd>{formatDateWithoutYear(txn.date, 'short')}</dd>
+      </dl>
     </li>
   )
 }
@@ -2644,16 +2610,13 @@ function EditTxnForm({
 type ChildDraft = {
   id: string
   name: string
-  merchant: string
 }
 
 type GroupDraft = {
   id: string
   name: string
-  merchant: string
   expenseIds: string[]
   categories: ChildDraft[]
-  open: boolean
   subcategories: boolean
 }
 
@@ -2662,12 +2625,10 @@ function snapshotCategoryPicks(groups: GroupDraft[]) {
     groups.map((group) => ({
       id: group.id,
       name: group.name.trim(),
-      merchant: group.merchant.trim(),
       expenseIds: [...group.expenseIds].sort(),
       categories: group.categories.map((item) => ({
         id: item.id,
         name: item.name.trim(),
-        merchant: item.merchant.trim(),
       })),
     })),
   )
@@ -2679,10 +2640,8 @@ function ensureMainGroupDrafts(groups: GroupDraft[]) {
     next.push({
       id: crypto.randomUUID(),
       name,
-      merchant: '',
       expenseIds: [],
       categories: [],
-      open: false,
       subcategories,
     })
   }
@@ -2813,7 +2772,6 @@ function EditCategoriesDialog({
       list.push({
         id: item.id,
         name: item.name,
-        merchant: item.merchant ?? '',
       })
       children.set(item.parentId, list)
     }
@@ -2829,10 +2787,8 @@ function EditCategoriesDialog({
       nextDrafts.push({
         id: item.id,
         name: item.name,
-        merchant: item.merchant ?? '',
         expenseIds: categoryExpenseIds(item),
         categories: children.get(item.id) ?? [],
-        open: false,
         subcategories:
           isSpendingMainName(item.name) ||
           ((children.get(item.id)?.length ?? 0) > 0 &&
@@ -2841,7 +2797,7 @@ function EditCategoriesDialog({
     }
     const ensured = ensureMainGroupDrafts(nextDrafts)
     setDrafts(ensured)
-    setBaseline(snapshotCategoryPicks(nextDrafts))
+    setBaseline(snapshotCategoryPicks(ensured))
     setConfirmOpen(false)
     pendingScrollId.current = null
   }, [categories, open])
@@ -2856,7 +2812,8 @@ function EditCategoriesDialog({
     node.querySelector('input')?.focus()
   }, [drafts])
 
-  const dirty = snapshotCategoryPicks(drafts) !== baseline
+  const dirty =
+    baseline !== '' && snapshotCategoryPicks(drafts) !== baseline
 
   function closeClean() {
     setConfirmOpen(false)
@@ -2883,7 +2840,7 @@ function EditCategoriesDialog({
     pendingScrollId.current = id
     setDrafts((current) => [
       ...current,
-      { id, name: '', merchant: '', expenseIds: [], categories: [], open: true, subcategories: false },
+      { id, name: '', expenseIds: [], categories: [], subcategories: false },
     ])
   }
 
@@ -2895,8 +2852,7 @@ function EditCategoriesDialog({
         item.id === groupId
           ? {
               ...item,
-              open: true,
-              categories: [...item.categories, { id, name: '', merchant: '' }],
+              categories: [...item.categories, { id, name: '' }],
             }
           : item,
       ),
@@ -2908,23 +2864,19 @@ function EditCategoriesDialog({
     for (const group of drafts) {
       const name = toSentenceCase(group.name)
       if (!name) continue
-      const merchant = toSentenceCase(group.merchant)
       next.push({
         id: group.id,
         name,
         grouped: true,
         ...(group.expenseIds.length > 0 ? { expenseIds: group.expenseIds } : {}),
-        ...(merchant ? { merchant } : {}),
       })
       for (const child of group.categories) {
         const childName = toSentenceCase(child.name)
         if (!childName) continue
-        const childMerchant = toSentenceCase(child.merchant)
         next.push({
           id: child.id,
           name: childName,
           parentId: group.id,
-          ...(childMerchant ? { merchant: childMerchant } : {}),
         })
       }
     }
@@ -2982,7 +2934,7 @@ function EditCategoriesDialog({
           >
             {drafts.length === 0 ? (
               <p className="text-muted-foreground px-2.5 py-2 text-sm">
-                Add a group, then expand Spending to add subcategories.
+                Add a group, then add subcategories under Spending.
               </p>
             ) : (
               <ul className="divide-y divide-black/10">
@@ -2992,7 +2944,7 @@ function EditCategoriesDialog({
                     data-scroll-id={group.id}
                     className="py-1"
                   >
-                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px_28px] items-center gap-2 py-1.5 pr-2.5 pl-2.5">
+                    <div className="grid grid-cols-[minmax(0,1fr)_28px] items-center gap-2 py-1.5 pr-2.5 pl-2.5">
                       <Input
                         className={cn('h-8 min-w-0', GHOST_FIELD)}
                         value={group.name}
@@ -3002,39 +2954,6 @@ function EditCategoriesDialog({
                           updateGroup(group.id, { name: event.target.value })
                         }
                       />
-                      <Input
-                        className={cn('h-8 min-w-0', GHOST_FIELD)}
-                        value={group.merchant}
-                        placeholder="Merchant"
-                        aria-label={`Merchant for ${group.name || 'group'}`}
-                        onChange={(event) =>
-                          updateGroup(group.id, { merchant: event.target.value })
-                        }
-                      />
-                      {group.subcategories ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className="shrink-0"
-                          aria-expanded={group.open}
-                          aria-label={
-                            group.open
-                              ? `Collapse ${group.name || 'group'}`
-                              : `Expand ${group.name || 'group'}`
-                          }
-                          onClick={() => updateGroup(group.id, { open: !group.open })}
-                        >
-                          <ChevronDown
-                            className={cn(
-                              'size-4 text-muted-foreground transition-transform',
-                              group.open && 'rotate-180',
-                            )}
-                          />
-                        </Button>
-                      ) : (
-                        <span />
-                      )}
                       <Button
                         type="button"
                         variant="ghost"
@@ -3050,13 +2969,13 @@ function EditCategoriesDialog({
                         <Trash2 />
                       </Button>
                     </div>
-                    {group.subcategories && group.open ? (
+                    {group.subcategories ? (
                       <div className="mb-1 grid gap-0.5">
                         {group.categories.map((child) => (
                           <div
                             key={child.id}
                             data-scroll-id={child.id}
-                            className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px_28px] items-center gap-2 py-1 pr-2.5 pl-2.5"
+                            className="grid grid-cols-[minmax(0,1fr)_28px] items-center gap-2 py-1 pr-2.5 pl-2.5"
                           >
                             <Input
                               className={cn(
@@ -3076,22 +2995,6 @@ function EditCategoriesDialog({
                                 })
                               }
                             />
-                            <Input
-                              className={cn('h-8 min-w-0', GHOST_FIELD)}
-                              value={child.merchant}
-                              placeholder="Merchant"
-                              aria-label={`Merchant for ${child.name || 'subcategory'}`}
-                              onChange={(event) =>
-                                updateGroup(group.id, {
-                                  categories: group.categories.map((item) =>
-                                    item.id === child.id
-                                      ? { ...item, merchant: event.target.value }
-                                      : item,
-                                  ),
-                                })
-                              }
-                            />
-                            <span />
                             <Button
                               type="button"
                               variant="ghost"
@@ -3110,7 +3013,7 @@ function EditCategoriesDialog({
                             </Button>
                           </div>
                         ))}
-                        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px_28px] items-center gap-2 pr-2.5 pl-2.5">
+                        <div className="grid grid-cols-[minmax(0,1fr)_28px] items-center gap-2 pr-2.5 pl-2.5">
                           <Button
                             type="button"
                             variant="ghost"

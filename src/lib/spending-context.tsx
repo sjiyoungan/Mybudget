@@ -234,9 +234,6 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
             ...(expenseIds.length > 0 ? { expenseIds } : {}),
             ...(item.parentId ? { parentId: item.parentId } : {}),
             ...(item.budget != null ? { budget: item.budget } : {}),
-            ...(item.merchant?.trim()
-              ? { merchant: toSentenceCase(item.merchant) }
-              : {}),
             ...(item.grouped ? { grouped: true } : {}),
             ...(item.enabled === false ? { enabled: false } : {}),
             updatedAt: nowIso(),
