@@ -5,6 +5,7 @@ import {
   saveBudget,
   type BudgetState,
 } from '@/lib/budget'
+import { mergeBudgetStates } from '@/lib/budget-merge'
 import {
   loadDebtPlan,
   markPlanMigrationsApplied,
@@ -13,6 +14,7 @@ import {
   withoutSessionExtra,
   type DebtPlanState,
 } from '@/lib/debt-plan'
+import { mergeDebtPlanStates } from '@/lib/debt-plan-merge'
 import {
   APP_STATE_PAY_DATE,
   fetchPaystubDataByDate,
@@ -26,6 +28,7 @@ import {
   saveSpending,
   type SpendingState,
 } from '@/lib/spending'
+import { mergeSpendingStates } from '@/lib/spending-merge'
 import { supabase } from '@/lib/supabase'
 
 export type UserAppState = {
@@ -52,6 +55,9 @@ let cache: UserAppState | null = null
 let ready = false
 let inflight: Promise<CloudSync> | null = null
 let pushTimer: ReturnType<typeof setTimeout> | null = null
+let pullIntervalId: ReturnType<typeof setInterval> | null = null
+let ongoingPull: Promise<void> | null = null
+let syncCleanupFns: Array<() => void> = []
 
 async function currentUserId() {
   if (!supabase) return null
@@ -91,6 +97,14 @@ export function resetUserAppStateSync() {
     clearTimeout(pushTimer)
     pushTimer = null
   }
+  if (pullIntervalId) {
+    clearInterval(pullIntervalId)
+    pullIntervalId = null
+  }
+  ongoingPull = null
+  // Run all cleanup functions
+  syncCleanupFns.forEach((fn) => fn())
+  syncCleanupFns = []
 }
 
 function isMissingTable(error: { code?: string; message: string }) {
@@ -217,8 +231,27 @@ async function upsertPaystubAppState(state: UserAppState) {
 }
 
 async function upsertUserAppState(state: UserAppState) {
-  await upsertPaystubAppState(state)
-  await upsertDedicatedAppState(state)
+  // Before pushing, fetch current remote state and merge to prevent conflicts
+  const read = await readCloudAppState()
+  let mergedState = state
+  
+  if (read.status === 'ready') {
+    // Merge local changes with remote state
+    mergedState = {
+      budget: mergeBudgetStates(state.budget, read.state.budget),
+      plan: mergeDebtPlanStates(state.plan, read.state.plan),
+      spending: mergeSpendingStates(state.spending, read.state.spending),
+    }
+    
+    // Update cache and local storage with merged state
+    cache = mergedState
+    saveBudget(mergedState.budget)
+    saveDebtPlan(mergedState.plan)
+    saveSpending(mergedState.spending)
+  }
+  
+  await upsertPaystubAppState(mergedState)
+  await upsertDedicatedAppState(mergedState)
 }
 
 function applyLocal(state: UserAppState) {
@@ -268,4 +301,86 @@ export function scheduleUserAppStatePush() {
 export async function pushUserAppStateNow() {
   ready = true
   await upsertUserAppState(localAppState())
+}
+
+/**
+ * Pulls remote changes and merges them with local state.
+ * Called on visibility change and periodically to prevent stale data.
+ */
+export async function pullAndMergeRemoteChanges(): Promise<void> {
+  if (!ready || !supabase) return
+  
+  // Prevent concurrent pulls
+  if (ongoingPull) {
+    await ongoingPull
+    return
+  }
+  
+  ongoingPull = (async () => {
+    try {
+      const read = await readCloudAppState()
+      if (read.status !== 'ready') return
+      
+      const local = localAppState()
+      
+      // Merge remote state with local
+      const merged: UserAppState = {
+        budget: mergeBudgetStates(local.budget, read.state.budget),
+        plan: mergeDebtPlanStates(local.plan, read.state.plan),
+        spending: mergeSpendingStates(local.spending, read.state.spending),
+      }
+      
+      // Apply merged state locally
+      cache = merged
+      saveBudget(merged.budget)
+      saveDebtPlan(merged.plan)
+      saveSpending(merged.spending)
+      
+      // Notify contexts to reload (they watch localStorage)
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'mybudget.spending.v1',
+        newValue: JSON.stringify(merged.spending),
+        storageArea: localStorage,
+      }))
+    } finally {
+      ongoingPull = null
+    }
+  })()
+  
+  await ongoingPull
+}
+
+/**
+ * Starts periodic pulling and visibility-based sync.
+ * Call this once when the app initializes with a logged-in user.
+ */
+export function startPeriodicSync() {
+  if (!ready || !supabase || pullIntervalId) return
+  
+  // Pull every 30 seconds to catch changes from other devices
+  pullIntervalId = setInterval(() => {
+    void pullAndMergeRemoteChanges()
+  }, 30000)
+  
+  // Pull when tab becomes visible (user switches back to this tab)
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      void pullAndMergeRemoteChanges()
+    }
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  
+  // Pull when window gains focus
+  const handleFocus = () => {
+    void pullAndMergeRemoteChanges()
+  }
+  window.addEventListener('focus', handleFocus)
+  
+  // Register cleanup functions
+  syncCleanupFns.push(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+  })
+  syncCleanupFns.push(() => {
+    window.removeEventListener('focus', handleFocus)
+  })
 }

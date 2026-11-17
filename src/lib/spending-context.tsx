@@ -45,6 +45,7 @@ import {
   rememberSpending,
   resetUserAppStateSync,
   scheduleUserAppStatePush,
+  startPeriodicSync,
   syncUserAppStateFromCloud,
 } from '@/lib/user-app-state'
 
@@ -133,6 +134,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
       const synced = await syncUserAppStateFromCloud()
       if (cancelled) return
       markCloudReady()
+      startPeriodicSync() // Start pulling changes from other devices
       if (!synced.fromCloud) return
       applyingCloud.current = true
       const spending = synced.state.spending
@@ -145,6 +147,28 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [loading, user])
+
+  // Listen for storage events to pick up merged remote changes
+  useEffect(() => {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'mybudget.spending.v1' && event.newValue) {
+        try {
+          const spending = JSON.parse(event.newValue) as SpendingState
+          applyingCloud.current = true
+          setState({
+            ...spending,
+            transactions: applySpendingRules(spending.transactions, spending.rules),
+          })
+        } catch {
+          // Invalid JSON, ignore
+        }
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+    }
+  }, [])
 
   const value = useMemo<SpendingContextValue>(
     () => ({
