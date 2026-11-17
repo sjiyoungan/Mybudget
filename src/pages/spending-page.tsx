@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { Check, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -25,12 +25,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -40,21 +34,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  DEBT_CATEGORY_ID,
   VARIABLE_CATEGORY_ID,
   billsAccount,
   ceiledMonthlyAmount,
   isExpenseActiveInMonth,
   isHiddenExpense,
-  isLiveExpense,
-  monthlyAmount,
-  type ExpenseCategoryGroup,
   type RecurringExpense,
 } from '@/lib/budget'
 import { useBudget } from '@/lib/budget-context'
 import { useDebtPlan } from '@/lib/debt-plan-context'
 import type { AffirmLoan } from '@/lib/debt-plan'
-import { formatDateWithoutYear, formatLongDate, formatUsd, formatUsdWholeUp } from '@/lib/format'
+import { formatDateWithoutYear, formatLongDate, formatUsd } from '@/lib/format'
 import { monthName } from '@/lib/income'
 import { useSpending } from '@/lib/spending-context'
 import {
@@ -153,34 +143,6 @@ function parseAmount(value: string) {
 function formatTxnAmount(amount: number) {
   if (amount < 0) return `+${formatUsd(-amount)}`
   return formatUsd(amount)
-}
-
-function isSpendingExpense(expense: RecurringExpense) {
-  return (
-    !isHiddenExpense(expense) &&
-    isLiveExpense(expense) &&
-    expense.category !== DEBT_CATEGORY_ID
-  )
-}
-
-function orderedExpenseLines(
-  expenses: RecurringExpense[],
-  groups: ExpenseCategoryGroup[],
-) {
-  const shown = expenses.filter(isSpendingExpense)
-  const used = new Set<string>()
-  const lines: RecurringExpense[] = []
-  for (const group of groups) {
-    if (group.id === DEBT_CATEGORY_ID) continue
-    for (const expense of shown.filter((item) => item.category === group.id)) {
-      used.add(expense.id)
-      lines.push(expense)
-    }
-  }
-  for (const expense of shown) {
-    if (!used.has(expense.id)) lines.push(expense)
-  }
-  return lines
 }
 
 function accountName(
@@ -443,7 +405,7 @@ export function SpendingPage() {
     removeUpload,
   } = useSpending()
   const { plan } = useDebtPlan()
-  const { accounts, expenses, categories: expenseGroups } = useBudget()
+  const { accounts, expenses } = useBudget()
   const now = useMemo(() => new Date(), [])
   const years = useMemo(
     () => availableSpendingYears(transactions, now),
@@ -1185,8 +1147,6 @@ export function SpendingPage() {
       <EditCategoriesDialog
         open={editCategoriesOpen}
         categories={categories}
-        expenses={expenses}
-        groups={expenseGroups}
         onClose={() => setEditCategoriesOpen(false)}
         onSave={(next) => {
           replaceCategories(next)
@@ -2506,27 +2466,6 @@ function ensureMainGroupDrafts(groups: GroupDraft[]) {
 const GHOST_FIELD =
   'edit-ghost-field border-transparent bg-transparent shadow-none transition-colors hover:bg-transparent focus-visible:ring-0 focus-visible:ring-transparent dark:bg-transparent dark:hover:bg-transparent'
 
-function allotExpenseLabel(ids: string[], expenses: RecurringExpense[]) {
-  if (ids.length === 0) return 'Allot expense'
-  const total = ids.reduce((sum, id) => {
-    const expense = expenses.find((item) => item.id === id)
-    return sum + (expense ? monthlyAmount(expense) : 0)
-  }, 0)
-  const amount = formatUsdWholeUp(total)
-  if (ids.length === 1) {
-    const expense = expenses.find((item) => item.id === ids[0])
-    if (!expense) return 'Allot expense'
-    return `${toSentenceCase(expense.name)} · ${amount}`
-  }
-  return `${ids.length} expenses · ${amount}`
-}
-
-function expenseCountLabel(count: number) {
-  if (count === 0) return 'No expenses selected'
-  if (count === 1) return '1 expense selected'
-  return `${count} expenses selected`
-}
-
 const MONTH_ALIASES = [
   ['january', 'jan'],
   ['february', 'feb'],
@@ -2613,127 +2552,17 @@ function statementName(txn: SpendingTxn, uploads: SpendingUpload[]) {
   return txn.sourceFile ?? ''
 }
 
-function CategoryCheck({ checked }: { checked: boolean }) {
-  return (
-    <span
-      className={cn(
-        'flex size-5 shrink-0 items-center justify-center rounded-[5px] border',
-        checked ? 'border-neutral-400' : 'border-neutral-300',
-      )}
-      aria-hidden
-    >
-      {checked ? <Check className="size-3.5 text-neutral-600" /> : null}
-    </span>
-  )
-}
-
-function ExpenseSelectDropdown({
-  className,
-  count,
-  label,
-  lines,
-  isSelected,
-  onToggle,
-}: {
-  className?: string
-  count: number
-  label?: string
-  lines: RecurringExpense[]
-  isSelected: (id: string) => boolean
-  onToggle: (id: string) => void
-}) {
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const [menuWidth, setMenuWidth] = useState<number>()
-  const ordered = [...lines].sort((left, right) => {
-    const leftOn = isSelected(left.id) ? 0 : 1
-    const rightOn = isSelected(right.id) ? 0 : 1
-    return leftOn - rightOn
-  })
-
-  return (
-    <DropdownMenu
-      onOpenChange={(open) => {
-        if (!open) return
-        const width = triggerRef.current?.getBoundingClientRect().width
-        if (width) setMenuWidth(width)
-      }}
-    >
-      <DropdownMenuTrigger asChild>
-        <Button
-          ref={triggerRef}
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn(
-            'h-8 shrink-0 justify-between',
-            GHOST_FIELD,
-            className,
-          )}
-        >
-          <span className="truncate">{label ?? expenseCountLabel(count)}</span>
-          <ChevronDown className="size-4 shrink-0" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="z-[60] max-h-72 min-w-0 overflow-x-hidden overflow-y-auto"
-        style={
-          menuWidth
-            ? { width: menuWidth, minWidth: menuWidth, maxWidth: menuWidth }
-            : undefined
-        }
-      >
-        {ordered.length === 0 ? (
-          <DropdownMenuItem
-            className="text-muted-foreground"
-            onSelect={(event) => event.preventDefault()}
-          >
-            No expenses
-          </DropdownMenuItem>
-        ) : (
-          ordered.map((expense) => {
-            const on = isSelected(expense.id)
-            return (
-              <DropdownMenuItem
-                key={expense.id}
-                className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
-                onSelect={(event) => {
-                  event.preventDefault()
-                  onToggle(expense.id)
-                }}
-              >
-                <span className={cn('truncate', on && 'font-medium')}>
-                  {toSentenceCase(expense.name)}
-                </span>
-                <CategoryCheck checked={on} />
-              </DropdownMenuItem>
-            )
-          })
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
 function EditCategoriesDialog({
   open,
   categories,
-  expenses,
-  groups,
   onClose,
   onSave,
 }: {
   open: boolean
   categories: SpendingCategory[]
-  expenses: RecurringExpense[]
-  groups: ExpenseCategoryGroup[]
   onClose: () => void
   onSave: (categories: SpendingCategory[]) => void
 }) {
-  const lines = useMemo(
-    () => orderedExpenseLines(expenses, groups),
-    [expenses, groups],
-  )
   const listRef = useRef<HTMLDivElement>(null)
   const pendingScrollId = useRef<string | null>(null)
   const [drafts, setDrafts] = useState<GroupDraft[]>([])
@@ -2837,30 +2666,6 @@ function EditCategoriesDialog({
     )
   }
 
-  function toggleAllotment(groupId: string, expenseId: string) {
-    setDrafts((current) => {
-      const group = current.find((item) => item.id === groupId)
-      const adding = group != null && !group.expenseIds.includes(expenseId)
-      return current.map((item) => {
-        if (item.id === groupId) {
-          return {
-            ...item,
-            expenseIds: item.expenseIds.includes(expenseId)
-              ? item.expenseIds.filter((id) => id !== expenseId)
-              : [...item.expenseIds, expenseId],
-          }
-        }
-        if (adding) {
-          return {
-            ...item,
-            expenseIds: item.expenseIds.filter((id) => id !== expenseId),
-          }
-        }
-        return item
-      })
-    })
-  }
-
   function handleSave() {
     const next: SpendingCategory[] = []
     for (const group of drafts) {
@@ -2936,8 +2741,7 @@ function EditCategoriesDialog({
           >
             {drafts.length === 0 ? (
               <p className="text-muted-foreground px-2.5 py-2 text-sm">
-                Add a group, allot an expense as its budget, then expand it to
-                add categories like eating out or hobbies.
+                Add a group, then expand Spending to add subcategories.
               </p>
             ) : (
               <ul className="divide-y divide-black/10">
@@ -2948,25 +2752,15 @@ function EditCategoriesDialog({
                     className="py-1"
                   >
                     <div className="grid grid-cols-[minmax(0,1fr)_28px_28px] items-center gap-2 py-1.5 pr-2.5 pl-2.5">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Input
-                          className={cn('h-8 min-w-0 flex-1', GHOST_FIELD)}
-                          value={group.name}
-                          placeholder="Group"
-                          aria-label="Group name"
-                          onChange={(event) =>
-                            updateGroup(group.id, { name: event.target.value })
-                          }
-                        />
-                        <ExpenseSelectDropdown
-                          className="w-[14.5rem]"
-                          count={group.expenseIds.length}
-                          label={allotExpenseLabel(group.expenseIds, lines)}
-                          lines={lines}
-                          isSelected={(id) => group.expenseIds.includes(id)}
-                          onToggle={(id) => toggleAllotment(group.id, id)}
-                        />
-                      </div>
+                      <Input
+                        className={cn('h-8 min-w-0', GHOST_FIELD)}
+                        value={group.name}
+                        placeholder="Group"
+                        aria-label="Group name"
+                        onChange={(event) =>
+                          updateGroup(group.id, { name: event.target.value })
+                        }
+                      />
                       {group.subcategories ? (
                         <Button
                           type="button"
