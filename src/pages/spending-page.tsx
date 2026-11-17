@@ -35,9 +35,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -196,10 +194,14 @@ function categoryName(
   categoryId: string | undefined,
   categories: SpendingCategory[],
 ) {
-  const resolved = rolledSpendingCategoryId(categoryId, categories)
-  if (!resolved) return 'Uncategorized'
-  const name = categories.find((item) => item.id === resolved)?.name
-  return name ? toSentenceCase(name) : 'Uncategorized'
+  if (!categoryId) return 'Uncategorized'
+  const current = categories.find((item) => item.id === categoryId)
+  if (!current) return 'Uncategorized'
+  const childName = toSentenceCase(current.name)
+  if (!current.parentId) return childName || 'Uncategorized'
+  const parent = categories.find((item) => item.id === current.parentId)
+  const parentName = parent ? toSentenceCase(parent.name) : ''
+  return parentName ? `${parentName} · ${childName}` : childName
 }
 
 function localIsoDate(date: Date) {
@@ -302,17 +304,90 @@ function txnDonutKey(
   categories: SpendingCategory[],
 ): DonutKey {
   if (DELIVERY_FOOD.test(`${txn.description} ${txn.merchant}`)) return 'spending'
-  const ids = [
-    txn.categoryId,
-    rolledSpendingCategoryId(txn.categoryId, categories),
-  ]
-  for (const id of ids) {
-    if (!id) continue
-    const category = categories.find((item) => item.id === id)
-    const key = category ? categoryDonutKey(category.name) : null
-    if (key) return key
+  const rolled = rolledSpendingCategoryId(txn.categoryId, categories) ?? txn.categoryId
+  const category = categories.find((item) => item.id === rolled)
+  const key = category ? categoryDonutKey(category.name) : null
+  return key ?? 'spending'
+}
+
+function isSpendingMainName(name: string) {
+  return name.trim().toLowerCase() === 'spending'
+}
+
+function mainCategoryChoices(categories: SpendingCategory[]) {
+  const tops = visibleSpendingCategories(categories)
+  const spending = tops.find((item) => isSpendingMainName(item.name))
+  const food = tops.find((item) => categoryDonutKey(item.name) === 'food')
+  const gas = tops.find((item) => categoryDonutKey(item.name) === 'gas')
+  return [spending, food, gas].filter((item): item is SpendingCategory => item != null)
+}
+
+const SHORT_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+]
+
+function spendingBreakdown(
+  year: number,
+  transactions: SpendingTxn[],
+  categories: SpendingCategory[],
+  counts: (txn: SpendingTxn) => boolean,
+) {
+  const mains = mainCategoryChoices(categories)
+  const spending = mains.find((item) => isSpendingMainName(item.name))
+  const children = (spending
+    ? categories.filter((item) => item.parentId === spending.id)
+    : []
+  ).sort((left, right) => left.name.localeCompare(right.name))
+  const buckets = new Map<string, number[]>()
+  const ensure = (id: string) => {
+    const existing = buckets.get(id)
+    if (existing) return existing
+    const months = Array.from({ length: 12 }, () => 0)
+    buckets.set(id, months)
+    return months
   }
-  return 'spending'
+  for (const txn of transactions) {
+    if (!counts(txn) || !txn.date.startsWith(`${year}-`)) continue
+    const month = Number.parseInt(txn.date.slice(5, 7), 10) - 1
+    if (month < 0 || month > 11) continue
+    const key = txnDonutKey(txn, categories)
+    ensure(key)[month] += txn.amount
+    ensure('total')[month] += txn.amount
+    if (key !== 'spending') continue
+    const child = children.find((item) => item.id === txn.categoryId)
+    ensure(child ? child.id : 'spending-rest')[month] += txn.amount
+  }
+  const row = (id: string, label: string, depth: number) => {
+    const months = buckets.get(id) ?? Array.from({ length: 12 }, () => 0)
+    return {
+      id,
+      label,
+      depth,
+      months,
+      total: months.reduce((sum, amount) => sum + amount, 0),
+    }
+  }
+  const rows = [
+    row('spending', 'Spending', 0),
+    ...children.map((child) => row(child.id, toSentenceCase(child.name), 1)),
+  ]
+  if (children.length > 0) {
+    const rest = row('spending-rest', 'No subcategory', 1)
+    if (rest.total > 0.005) rows.push(rest)
+  }
+  rows.push(row('food', 'Food', 0), row('gas', 'Gas', 0), row('total', 'Total', 0))
+  return rows
 }
 
 function variableBudgetForMonth(
@@ -427,6 +502,7 @@ export function SpendingPage() {
   const [expandedUpload, setExpandedUpload] = useState<string | null>(null)
   const [removeUploadId, setRemoveUploadId] = useState<string | null>(null)
   const [editCategoriesOpen, setEditCategoriesOpen] = useState(false)
+  const [breakdownOpen, setBreakdownOpen] = useState(false)
   const [statementsOpen, setStatementsOpen] = useState(false)
   const [affirmOpen, setAffirmOpen] = useState(false)
   const [affirmIds, setAffirmIds] = useState<string[]>([])
@@ -692,14 +768,24 @@ export function SpendingPage() {
           <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
             <CardTitle>Total expense</CardTitle>
             <CardAction>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setEditCategoriesOpen(true)}
-              >
-                Edit category
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBreakdownOpen(true)}
+                >
+                  See breakdown
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditCategoriesOpen(true)}
+                >
+                  Edit category
+                </Button>
+              </div>
             </CardAction>
           </CardHeader>
           <CardContent>
@@ -1085,6 +1171,15 @@ export function SpendingPage() {
           removeTransaction(id)
           setEditing(null)
         }}
+      />
+
+      <BreakdownDialog
+        open={breakdownOpen}
+        year={selectedYear}
+        transactions={transactions}
+        categories={categories}
+        counts={countsAsVariable}
+        onClose={() => setBreakdownOpen(false)}
       />
 
       <EditCategoriesDialog
@@ -1715,6 +1810,175 @@ function TransactionRow({
   )
 }
 
+function CategoryPairFields({
+  categories,
+  categoryId,
+  onChange,
+}: {
+  categories: SpendingCategory[]
+  categoryId: string
+  onChange: (categoryId: string) => void
+}) {
+  const mains = mainCategoryChoices(categories)
+  const selected = categories.find((item) => item.id === categoryId)
+  const parent = selected?.parentId
+    ? categories.find((item) => item.id === selected.parentId)
+    : selected
+  const parentId = parent && !parent.parentId ? parent.id : ''
+  const choices =
+    parent && !parent.parentId && !mains.some((item) => item.id === parent.id)
+      ? [...mains, parent]
+      : mains
+  const subcategories =
+    parent == null
+      ? []
+      : categories
+          .filter((item) => item.parentId === parent.id)
+          .sort((left, right) => left.name.localeCompare(right.name))
+  const showSubcategory =
+    parent != null &&
+    categoryDonutKey(parent.name) == null &&
+    (isSpendingMainName(parent.name) || subcategories.length > 0)
+  const subcategoryId =
+    showSubcategory && selected?.parentId === parent.id ? selected.id : ''
+
+  return (
+    <>
+      <label className="grid gap-1.5">
+        <span className="text-muted-foreground text-xs">Category</span>
+        <Select
+          value={parentId || NONE}
+          onValueChange={(value) => onChange(value === NONE ? '' : value)}
+        >
+          <SelectTrigger className="w-full" aria-label="Category">
+            <SelectValue placeholder="Uncategorized" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NONE}>Uncategorized</SelectItem>
+            {choices.map((category) => (
+              <SelectItem key={category.id} value={category.id}>
+                {toSentenceCase(category.name)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </label>
+      {showSubcategory ? (
+        <label className="grid gap-1.5">
+          <span className="text-muted-foreground text-xs">Subcategory</span>
+          <Select
+            value={subcategoryId || NONE}
+            onValueChange={(value) =>
+              onChange(value === NONE ? parent.id : value)
+            }
+          >
+            <SelectTrigger className="w-full" aria-label="Subcategory">
+              <SelectValue placeholder="None" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>None</SelectItem>
+              {subcategories.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {toSentenceCase(category.name)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+      ) : null}
+    </>
+  )
+}
+
+function BreakdownDialog({
+  open,
+  year,
+  transactions,
+  categories,
+  counts,
+  onClose,
+}: {
+  open: boolean
+  year: number
+  transactions: SpendingTxn[]
+  categories: SpendingCategory[]
+  counts: (txn: SpendingTxn) => boolean
+  onClose: () => void
+}) {
+  const rows = useMemo(
+    () => spendingBreakdown(year, transactions, categories, counts),
+    [categories, counts, transactions, year],
+  )
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="w-[min(76rem,calc(100%-2rem))] max-w-[calc(100%-2rem)] sm:max-w-[min(76rem,calc(100%-2rem))]">
+        <DialogHeader>
+          <DialogTitle>Breakdown</DialogTitle>
+          <DialogDescription>
+            {year}, by month. Subcategories roll into Spending.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[min(70vh,36rem)] overflow-auto">
+          <table className="w-full min-w-[62rem] border-separate border-spacing-0 text-sm">
+            <thead>
+              <tr>
+                <th className="bg-background sticky left-0 z-10 px-2 py-2 text-left font-medium">
+                  Category
+                </th>
+                {SHORT_MONTHS.map((label) => (
+                  <th
+                    key={label}
+                    className="text-muted-foreground px-2 py-2 text-right font-medium"
+                  >
+                    {label}
+                  </th>
+                ))}
+                <th className="px-2 py-2 text-right font-medium">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <th
+                    className={cn(
+                      'bg-background sticky left-0 z-10 px-2 py-1.5 text-left font-normal',
+                      row.depth > 0 && 'text-muted-foreground pl-6',
+                      row.depth === 0 && 'font-medium',
+                      row.id === 'total' && 'border-border border-t',
+                    )}
+                  >
+                    {row.label}
+                  </th>
+                  {row.months.map((amount, index) => (
+                    <td
+                      key={index}
+                      className={cn(
+                        'px-2 py-1.5 text-right tabular-nums',
+                        Math.abs(amount) < 0.005 && 'text-muted-foreground',
+                        row.id === 'total' && 'border-border border-t',
+                      )}
+                    >
+                      {formatUsd(amount)}
+                    </td>
+                  ))}
+                  <td
+                    className={cn(
+                      'px-2 py-1.5 text-right font-medium tabular-nums',
+                      row.id === 'total' && 'border-border border-t',
+                    )}
+                  >
+                    {formatUsd(row.total)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function AffirmLogDialog({
   open,
   loan,
@@ -1768,7 +2032,6 @@ function AffirmLogForm({
 }) {
   const [categoryId, setCategoryId] = useState('')
   const [date, setDate] = useState('')
-  const categoryOptions = visibleSpendingCategories(categories)
   return (
     <>
       <DialogHeader>
@@ -1783,46 +2046,11 @@ function AffirmLogForm({
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
-        <label className="grid gap-1.5">
-          <span className="text-muted-foreground text-xs">Category</span>
-          <Select
-            value={categoryId || NONE}
-            onValueChange={(value) => setCategoryId(value === NONE ? '' : value)}
-          >
-            <SelectTrigger className="w-full" aria-label="Category">
-              <SelectValue placeholder="Uncategorized" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE}>Uncategorized</SelectItem>
-              {categoryOptions.map((category) => {
-                const children = categories.filter(
-                  (item) => item.parentId === category.id,
-                )
-                if (children.length === 0) {
-                  return (
-                    <SelectItem key={category.id} value={category.id}>
-                      {toSentenceCase(category.name)}
-                    </SelectItem>
-                  )
-                }
-                return (
-                  <SelectGroup key={category.id} className="p-0">
-                    <SelectLabel>{toSentenceCase(category.name)}</SelectLabel>
-                    {children.map((child) => (
-                      <SelectItem
-                        key={child.id}
-                        value={child.id}
-                        className="pl-3.5"
-                      >
-                        {toSentenceCase(child.name)}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )
-              })}
-            </SelectContent>
-          </Select>
-        </label>
+        <CategoryPairFields
+          categories={categories}
+          categoryId={categoryId}
+          onChange={setCategoryId}
+        />
         <label className="grid gap-1.5">
           <span className="text-muted-foreground text-xs">Purchase date</span>
           <Input
@@ -1919,7 +2147,6 @@ function AddTxnForm({
   const [date, setDate] = useState(defaultDate)
   const [accountId, setAccountId] = useState(defaultAccountId)
   const [categoryId, setCategoryId] = useState('')
-  const categoryOptions = visibleSpendingCategories(categories)
   const parsedAmount = parseAmount(amount)
   const accountOptions =
     accountId && !accounts.some((account) => account.id === accountId)
@@ -1944,46 +2171,11 @@ function AddTxnForm({
             autoFocus
           />
         </label>
-        <label className="grid gap-1.5">
-          <span className="text-muted-foreground text-xs">Category</span>
-          <Select
-            value={categoryId || NONE}
-            onValueChange={(value) => setCategoryId(value === NONE ? '' : value)}
-          >
-            <SelectTrigger className="w-full" aria-label="Category">
-              <SelectValue placeholder="Uncategorized" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE}>Uncategorized</SelectItem>
-              {categoryOptions.map((category) => {
-                const children = categories.filter(
-                  (item) => item.parentId === category.id,
-                )
-                if (children.length === 0) {
-                  return (
-                    <SelectItem key={category.id} value={category.id}>
-                      {toSentenceCase(category.name)}
-                    </SelectItem>
-                  )
-                }
-                return (
-                  <SelectGroup key={category.id} className="p-0">
-                    <SelectLabel>{toSentenceCase(category.name)}</SelectLabel>
-                    {children.map((child) => (
-                      <SelectItem
-                        key={child.id}
-                        value={child.id}
-                        className="pl-3.5"
-                      >
-                        {toSentenceCase(child.name)}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )
-              })}
-            </SelectContent>
-          </Select>
-        </label>
+        <CategoryPairFields
+          categories={categories}
+          categoryId={categoryId}
+          onChange={setCategoryId}
+        />
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1.5">
             <span className="text-muted-foreground text-xs">Amount</span>
@@ -2115,7 +2307,6 @@ function EditTxnForm({
   const [date, setDate] = useState(txn.date)
   const [accountId, setAccountId] = useState(txn.accountId)
   const [categoryId, setCategoryId] = useState(() => txn.categoryId ?? '')
-  const categoryOptions = visibleSpendingCategories(categories)
   const [createRule, setCreateRule] = useState(false)
   const [match, setMatch] = useState(() => defaultRuleMatch(txn.description))
   const fromStatement = statementName(txn, uploads)
@@ -2143,46 +2334,11 @@ function EditTxnForm({
           <span className="text-muted-foreground text-xs">Name</span>
           <Input value={merchant} onChange={(event) => setMerchant(event.target.value)} />
         </label>
-        <label className="grid gap-1.5">
-          <span className="text-muted-foreground text-xs">Category</span>
-          <Select
-            value={categoryId || NONE}
-            onValueChange={(value) => setCategoryId(value === NONE ? '' : value)}
-          >
-            <SelectTrigger className="w-full" aria-label="Category">
-              <SelectValue placeholder="Uncategorized" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE}>Uncategorized</SelectItem>
-              {categoryOptions.map((category) => {
-                const children = categories.filter(
-                  (item) => item.parentId === category.id,
-                )
-                if (children.length === 0) {
-                  return (
-                    <SelectItem key={category.id} value={category.id}>
-                      {toSentenceCase(category.name)}
-                    </SelectItem>
-                  )
-                }
-                return (
-                  <SelectGroup key={category.id} className="p-0">
-                    <SelectLabel>{toSentenceCase(category.name)}</SelectLabel>
-                    {children.map((child) => (
-                      <SelectItem
-                        key={child.id}
-                        value={child.id}
-                        className="pl-3.5"
-                      >
-                        {toSentenceCase(child.name)}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )
-              })}
-            </SelectContent>
-          </Select>
-        </label>
+        <CategoryPairFields
+          categories={categories}
+          categoryId={categoryId}
+          onChange={setCategoryId}
+        />
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1.5">
             <span className="text-muted-foreground text-xs">
@@ -2306,6 +2462,7 @@ type GroupDraft = {
   expenseIds: string[]
   categories: ChildDraft[]
   open: boolean
+  subcategories: boolean
 }
 
 function snapshotCategoryPicks(groups: GroupDraft[]) {
@@ -2320,6 +2477,30 @@ function snapshotCategoryPicks(groups: GroupDraft[]) {
       })),
     })),
   )
+}
+
+function ensureMainGroupDrafts(groups: GroupDraft[]) {
+  const next = [...groups]
+  const add = (name: string, subcategories: boolean) => {
+    next.push({
+      id: crypto.randomUUID(),
+      name,
+      expenseIds: [],
+      categories: [],
+      open: false,
+      subcategories,
+    })
+  }
+  if (!next.some((group) => isSpendingMainName(group.name))) add('Spending', true)
+  if (!next.some((group) => categoryDonutKey(group.name) === 'food')) add('Food', false)
+  if (!next.some((group) => categoryDonutKey(group.name) === 'gas')) add('Gas', false)
+  const rank = (group: GroupDraft) => {
+    if (isSpendingMainName(group.name)) return 0
+    if (categoryDonutKey(group.name) === 'food') return 1
+    if (categoryDonutKey(group.name) === 'gas') return 2
+    return 3
+  }
+  return next.sort((left, right) => rank(left) - rank(right))
 }
 
 const GHOST_FIELD =
@@ -2586,9 +2767,14 @@ function EditCategoriesDialog({
         expenseIds: categoryExpenseIds(item),
         categories: children.get(item.id) ?? [],
         open: false,
+        subcategories:
+          isSpendingMainName(item.name) ||
+          ((children.get(item.id)?.length ?? 0) > 0 &&
+            categoryDonutKey(item.name) == null),
       })
     }
-    setDrafts(nextDrafts)
+    const ensured = ensureMainGroupDrafts(nextDrafts)
+    setDrafts(ensured)
     setBaseline(snapshotCategoryPicks(nextDrafts))
     setConfirmOpen(false)
     pendingScrollId.current = null
@@ -2631,7 +2817,7 @@ function EditCategoriesDialog({
     pendingScrollId.current = id
     setDrafts((current) => [
       ...current,
-      { id, name: '', expenseIds: [], categories: [], open: true },
+      { id, name: '', expenseIds: [], categories: [], open: true, subcategories: false },
     ])
   }
 
@@ -2781,26 +2967,30 @@ function EditCategoriesDialog({
                           onToggle={(id) => toggleAllotment(group.id, id)}
                         />
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="shrink-0"
-                        aria-expanded={group.open}
-                        aria-label={
-                          group.open
-                            ? `Collapse ${group.name || 'group'}`
-                            : `Expand ${group.name || 'group'}`
-                        }
-                        onClick={() => updateGroup(group.id, { open: !group.open })}
-                      >
-                        <ChevronDown
-                          className={cn(
-                            'size-4 text-muted-foreground transition-transform',
-                            group.open && 'rotate-180',
-                          )}
-                        />
-                      </Button>
+                      {group.subcategories ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="shrink-0"
+                          aria-expanded={group.open}
+                          aria-label={
+                            group.open
+                              ? `Collapse ${group.name || 'group'}`
+                              : `Expand ${group.name || 'group'}`
+                          }
+                          onClick={() => updateGroup(group.id, { open: !group.open })}
+                        >
+                          <ChevronDown
+                            className={cn(
+                              'size-4 text-muted-foreground transition-transform',
+                              group.open && 'rotate-180',
+                            )}
+                          />
+                        </Button>
+                      ) : (
+                        <span />
+                      )}
                       <Button
                         type="button"
                         variant="ghost"
@@ -2816,7 +3006,7 @@ function EditCategoriesDialog({
                         <Trash2 />
                       </Button>
                     </div>
-                    {group.open ? (
+                    {group.subcategories && group.open ? (
                       <div className="mb-1 grid gap-0.5">
                         {group.categories.map((child) => (
                           <div
@@ -2830,8 +3020,8 @@ function EditCategoriesDialog({
                                 GHOST_FIELD,
                               )}
                               value={child.name}
-                              placeholder="Category"
-                              aria-label="Category name"
+                              placeholder="Subcategory"
+                              aria-label="Subcategory name"
                               onChange={(event) =>
                                 updateGroup(group.id, {
                                   categories: group.categories.map((item) =>
@@ -2848,7 +3038,7 @@ function EditCategoriesDialog({
                               variant="ghost"
                               size="icon-sm"
                               className="shrink-0"
-                              aria-label={`Remove ${child.name || 'category'}`}
+                              aria-label={`Remove ${child.name || 'subcategory'}`}
                               onClick={() =>
                                 updateGroup(group.id, {
                                   categories: group.categories.filter(
@@ -2870,7 +3060,7 @@ function EditCategoriesDialog({
                             onClick={() => addCategory(group.id)}
                           >
                             <Plus className="size-3.5" />
-                            Add category
+                            Add subcategory
                           </Button>
                         </div>
                       </div>
