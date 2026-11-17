@@ -1239,18 +1239,15 @@ function calendarCategoryOptions(categories: SpendingCategory[]) {
     ...(gas ? [gas] : []),
     ...rest,
   ]
-  const children = (
-    spending
-      ? categories.filter(
-          (item) =>
-            item.parentId === spending.id && isActiveSpendingCategory(item),
-        )
-      : []
-  ).sort((left, right) => left.name.localeCompare(right.name))
   const rows: { id: string; label: string; depth: number }[] = []
   for (const main of ordered) {
     rows.push({ id: main.id, label: categoryLabel(main.name), depth: 0 })
-    if (main.id !== spending?.id) continue
+    const children = categories
+      .filter(
+        (item) =>
+          item.parentId === main.id && isActiveSpendingCategory(item),
+      )
+      .sort((left, right) => left.name.localeCompare(right.name))
     for (const child of children) {
       rows.push({ id: child.id, label: toSentenceCase(child.name), depth: 1 })
     }
