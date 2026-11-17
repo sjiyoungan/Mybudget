@@ -1,6 +1,14 @@
 import { useRef, useState, type ChangeEvent } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { CirclePlus } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 import {
   AlertDialog,
@@ -12,7 +20,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
 import { formatLongDate } from '@/lib/format'
 import { parseAdpPaystub, type Paystub } from '@/lib/paystub'
 import { usePaystubs } from '@/lib/paystub-context'
@@ -63,6 +70,7 @@ export function PaystubUploadButton({
   floating?: boolean
 }) {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const { paystubs, upsertPaystub } = usePaystubs()
   const inputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(
@@ -154,6 +162,15 @@ export function PaystubUploadButton({
     inputRef.current?.click()
   }
 
+  function chooseTransaction() {
+    if (pathname === '/spending') {
+      requestAddTransaction()
+      return
+    }
+    navigate('/spending')
+    requestAddTransaction()
+  }
+
   const label = progress
     ? `Reading ${progress.current}/${progress.total}`
     : addingSpend
@@ -170,29 +187,52 @@ export function PaystubUploadButton({
         className="sr-only"
         onChange={onInputChange}
       />
-      <Button
-        type="button"
-        variant={floating ? 'default' : iconOnly ? 'ghost' : 'outline'}
-        size={floating || iconOnly ? 'icon' : 'sm'}
-        disabled={busy}
-        className={cn(
-          floating
-            ? 'fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full shadow-lg lg:hidden'
-            : iconOnly && 'hover-fill hover-fill-icon',
-          className,
-        )}
-        onClick={onPress}
-        aria-label={label}
-      >
-        <CirclePlus className={floating ? 'size-7' : undefined} />
-        {floating || iconOnly ? null : progress ? (
-          `Reading ${progress.current}/${progress.total}…`
-        ) : addingSpend ? (
-          'Add'
-        ) : (
-          'Upload income'
-        )}
-      </Button>
+      {floating ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              disabled={busy}
+              className={cn(
+                'fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 size-12 rounded-full border-black/10 bg-white/70 text-neutral-900 shadow-lg backdrop-blur-md hover:bg-white/85 lg:hidden',
+                className,
+              )}
+              aria-label="Add"
+            >
+              <CirclePlus className="size-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="end" sideOffset={8}>
+            <DropdownMenuItem onSelect={() => inputRef.current?.click()}>
+              Upload income
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={chooseTransaction}>
+              Add transaction
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Button
+          type="button"
+          variant={iconOnly ? 'ghost' : 'outline'}
+          size={iconOnly ? 'icon' : 'sm'}
+          disabled={busy}
+          className={cn(iconOnly && 'hover-fill hover-fill-icon', className)}
+          onClick={onPress}
+          aria-label={label}
+        >
+          <CirclePlus />
+          {iconOnly ? null : progress ? (
+            `Reading ${progress.current}/${progress.total}…`
+          ) : addingSpend ? (
+            'Add'
+          ) : (
+            'Upload income'
+          )}
+        </Button>
+      )}
 
       <AlertDialog
         open={pendingStub != null}

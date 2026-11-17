@@ -51,7 +51,11 @@ import { useDebtPlan } from '@/lib/debt-plan-context'
 import type { AffirmLoan } from '@/lib/debt-plan'
 import { formatDateWithoutYear, formatLongDate, formatUsd } from '@/lib/format'
 import { monthName } from '@/lib/income'
-import { ADD_TRANSACTION_EVENT, useSpending } from '@/lib/spending-context'
+import {
+  ADD_TRANSACTION_EVENT,
+  takeAddTransactionRequest,
+  useSpending,
+} from '@/lib/spending-context'
 import {
   categoryExpenseIds,
   displayMerchant,
@@ -461,8 +465,10 @@ export function SpendingPage() {
   const [adding, setAdding] = useState(false)
   useEffect(() => {
     function openAdd() {
+      takeAddTransactionRequest()
       setAdding(true)
     }
+    if (takeAddTransactionRequest()) setAdding(true)
     window.addEventListener(ADD_TRANSACTION_EVENT, openAdd)
     return () => window.removeEventListener(ADD_TRANSACTION_EVENT, openAdd)
   }, [])

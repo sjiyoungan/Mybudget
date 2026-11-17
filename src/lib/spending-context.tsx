@@ -29,8 +29,17 @@ import { supabase } from '@/lib/supabase'
 
 export const ADD_TRANSACTION_EVENT = 'mybudget:add-transaction'
 
+let addTransactionRequested = false
+
 export function requestAddTransaction() {
+  addTransactionRequested = true
   window.dispatchEvent(new Event(ADD_TRANSACTION_EVENT))
+}
+
+export function takeAddTransactionRequest() {
+  const requested = addTransactionRequested
+  addTransactionRequested = false
+  return requested
 }
 import {
   markCloudReady,
