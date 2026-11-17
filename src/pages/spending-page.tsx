@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { Check, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -860,7 +860,7 @@ export function SpendingPage() {
         </CardHeader>
         <CardContent className="grid gap-1">
           {selectedRow == null && dayRows.length === 0 ? (
-            <p className="text-muted-foreground px-2.5 py-2 text-sm">
+            <p className="text-muted-foreground py-2 text-sm">
               No purchases this month.
             </p>
           ) : null}
@@ -869,7 +869,7 @@ export function SpendingPage() {
               key={row.date}
               className={cn('py-2', index > 0 && 'border-border border-t')}
             >
-              <div className="grid w-full grid-cols-[minmax(0,1fr)_5.75rem] items-center gap-x-3 px-2.5 py-2 text-left">
+              <div className="grid w-full grid-cols-[minmax(0,1fr)_5.75rem] items-center gap-x-3 py-2 text-left">
                 <span className="font-medium">
                   {formatDateWithoutYear(row.date, 'short')}
                 </span>
@@ -1906,16 +1906,16 @@ function TransactionRow({
       <button
         type="button"
         className={cn(
-          'hover-fill group grid w-full min-w-0 items-start gap-x-3 rounded-lg px-2.5 py-2 text-left',
-          'grid-cols-[minmax(0,1fr)_3.25rem_5.5rem]',
+          'hover-fill grid w-full min-w-0 items-start gap-x-3 rounded-lg py-2 text-left',
+          'grid-cols-[minmax(0,1fr)_3.25rem_5.75rem]',
           showAccount && showDate &&
-            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_6rem_auto_5.75rem_1rem]',
+            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_6rem_auto_5.75rem]',
           showAccount && !showDate &&
-            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_6rem_5.75rem_1rem]',
+            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_6rem_5.75rem]',
           !showAccount && showDate &&
-            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_auto_5.75rem_1rem]',
+            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_auto_5.75rem]',
           !showAccount && !showDate &&
-            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_5.75rem_1rem]',
+            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_5.75rem]',
         )}
         onClick={onClick}
       >
@@ -1940,17 +1940,14 @@ function TransactionRow({
         ) : null}
         <span
           className={cn(
-            'w-[5.5rem] shrink-0 pt-0.5 text-right tabular-nums lg:w-[5.75rem]',
+            'w-[5.75rem] shrink-0 pt-0.5 text-right tabular-nums',
             txn.amount < 0 && 'text-muted-foreground',
           )}
         >
           {formatTxnAmount(txn.amount)}
         </span>
-        <span className="hidden size-4 shrink-0 items-center justify-center lg:flex">
-          <Pencil className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
-        </span>
       </button>
-      <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 px-2.5 pb-2 text-xs lg:hidden">
+      <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 pb-2 text-xs lg:hidden">
         <dt className="text-muted-foreground">Merchant</dt>
         <dd className="min-w-0 break-words">{merchant}</dd>
         <dt className="text-muted-foreground">Category</dt>
@@ -2431,7 +2428,10 @@ function EditTxnDialog({
 }) {
   return (
     <Dialog open={txn != null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
         {txn ? (
           <EditTxnForm
             key={txn.id}
