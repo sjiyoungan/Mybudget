@@ -13,7 +13,6 @@ import {
   applySpendingRules,
   importSpendingTxns,
   loadSpending,
-  mergeSpending,
   removeSpendingUpload,
   saveSpending,
   toSentenceCase,
@@ -133,15 +132,14 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const synced = await syncUserAppStateFromCloud()
       if (cancelled) return
-      applyingCloud.current = true
-      setState((current) => {
-        const merged = mergeSpending(synced.spending, current)
-        return {
-          ...merged,
-          transactions: applySpendingRules(merged.transactions, merged.rules),
-        }
-      })
       markCloudReady()
+      if (!synced.fromCloud) return
+      applyingCloud.current = true
+      const spending = synced.state.spending
+      setState({
+        ...spending,
+        transactions: applySpendingRules(spending.transactions, spending.rules),
+      })
     })()
     return () => {
       cancelled = true

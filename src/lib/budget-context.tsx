@@ -29,7 +29,6 @@ import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
 import {
   markCloudReady,
-  mergeBudgets,
   rememberBudget,
   resetUserAppStateSync,
   scheduleUserAppStatePush,
@@ -119,8 +118,9 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const synced = await syncUserAppStateFromCloud()
       if (cancelled) return
-      setState((current) => mergeBudgets(synced.budget, current))
       markCloudReady()
+      if (!synced.fromCloud) return
+      setState(synced.state.budget)
     })()
     return () => {
       cancelled = true

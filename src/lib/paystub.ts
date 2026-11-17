@@ -296,12 +296,12 @@ async function currentUserId() {
   return data.user?.id ?? null
 }
 
-export async function fetchPaystubDataByDate(
+export async function fetchPaystubDataByDateResult(
   payDate: string,
-): Promise<unknown | null> {
-  if (!supabase) return null
+): Promise<{ ok: true; data: unknown | null } | { ok: false }> {
+  if (!supabase) return { ok: false }
   const userId = await currentUserId()
-  if (!userId) return null
+  if (!userId) return { ok: false }
 
   if (paystubsUserIdColumn === 'yes') {
     const { data, error } = await supabase
@@ -312,9 +312,9 @@ export async function fetchPaystubDataByDate(
       .maybeSingle()
     if (error) {
       console.error(error.message)
-      return null
+      return { ok: false }
     }
-    return (data as PaystubRow | null)?.data ?? null
+    return { ok: true, data: (data as PaystubRow | null)?.data ?? null }
   }
 
   const { data, error } = await supabase
@@ -324,11 +324,11 @@ export async function fetchPaystubDataByDate(
     .maybeSingle()
   if (!error) {
     paystubsUserIdColumn = 'no'
-    return (data as PaystubRow | null)?.data ?? null
+    return { ok: true, data: (data as PaystubRow | null)?.data ?? null }
   }
   if (!isMissingUserIdColumn(error) && paystubsUserIdColumn === 'no') {
     console.error(error.message)
-    return null
+    return { ok: false }
   }
 
   const scoped = await supabase
@@ -339,10 +339,17 @@ export async function fetchPaystubDataByDate(
     .maybeSingle()
   if (scoped.error) {
     console.error(scoped.error.message)
-    return null
+    return { ok: false }
   }
   paystubsUserIdColumn = 'yes'
-  return (scoped.data as PaystubRow | null)?.data ?? null
+  return { ok: true, data: (scoped.data as PaystubRow | null)?.data ?? null }
+}
+
+export async function fetchPaystubDataByDate(
+  payDate: string,
+): Promise<unknown | null> {
+  const result = await fetchPaystubDataByDateResult(payDate)
+  return result.ok ? result.data : null
 }
 
 export async function upsertPaystubRecord(

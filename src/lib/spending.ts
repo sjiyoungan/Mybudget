@@ -352,12 +352,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>
 }
 
-function stamp(value: string | undefined) {
-  if (!value) return 0
-  const parsed = Date.parse(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
 function normalizeIsoDate(value: unknown) {
   if (typeof value !== 'string') return null
   const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
@@ -559,16 +553,8 @@ export function loadSpending(): SpendingState {
 }
 
 export function saveSpending(state: SpendingState) {
-  let existing = emptySpending()
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) existing = parseSpendingState(JSON.parse(raw)) ?? existing
-  } catch {
-    existing = emptySpending()
-  }
-  const next = mergeSpending(existing, state)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  return next
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  return state
 }
 
 export function descriptionMatchesRule(description: string, match: string) {
@@ -608,67 +594,6 @@ export function applySpendingRules(
     }
     return next
   })
-}
-
-function unionIds(...lists: (string[] | undefined)[]) {
-  return [...new Set(lists.flatMap((list) => list ?? []))]
-}
-
-function unionRecords<T extends { id: string; updatedAt?: string }>(
-  remote: T[],
-  local: T[],
-  removed: ReadonlySet<string>,
-) {
-  const merged = new Map<string, T>()
-  for (const item of [...remote, ...local]) {
-    if (removed.has(item.id)) continue
-    const current = merged.get(item.id)
-    if (!current || stamp(item.updatedAt) >= stamp(current.updatedAt)) {
-      merged.set(item.id, item)
-    }
-  }
-  return [...merged.values()]
-}
-
-/** Keep every saved record from either copy. A newer empty list cannot erase purchases. */
-export function mergeSpending(
-  remote: SpendingState,
-  local: SpendingState,
-): SpendingState {
-  const removedTransactionIds = unionIds(
-    remote.removedTransactionIds,
-    local.removedTransactionIds,
-  )
-  const removedUploadIds = unionIds(remote.removedUploadIds, local.removedUploadIds)
-  const removedCategoryIds = unionIds(
-    remote.removedCategoryIds,
-    local.removedCategoryIds,
-  )
-  const removedRuleIds = unionIds(remote.removedRuleIds, local.removedRuleIds)
-  const remoteAt = stamp(remote.updatedAt)
-  const localAt = stamp(local.updatedAt)
-  return {
-    transactions: unionRecords(
-      remote.transactions,
-      local.transactions,
-      new Set(removedTransactionIds),
-    ),
-    rules: unionRecords(remote.rules, local.rules, new Set(removedRuleIds)),
-    categories: unionRecords(
-      remote.categories,
-      local.categories,
-      new Set(removedCategoryIds),
-    ),
-    uploads: unionRecords(remote.uploads ?? [], local.uploads ?? [], new Set(removedUploadIds)),
-    removedTransactionIds,
-    removedUploadIds,
-    removedCategoryIds,
-    removedRuleIds,
-    updatedAt:
-      localAt >= remoteAt
-        ? local.updatedAt ?? remote.updatedAt
-        : remote.updatedAt ?? local.updatedAt,
-  }
 }
 
 export function touchSpending(state: SpendingState): SpendingState {

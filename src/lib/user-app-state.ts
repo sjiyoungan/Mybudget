@@ -4,7 +4,6 @@ import {
   parseBudgetState,
   saveBudget,
   type BudgetState,
-  type Debt,
 } from '@/lib/budget'
 import {
   loadDebtPlan,
@@ -17,13 +16,12 @@ import {
 import {
   APP_STATE_PAY_DATE,
   fetchPaystubDataByDate,
+  fetchPaystubDataByDateResult,
   upsertPaystubRecord,
 } from '@/lib/paystub'
-import { seededDebtBalances } from '@/lib/debt-plan-seed'
 import {
   emptySpending,
   loadSpending,
-  mergeSpending,
   parseSpendingState,
   saveSpending,
   type SpendingState,
@@ -52,7 +50,7 @@ type AppStatePaystubData = {
 
 let cache: UserAppState | null = null
 let ready = false
-let inflight: Promise<UserAppState> | null = null
+let inflight: Promise<CloudSync> | null = null
 let pushTimer: ReturnType<typeof setTimeout> | null = null
 
 async function currentUserId() {
@@ -83,7 +81,6 @@ export function rememberSpending(spending: SpendingState) {
 
 export function markCloudReady() {
   ready = true
-  scheduleUserAppStatePush()
 }
 
 export function resetUserAppStateSync() {
@@ -96,24 +93,6 @@ export function resetUserAppStateSync() {
   }
 }
 
-function parseRemoteAppState(row: RemoteRow | null | undefined): UserAppState | null {
-  if (!row) return null
-  const budget = parseBudgetState(row.budget)
-  const planValue = row.plan
-  const hasPlan =
-    planValue != null &&
-    typeof planValue === 'object' &&
-    Array.isArray((planValue as { affirmLoans?: unknown }).affirmLoans)
-  const plan = hasPlan ? parseDebtPlan(planValue) : null
-  const spending = parseSpendingState(row.spending)
-  if (!budget && !plan && !spending) return null
-  return {
-    budget: budget ?? loadBudget(),
-    plan: plan ?? loadDebtPlan(),
-    spending: spending ?? emptySpending(),
-  }
-}
-
 function isMissingTable(error: { code?: string; message: string }) {
   return (
     error.code === 'PGRST205' ||
@@ -122,44 +101,75 @@ function isMissingTable(error: { code?: string; message: string }) {
   )
 }
 
-async function fetchDedicatedAppState(): Promise<UserAppState | null> {
-  if (!supabase) return null
+type CloudRead =
+  | { status: 'ready'; state: UserAppState; upload: boolean }
+  | { status: 'empty' }
+  | { status: 'error' }
+
+async function readDedicatedRow(): Promise<
+  { ok: true; row: RemoteRow | null } | { ok: false }
+> {
+  if (!supabase) return { ok: false }
   try {
     const userId = await currentUserId()
-    if (!userId) return null
+    if (!userId) return { ok: false }
     const { data, error } = await supabase
       .from('user_app_state')
       .select('budget, plan')
       .eq('user_id', userId)
       .maybeSingle()
     if (error) {
-      if (!isMissingTable(error)) console.error(error.message)
-      return null
+      if (isMissingTable(error)) return { ok: true, row: null }
+      console.error(error.message)
+      return { ok: false }
     }
-    return parseRemoteAppState(data as RemoteRow | null)
+    return { ok: true, row: (data as RemoteRow | null) ?? null }
   } catch {
+    return { ok: false }
+  }
+}
+
+async function readCloudAppState(): Promise<CloudRead> {
+  const dedicated = await readDedicatedRow()
+  const paystub = await fetchPaystubDataByDateResult(APP_STATE_PAY_DATE)
+  if (!dedicated.ok || !paystub.ok) return { status: 'error' }
+
+  const paystubRow = (paystub.data as AppStatePaystubData | null) ?? null
+  if (!dedicated.row && !paystubRow) return { status: 'empty' }
+
+  const dedicatedBudget = dedicated.row ? parseBudgetState(dedicated.row.budget) : null
+  const dedicatedPlan = dedicated.row ? planFrom(dedicated.row.plan) : null
+  const paystubBudget = paystubRow ? parseBudgetState(paystubRow.budget) : null
+  const paystubPlan = paystubRow ? planFrom(paystubRow.plan) : null
+  const paystubSpending = paystubRow ? parseSpendingState(paystubRow.spending) : null
+  if (
+    (dedicated.row && !dedicatedBudget && !dedicatedPlan) ||
+    (paystubRow && !paystubBudget && !paystubPlan && !paystubSpending)
+  ) {
+    return { status: 'error' }
+  }
+
+  const local = localAppState()
+  return {
+    status: 'ready',
+    upload: !paystubRow,
+    state: {
+      budget: dedicatedBudget ?? paystubBudget ?? local.budget,
+      plan: dedicatedPlan ?? paystubPlan ?? local.plan,
+      spending: paystubRow ? (paystubSpending ?? emptySpending()) : local.spending,
+    },
+  }
+}
+
+function planFrom(value: unknown) {
+  if (
+    value == null ||
+    typeof value !== 'object' ||
+    !Array.isArray((value as { affirmLoans?: unknown }).affirmLoans)
+  ) {
     return null
   }
-}
-
-async function fetchPaystubAppState(): Promise<UserAppState | null> {
-  const payload = (await fetchPaystubDataByDate(APP_STATE_PAY_DATE)) as
-    | AppStatePaystubData
-    | null
-  return parseRemoteAppState(payload)
-}
-
-async function fetchUserAppState(): Promise<UserAppState | null> {
-  const dedicated = await fetchDedicatedAppState()
-  const fromPaystub = await fetchPaystubAppState()
-  if (!dedicated && !fromPaystub) return null
-  if (!dedicated) return fromPaystub
-  if (!fromPaystub) return dedicated
-  return {
-    budget: dedicated.budget,
-    plan: dedicated.plan,
-    spending: fromPaystub.spending,
-  }
+  return parseDebtPlan(value)
 }
 
 async function upsertDedicatedAppState(state: UserAppState) {
@@ -220,178 +230,27 @@ function applyLocal(state: UserAppState) {
   cache = state
 }
 
-function monthMapFilled(month: Record<string, number> | undefined) {
-  if (!month) return 0
-  return Object.values(month).filter((value) => Math.abs(value) > 0.005).length
+export type CloudSync = {
+  state: UserAppState
+  fromCloud: boolean
 }
 
-function mergeMonthMaps(
-  left: Record<string, Record<string, number>>,
-  right: Record<string, Record<string, number>>,
-) {
-  const keys = new Set([...Object.keys(left), ...Object.keys(right)])
-  const merged: Record<string, Record<string, number>> = {}
-  for (const key of keys) {
-    const a = left[key]
-    const b = right[key]
-    if (!a) merged[key] = b
-    else if (!b) merged[key] = a
-    else merged[key] = monthMapFilled(b) >= monthMapFilled(a) ? b : a
-  }
-  return merged
-}
-
-function almostEqual(left: number, right: number) {
-  return Math.abs(left - right) <= 0.005
-}
-
-function isSeedBalance(debt: Debt) {
-  const seed = seededDebtBalances[debt.id]
-  return typeof seed === 'number' && almostEqual(debt.balance, seed)
-}
-
-function mergeDebtPair(
-  remote: Debt,
-  local: Debt,
-  prefer: 'local' | 'remote',
-): Debt {
-  if (remote.balance <= 0.005 && local.balance > 0.005) return local
-  if (local.balance <= 0.005 && remote.balance > 0.005) {
-    return prefer === 'local' ? { ...local, balance: remote.balance } : remote
-  }
-  if (prefer === 'local') {
-    if (isSeedBalance(local) && !isSeedBalance(remote)) return remote
-    return local
-  }
-  if (isSeedBalance(remote) && !isSeedBalance(local)) return local
-  return remote
-}
-
-function mergeDebts(
-  remote: Debt[],
-  local: Debt[],
-  prefer: 'local' | 'remote',
-) {
-  const remoteById = new Map(remote.map((debt) => [debt.id, debt]))
-  const localById = new Map(local.map((debt) => [debt.id, debt]))
-  const ordered = prefer === 'local' ? [...local, ...remote] : [...remote, ...local]
-  const seen = new Set<string>()
-  const merged: Debt[] = []
-  for (const debt of ordered) {
-    if (seen.has(debt.id)) continue
-    seen.add(debt.id)
-    const fromRemote = remoteById.get(debt.id)
-    const fromLocal = localById.get(debt.id)
-    if (fromRemote && fromLocal) {
-      merged.push(mergeDebtPair(fromRemote, fromLocal, prefer))
-    } else {
-      merged.push(fromRemote ?? fromLocal ?? debt)
-    }
-  }
-  return merged
-}
-
-function stampTime(value: string | undefined) {
-  if (!value) return 0
-  const parsed = Date.parse(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function unionById<T extends { id: string }>(preferred: T[], other: T[]) {
-  const merged = new Map(other.map((item) => [item.id, item]))
-  for (const item of preferred) merged.set(item.id, item)
-  return [...merged.values()]
-}
-
-export function mergeBudgets(remote: BudgetState, local: BudgetState): BudgetState {
-  const remoteAt = stampTime(remote.updatedAt)
-  const localAt = stampTime(local.updatedAt)
-  const newer = localAt > remoteAt ? local : remote
-  const older = newer === local ? remote : local
-  return {
-    ...newer,
-    accounts: unionById(newer.accounts, older.accounts),
-    expenses: unionById(newer.expenses, older.expenses),
-    categories: unionById(newer.categories, older.categories),
-    debts: mergeDebts(remote.debts, local.debts, localAt >= remoteAt ? 'local' : 'remote'),
-    updatedAt: newer.updatedAt ?? older.updatedAt,
-  }
-}
-
-export function mergePlans(remote: DebtPlanState, local: DebtPlanState): DebtPlanState {
-  const loggedMonths = [
-    ...new Set([...(remote.loggedMonths ?? []), ...(local.loggedMonths ?? [])]),
-  ].sort()
-  return {
-    ...remote,
-    customOrder:
-      remote.customOrder.length > 0 ? remote.customOrder : local.customOrder,
-    affirmLoans: unionById(
-      remote.affirmLoans.length >= local.affirmLoans.length
-        ? remote.affirmLoans
-        : local.affirmLoans,
-      remote.affirmLoans.length >= local.affirmLoans.length
-        ? local.affirmLoans
-        : remote.affirmLoans,
-    ),
-    loggedMonths,
-    loggedHistory: {
-      ...(remote.loggedHistory ?? {}),
-      ...(local.loggedHistory ?? {}),
-    },
-    paymentsByMonth: mergeMonthMaps(
-      remote.paymentsByMonth,
-      local.paymentsByMonth,
-    ),
-    chargesByMonth: mergeMonthMaps(remote.chargesByMonth, local.chargesByMonth),
-    interestByMonth: mergeMonthMaps(
-      remote.interestByMonth,
-      local.interestByMonth,
-    ),
-    closedDebts: [
-      ...(remote.closedDebts ?? []).filter(
-        (debt) => !(local.closedDebts ?? []).some((item) => item.id === debt.id),
-      ),
-      ...(local.closedDebts ?? []),
-    ],
-    extraByMonth: {
-      ...(remote.extraByMonth ?? {}),
-      ...(local.extraByMonth ?? {}),
-    },
-    adjustmentsByMonth: mergeMonthMaps(
-      remote.adjustmentsByMonth ?? {},
-      local.adjustmentsByMonth ?? {},
-    ),
-    recurringCharges:
-      Object.keys(remote.recurringCharges).length >=
-      Object.keys(local.recurringCharges).length
-        ? { ...local.recurringCharges, ...remote.recurringCharges }
-        : { ...remote.recurringCharges, ...local.recurringCharges },
-  }
-}
-
-function mergeAppState(remote: UserAppState, local: UserAppState): UserAppState {
-  return {
-    budget: mergeBudgets(remote.budget, local.budget),
-    plan: mergePlans(remote.plan, local.plan),
-    spending: mergeSpending(remote.spending, local.spending),
-  }
-}
-
-export function syncUserAppStateFromCloud() {
+export function syncUserAppStateFromCloud(): Promise<CloudSync> {
   if (!inflight) {
     inflight = (async () => {
-      const remote = await fetchUserAppState()
-      const local = localAppState()
-      if (remote) {
-        const merged = mergeAppState(remote, local)
-        applyLocal(merged)
-        await upsertUserAppState(merged)
-        return merged
+      const read = await readCloudAppState()
+      if (read.status === 'error') {
+        return { state: localAppState(), fromCloud: false }
       }
-      applyLocal(local)
-      await upsertUserAppState(local)
-      return local
+      if (read.status === 'empty') {
+        const local = localAppState()
+        applyLocal(local)
+        await upsertUserAppState(local)
+        return { state: local, fromCloud: true }
+      }
+      applyLocal(read.state)
+      if (read.upload) await upsertUserAppState(read.state)
+      return { state: read.state, fromCloud: true }
     })()
   }
   return inflight

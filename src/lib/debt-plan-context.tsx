@@ -21,7 +21,6 @@ import {
 import { supabase } from '@/lib/supabase'
 import {
   markCloudReady,
-  mergePlans,
   rememberPlan,
   resetUserAppStateSync,
   scheduleUserAppStatePush,
@@ -56,8 +55,9 @@ export function DebtPlanProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const synced = await syncUserAppStateFromCloud()
       if (cancelled) return
-      setPlanState((current) => mergePlans(synced.plan, current))
       markCloudReady()
+      if (!synced.fromCloud) return
+      setPlanState(synced.state.plan)
     })()
     return () => {
       cancelled = true
