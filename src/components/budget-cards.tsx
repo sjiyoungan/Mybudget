@@ -65,6 +65,7 @@ import { averageMonthlyNet, currentMonthNet } from '@/lib/income'
 import { usePaystubs } from '@/lib/paystub-context'
 import {
   accountDepositNeed,
+  accountKindLabel,
   billsAccount,
   billedAmountFromMonthly,
   chargeExpensesForDebt,
@@ -81,6 +82,7 @@ import {
   MORTGAGE_CATEGORY_ID,
   VARIABLE_CATEGORY_ID,
   isCreditCardDebt,
+  isDepositAccount,
   normalizeDebtType,
   ceilCents,
   ceilDollars,
@@ -686,6 +688,9 @@ function BankSelect({
   const checking = accounts.filter(
     (account) => normalizeAccountKind(account.kind) === 'checking',
   )
+  const debit = accounts.filter(
+    (account) => normalizeAccountKind(account.kind) === 'debit',
+  )
   const cards = includeCards
     ? debts.filter((debt) => isCreditCardDebt(debt))
     : []
@@ -749,6 +754,12 @@ function BankSelect({
           <SelectLabel>Checking</SelectLabel>
           {checking.map(accountOption)}
         </SelectGroup>
+        {debit.length > 0 ? (
+          <SelectGroup>
+            <SelectLabel>Debit</SelectLabel>
+            {debit.map(accountOption)}
+          </SelectGroup>
+        ) : null}
         {includeCards ? (
           <SelectGroup>
             <SelectLabel>Credit card</SelectLabel>
@@ -2672,7 +2683,7 @@ const purposeColClass = 'min-w-0 truncate'
 const ACCOUNT_ROW_GRID =
   'grid w-full min-w-0 grid-cols-[minmax(9rem,max-content)_minmax(0,1fr)_4.5rem] items-baseline gap-x-8'
 const ACCOUNT_EDIT_GRID =
-  'grid grid-cols-[minmax(8rem,14rem)_5.5rem_minmax(7rem,10rem)_7rem_28px] items-center gap-2'
+  'grid grid-cols-[minmax(8rem,12rem)_8.5rem_5.5rem_minmax(7rem,10rem)_7rem_28px] items-center gap-2'
 
 export function CardGearButton({
   label,
@@ -2760,10 +2771,9 @@ function DebtListRow({
 function AccountsCard() {
   const { accounts, expenses, debts } = useBudget()
   const { paystubs } = usePaystubs()
-  const [open, setOpen] = useState(false)
   const [drawerAccount, setDrawerAccount] = useState<string | null>(null)
   const listed = useMemo(
-    () => accounts.filter((account) => account.kind === 'checking'),
+    () => accounts.filter((account) => isDepositAccount(account.kind)),
     [accounts],
   )
   const monthlyNet = useMemo(
@@ -2775,13 +2785,7 @@ function AccountsCard() {
     <>
       <Card className="self-start">
         <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <CardTitle>Deposits</CardTitle>
-            <CardGearButton
-              label="Edit accounts"
-              onClick={() => setOpen(true)}
-            />
-          </div>
+          <CardTitle>Deposits</CardTitle>
         </CardHeader>
         <CardContent className="grid">
           <div className="grid gap-y-1">
@@ -2848,8 +2852,6 @@ function AccountsCard() {
         </CardContent>
       </Card>
 
-      <EditAccountsDialog open={open} onOpenChange={setOpen} />
-
       <AccountDrawer
         accountId={drawerAccount}
         onClose={() => setDrawerAccount(null)}
@@ -2887,7 +2889,7 @@ function EditAccountsDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { accounts, replaceAccounts } = useBudget()
+  const { accounts, debts, replaceAccounts, replaceDebts } = useBudget()
   const [drafts, setDrafts] = useState<AccountDraft[]>([])
   const [baseline, setBaseline] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -2896,14 +2898,32 @@ function EditAccountsDialog({
 
   useLayoutEffect(() => {
     if (!open) return
-    const next = accounts.map((account) => ({
-      id: account.id,
-      name: account.name,
-      lastFour: account.lastFour,
-      purpose: account.purpose ?? '',
-      kind: account.kind,
-      leftover: account.role === 'overflow',
-    }))
+    const accountIds = new Set(accounts.map((account) => account.id))
+    const next: AccountDraft[] = [
+      ...accounts.map((account) => ({
+        id: account.id,
+        name: account.name,
+        lastFour: account.lastFour,
+        purpose: account.purpose ?? '',
+        kind: account.kind,
+        leftover: account.role === 'overflow',
+      })),
+      ...debts
+        .filter(
+          (debt) =>
+            debt.id !== AFFIRM_DEBT_ID &&
+            isCreditCardDebt(debt) &&
+            !accountIds.has(debt.id),
+        )
+        .map((debt) => ({
+          id: debt.id,
+          name: debt.lender,
+          lastFour: debt.lastFour ?? '',
+          purpose: '',
+          kind: 'credit' as const,
+          leftover: false,
+        })),
+    ]
     setDrafts(next)
     setBaseline(accountSnapshot(next))
     setConfirmOpen(false)
@@ -2915,10 +2935,13 @@ function EditAccountsDialog({
     () => accountSnapshot(drafts) !== baseline,
     [drafts, baseline],
   )
-  const existingIds = useMemo(
-    () => new Set(accounts.map((account) => account.id)),
-    [accounts],
-  )
+  const existingIds = useMemo(() => {
+    const ids = new Set(accounts.map((account) => account.id))
+    for (const debt of debts) {
+      if (isCreditCardDebt(debt)) ids.add(debt.id)
+    }
+    return ids
+  }, [accounts, debts])
   const canSubmit =
     dirty &&
     drafts
@@ -2976,13 +2999,14 @@ function EditAccountsDialog({
   function handleSave() {
     if (!canSubmit) return
     const kept = drafts.filter((draft) => draft.name.trim() !== '')
-    const previous = new Map(accounts.map((account) => [account.id, account]))
-    const leftoverId = kept.find(
-      (draft) => draft.leftover && draft.kind === 'checking',
-    )?.id
+    const depositDrafts = kept.filter((draft) => isDepositAccount(draft.kind))
+    const cardDrafts = kept.filter((draft) => draft.kind === 'credit')
+    const previousAccounts = new Map(accounts.map((account) => [account.id, account]))
+    const previousDebts = new Map(debts.map((debt) => [debt.id, debt]))
+    const leftoverId = depositDrafts.find((draft) => draft.leftover)?.id
     replaceAccounts(
-      kept.map((draft) => {
-        const current = previous.get(draft.id)
+      depositDrafts.map((draft) => {
+        const current = previousAccounts.get(draft.id)
         let role = current?.role ?? 'other'
         if (draft.id === leftoverId) role = 'overflow'
         else if (role === 'overflow') role = 'other'
@@ -2997,6 +3021,38 @@ function EditAccountsDialog({
         }
       }),
     )
+    const loans = debts.filter(
+      (debt) => debt.id === AFFIRM_DEBT_ID || !isCreditCardDebt(debt),
+    )
+    replaceDebts([
+      ...loans,
+      ...cardDrafts.map((draft) => {
+        const existing = previousDebts.get(draft.id)
+        const lastFour = draft.lastFour.trim()
+        if (existing && isCreditCardDebt(existing)) {
+          return {
+            ...existing,
+            lender: draft.name.trim(),
+            ...(lastFour ? { lastFour } : { lastFour: undefined }),
+          }
+        }
+        return {
+          id: draft.id,
+          lender: draft.name.trim(),
+          dueDay: null,
+          minimum: 0,
+          extraPayment: 0,
+          paidFromAccountId: '',
+          chargeAccountId: '',
+          type: 'credit-card' as const,
+          apr: 0,
+          promoApr: null,
+          promoEndsOn: null,
+          balance: existing?.balance ?? 0,
+          ...(lastFour ? { lastFour } : {}),
+        }
+      }),
+    ])
     closeClean()
   }
 
@@ -3050,6 +3106,7 @@ function EditAccountsDialog({
               )}
             >
               <span className={DEBT_LABEL_LEFT}>Name</span>
+              <span>Type</span>
               <span>Last four</span>
               <span>For</span>
               <span
@@ -3075,6 +3132,29 @@ function EditAccountsDialog({
                   aria-label="Account name"
                   autoFocus={focusId === draft.id}
                 />
+                <Select
+                  value={draft.kind}
+                  onValueChange={(kind) => {
+                    const next = kind as AccountKind
+                    updateDraft(draft.id, {
+                      kind: next,
+                      leftover: next === 'credit' ? false : draft.leftover,
+                    })
+                  }}
+                >
+                  <SelectTrigger
+                    className={cn('h-8 w-full', EDIT_GHOST_FIELD)}
+                    chevron="hover"
+                    aria-label="Account type"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="checking">{accountKindLabel('checking')}</SelectItem>
+                    <SelectItem value="debit">{accountKindLabel('debit')}</SelectItem>
+                    <SelectItem value="credit">{accountKindLabel('credit')}</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Input
                   className={cn('h-8 tabular-nums', EDIT_GHOST_FIELD)}
                   value={draft.lastFour}
@@ -3097,7 +3177,7 @@ function EditAccountsDialog({
                   placeholder=""
                   aria-label="What this account is for"
                 />
-                {draft.kind === 'checking' ? (
+                {isDepositAccount(draft.kind) ? (
                   <button
                     type="button"
                     role="checkbox"
@@ -3220,6 +3300,18 @@ function EditAccountsDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  )
+}
+
+export function EditAccountsButton() {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+        Edit accounts
+      </Button>
+      <EditAccountsDialog open={open} onOpenChange={setOpen} />
     </>
   )
 }
@@ -3801,6 +3893,7 @@ function draftToDebt(
     promoApr: promoAprField(draft.promoApr),
     promoEndsOn: parsePromoEndsOn(draft.promoEndsOn),
     balance,
+    ...(previous?.lastFour ? { lastFour: previous.lastFour } : {}),
   }
 }
 

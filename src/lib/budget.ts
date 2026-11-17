@@ -4,7 +4,7 @@ const STORAGE_KEY = 'mybudget.budget.v1'
 
 export type AccountRole = 'bills' | 'overflow' | 'other'
 
-export type AccountKind = 'checking' | 'credit'
+export type AccountKind = 'checking' | 'debit' | 'credit'
 
 export type BankAccount = {
   id: string
@@ -68,6 +68,7 @@ export type Debt = {
   /** `YYYY-MM` or `YYYY-MM-DD`. Pay off before this month/day. */
   promoEndsOn: string | null
   balance: number
+  lastFour?: string
 }
 
 export type BudgetState = {
@@ -367,15 +368,20 @@ function isExpenseFrequency(value: unknown): value is ExpenseFrequency {
 }
 
 export function isAccountKind(value: unknown): value is AccountKind {
-  return value === 'checking' || value === 'credit'
+  return value === 'checking' || value === 'debit' || value === 'credit'
 }
 
 export function normalizeAccountKind(value: unknown): AccountKind {
   if (isAccountKind(value)) return value
   if (typeof value !== 'string') return 'checking'
   const n = value.trim().toLowerCase()
+  if (n.includes('debit')) return 'debit'
   if (n.includes('credit')) return 'credit'
   return 'checking'
+}
+
+export function isDepositAccount(kind: AccountKind) {
+  return kind === 'checking' || kind === 'debit'
 }
 
 export function isDebtType(value: unknown): value is DebtType {
@@ -598,7 +604,9 @@ export function estimatedCardMinimum(balance: number, apr: number) {
 }
 
 export function accountKindLabel(kind: AccountKind) {
-  return kind === 'credit' ? 'Credit card' : 'Checking'
+  if (kind === 'credit') return 'Credit card'
+  if (kind === 'debit') return 'Debit'
+  return 'Checking'
 }
 
 export function roundCents(value: number) {
@@ -744,6 +752,9 @@ function normalizeDebt(value: unknown): Debt | null {
     promoApr: normalizePromoApr(item.promoApr),
     promoEndsOn: normalizePromoEndsOn(item.promoEndsOn),
     balance: item.balance,
+    ...(typeof item.lastFour === 'string' && lastFourDigits(item.lastFour)
+      ? { lastFour: lastFourDigits(item.lastFour) }
+      : {}),
   }
 }
 

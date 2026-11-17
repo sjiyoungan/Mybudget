@@ -165,7 +165,7 @@ const AFFIRM_PAYMENT_ID = 'payment-affirm'
 type PaymentAccount = {
   id: string
   name: string
-  kind: 'checking' | 'credit' | 'affirm'
+  kind: 'checking' | 'debit' | 'credit' | 'affirm'
 }
 
 function affirmLoanLabel(loan: Pick<AffirmLoan, 'name' | 'loanId'>) {
@@ -440,7 +440,12 @@ export function SpendingPage() {
     const list: PaymentAccount[] = accounts.map((account) => ({
       id: account.id,
       name: account.name,
-      kind: account.kind === 'credit' ? 'credit' : 'checking',
+      kind:
+        account.kind === 'credit'
+          ? 'credit'
+          : account.kind === 'debit'
+            ? 'debit'
+            : 'checking',
     }))
     const seen = new Set(list.map((account) => account.id))
     for (const debt of debts) {
@@ -2287,6 +2292,7 @@ function AccountField({
 }) {
   const known = accounts.some((account) => account.id === accountId)
   const checking = accounts.filter((account) => account.kind === 'checking')
+  const debit = accounts.filter((account) => account.kind === 'debit')
   const cards = accounts.filter((account) => account.kind === 'credit')
   const affirm = accounts.filter((account) => account.kind === 'affirm')
   const options = (items: PaymentAccount[]) =>
@@ -2295,7 +2301,7 @@ function AccountField({
         {account.name}
       </SelectItem>
     ))
-  const grouped = cards.length > 0 || affirm.length > 0
+  const grouped = debit.length > 0 || cards.length > 0 || affirm.length > 0
   return (
     <label className="grid gap-1.5">
       <span className="text-muted-foreground text-xs">Account</span>
@@ -2313,6 +2319,12 @@ function AccountField({
                 <SelectLabel>Checking</SelectLabel>
                 {options(checking)}
               </SelectGroup>
+              {debit.length > 0 ? (
+                <SelectGroup>
+                  <SelectLabel>Debit</SelectLabel>
+                  {options(debit)}
+                </SelectGroup>
+              ) : null}
               {cards.length > 0 ? (
                 <SelectGroup>
                   <SelectLabel>Credit card</SelectLabel>
