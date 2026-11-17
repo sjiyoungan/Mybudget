@@ -1903,6 +1903,7 @@ function TransactionRow({
   divided?: boolean
   onClick: () => void
 }) {
+  const [open, setOpen] = useState(false)
   const category = categoryName(txn.categoryId, categories)
   const merchant = displayMerchant(txn)
   const description =
@@ -1913,7 +1914,7 @@ function TransactionRow({
         type="button"
         className={cn(
           'hover-fill grid w-full min-w-0 items-start gap-x-3 rounded-lg py-2 text-left',
-          'grid-cols-[minmax(0,1fr)_3.25rem_5.75rem]',
+          'grid-cols-[minmax(0,1fr)_5.75rem]',
           showAccount && showDate &&
             'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_6rem_auto_5.75rem]',
           showAccount && !showDate &&
@@ -1923,12 +1924,19 @@ function TransactionRow({
           !showAccount && !showDate &&
             'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_5.75rem]',
         )}
-        onClick={onClick}
+        aria-expanded={open}
+        onClick={() => {
+          if (window.matchMedia('(min-width: 1024px)').matches) {
+            onClick()
+            return
+          }
+          setOpen((current) => !current)
+        }}
       >
         <span className="min-w-0 break-words [overflow-wrap:anywhere]">
           {description || merchant}
         </span>
-        <span className="text-muted-foreground w-full min-w-0 truncate pt-0.5 text-xs lg:overflow-visible lg:whitespace-normal lg:break-words">
+        <span className="text-muted-foreground hidden w-full min-w-0 truncate pt-0.5 text-xs lg:block lg:overflow-visible lg:whitespace-normal lg:break-words">
           {category}
         </span>
         <span className="text-muted-foreground hidden min-w-0 break-words pt-0.5 text-xs [overflow-wrap:anywhere] lg:block">
@@ -1953,18 +1961,25 @@ function TransactionRow({
           {formatTxnAmount(txn.amount)}
         </span>
       </button>
-      <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 pb-2 text-xs lg:hidden">
-        <dt className="text-muted-foreground">Merchant</dt>
-        <dd className="min-w-0 break-words">{merchant}</dd>
-        <dt className="text-muted-foreground">Category</dt>
-        <dd className="min-w-0 break-words">{category}</dd>
-        <dt className="text-muted-foreground">Account</dt>
-        <dd className="min-w-0 break-words">
-          {accountName(txn.accountId, accounts)}
-        </dd>
-        <dt className="text-muted-foreground">Date</dt>
-        <dd>{formatDateWithoutYear(txn.date, 'short')}</dd>
-      </dl>
+      {open ? (
+        <div className="grid justify-items-start gap-2 pb-2 lg:hidden">
+          <dl className="grid w-full grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+            <dt className="text-muted-foreground">Merchant</dt>
+            <dd className="min-w-0 break-words">{merchant}</dd>
+            <dt className="text-muted-foreground">Category</dt>
+            <dd className="min-w-0 break-words">{category}</dd>
+            <dt className="text-muted-foreground">Account</dt>
+            <dd className="min-w-0 break-words">
+              {accountName(txn.accountId, accounts)}
+            </dd>
+            <dt className="text-muted-foreground">Date</dt>
+            <dd>{formatDateWithoutYear(txn.date, 'short')}</dd>
+          </dl>
+          <Button type="button" variant="outline" size="sm" onClick={onClick}>
+            Edit
+          </Button>
+        </div>
+      ) : null}
     </li>
   )
 }
