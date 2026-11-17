@@ -15,6 +15,8 @@ export type BankAccount = {
   /** What this account is for, like holidays or groceries. */
   purpose: string
   balance: number
+  /** Checking and debit accounts stay off Deposits until they are added there. */
+  inDeposits?: boolean
 }
 
 export type ExpenseCategoryGroup = {
@@ -384,6 +386,10 @@ export function isDepositAccount(kind: AccountKind) {
   return kind === 'checking' || kind === 'debit'
 }
 
+export function accountInDeposits(account: Pick<BankAccount, 'kind' | 'inDeposits'>) {
+  return isDepositAccount(account.kind) && account.inDeposits !== false
+}
+
 export function isDebtType(value: unknown): value is DebtType {
   return value === 'credit-card' || value === 'loan'
 }
@@ -666,6 +672,7 @@ function normalizeAccount(value: unknown): BankAccount | null {
     role,
     purpose,
     balance: typeof item.balance === 'number' ? item.balance : 0,
+    ...(item.inDeposits === false ? { inDeposits: false } : {}),
   }
 }
 

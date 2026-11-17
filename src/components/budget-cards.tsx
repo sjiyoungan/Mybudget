@@ -83,6 +83,7 @@ import {
   VARIABLE_CATEGORY_ID,
   isCreditCardDebt,
   isDepositAccount,
+  accountInDeposits,
   normalizeDebtType,
   ceilCents,
   ceilDollars,
@@ -2683,7 +2684,7 @@ const purposeColClass = 'min-w-0 truncate'
 const ACCOUNT_ROW_GRID =
   'grid w-full min-w-0 grid-cols-[minmax(9rem,max-content)_minmax(0,1fr)_4.5rem] items-baseline gap-x-8'
 const ACCOUNT_EDIT_GRID =
-  'grid grid-cols-[minmax(8rem,12rem)_8.5rem_5.5rem_minmax(7rem,10rem)_7rem_28px] items-center gap-2'
+  'grid grid-cols-[minmax(8rem,14rem)_8.5rem_5.5rem_28px] items-center gap-2'
 
 export function CardGearButton({
   label,
@@ -2771,9 +2772,10 @@ function DebtListRow({
 function AccountsCard() {
   const { accounts, expenses, debts } = useBudget()
   const { paystubs } = usePaystubs()
+  const [open, setOpen] = useState(false)
   const [drawerAccount, setDrawerAccount] = useState<string | null>(null)
   const listed = useMemo(
-    () => accounts.filter((account) => isDepositAccount(account.kind)),
+    () => accounts.filter((account) => accountInDeposits(account)),
     [accounts],
   )
   const monthlyNet = useMemo(
@@ -2785,7 +2787,10 @@ function AccountsCard() {
     <>
       <Card className="self-start">
         <CardHeader>
-          <CardTitle>Deposits</CardTitle>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle>Deposits</CardTitle>
+            <CardGearButton label="Edit deposits" onClick={() => setOpen(true)} />
+          </div>
         </CardHeader>
         <CardContent className="grid">
           <div className="grid gap-y-1">
@@ -2852,6 +2857,8 @@ function AccountsCard() {
         </CardContent>
       </Card>
 
+      <DepositSettingsDialog open={open} onOpenChange={setOpen} />
+
       <AccountDrawer
         accountId={drawerAccount}
         onClose={() => setDrawerAccount(null)}
@@ -2864,9 +2871,7 @@ type AccountDraft = {
   id: string
   name: string
   lastFour: string
-  purpose: string
   kind: AccountKind
-  leftover: boolean
 }
 
 function accountSnapshot(drafts: AccountDraft[]) {
@@ -2875,9 +2880,7 @@ function accountSnapshot(drafts: AccountDraft[]) {
       id: draft.id,
       name: draft.name.trim(),
       lastFour: draft.lastFour,
-      purpose: draft.purpose.trim(),
       kind: draft.kind,
-      leftover: draft.leftover,
     })),
   )
 }
@@ -2904,9 +2907,7 @@ function EditAccountsDialog({
         id: account.id,
         name: account.name,
         lastFour: account.lastFour,
-        purpose: account.purpose ?? '',
         kind: account.kind,
-        leftover: account.role === 'overflow',
       })),
       ...debts
         .filter(
@@ -2919,9 +2920,7 @@ function EditAccountsDialog({
           id: debt.id,
           name: debt.lender,
           lastFour: debt.lastFour ?? '',
-          purpose: '',
           kind: 'credit' as const,
-          leftover: false,
         })),
     ]
     setDrafts(next)
@@ -2962,15 +2961,6 @@ function EditAccountsDialog({
     )
   }
 
-  function setLeftover(id: string, leftover: boolean) {
-    setDrafts((current) =>
-      current.map((draft) => ({
-        ...draft,
-        leftover: leftover ? draft.id === id : draft.id === id ? false : draft.leftover,
-      })),
-    )
-  }
-
   function closeClean() {
     setConfirmOpen(false)
     setRemoveId(null)
@@ -2999,60 +2989,46 @@ function EditAccountsDialog({
   function handleSave() {
     if (!canSubmit) return
     const kept = drafts.filter((draft) => draft.name.trim() !== '')
-    const depositDrafts = kept.filter((draft) => isDepositAccount(draft.kind))
-    const cardDrafts = kept.filter((draft) => draft.kind === 'credit')
     const previousAccounts = new Map(accounts.map((account) => [account.id, account]))
-    const previousDebts = new Map(debts.map((debt) => [debt.id, debt]))
-    const leftoverId = depositDrafts.find((draft) => draft.leftover)?.id
+    const keptIds = new Set(kept.map((draft) => draft.id))
+    const creditIds = new Set(
+      kept.filter((draft) => draft.kind === 'credit').map((draft) => draft.id),
+    )
     replaceAccounts(
-      depositDrafts.map((draft) => {
+      kept.map((draft) => {
         const current = previousAccounts.get(draft.id)
-        let role = current?.role ?? 'other'
-        if (draft.id === leftoverId) role = 'overflow'
-        else if (role === 'overflow') role = 'other'
-        return {
+        const next = {
           id: draft.id,
           name: draft.name.trim(),
           kind: draft.kind,
           lastFour: draft.lastFour,
-          role,
-          purpose: draft.purpose.trim(),
+          role: current?.role ?? 'other',
+          purpose: current?.purpose ?? '',
           balance: current?.balance ?? 0,
         }
+        if (!isDepositAccount(draft.kind) || !current || current.inDeposits === false) {
+          return { ...next, inDeposits: false as const }
+        }
+        return next
       }),
     )
-    const loans = debts.filter(
-      (debt) => debt.id === AFFIRM_DEBT_ID || !isCreditCardDebt(debt),
-    )
-    replaceDebts([
-      ...loans,
-      ...cardDrafts.map((draft) => {
-        const existing = previousDebts.get(draft.id)
-        const lastFour = draft.lastFour.trim()
-        if (existing && isCreditCardDebt(existing)) {
+    replaceDebts(
+      debts
+        .filter((debt) => {
+          if (debt.id === AFFIRM_DEBT_ID || !isCreditCardDebt(debt)) return true
+          return keptIds.has(debt.id) && creditIds.has(debt.id)
+        })
+        .map((debt) => {
+          const draft = kept.find((item) => item.id === debt.id)
+          if (!draft || !isCreditCardDebt(debt)) return debt
+          const lastFour = draft.lastFour.trim()
           return {
-            ...existing,
+            ...debt,
             lender: draft.name.trim(),
             ...(lastFour ? { lastFour } : { lastFour: undefined }),
           }
-        }
-        return {
-          id: draft.id,
-          lender: draft.name.trim(),
-          dueDay: null,
-          minimum: 0,
-          extraPayment: 0,
-          paidFromAccountId: '',
-          chargeAccountId: '',
-          type: 'credit-card' as const,
-          apr: 0,
-          promoApr: null,
-          promoEndsOn: null,
-          balance: existing?.balance ?? 0,
-          ...(lastFour ? { lastFour } : {}),
-        }
-      }),
-    ])
+        }),
+    )
     closeClean()
   }
 
@@ -3061,7 +3037,7 @@ function EditAccountsDialog({
     setFocusId(id)
     setDrafts((current) => [
       ...current,
-      { id, name: '', lastFour: '', purpose: '', kind: 'checking', leftover: false },
+      { id, name: '', lastFour: '', kind: 'checking' },
     ])
   }
 
@@ -3108,13 +3084,6 @@ function EditAccountsDialog({
               <span className={DEBT_LABEL_LEFT}>Name</span>
               <span>Type</span>
               <span>Last four</span>
-              <span>For</span>
-              <span
-                className="text-center leading-tight"
-                title="The rest of the paycheck goes into this account"
-              >
-                Rest of paycheck
-              </span>
               <span />
             </div>
             {drafts.map((draft) => (
@@ -3134,13 +3103,9 @@ function EditAccountsDialog({
                 />
                 <Select
                   value={draft.kind}
-                  onValueChange={(kind) => {
-                    const next = kind as AccountKind
-                    updateDraft(draft.id, {
-                      kind: next,
-                      leftover: next === 'credit' ? false : draft.leftover,
-                    })
-                  }}
+                  onValueChange={(kind) =>
+                    updateDraft(draft.id, { kind: kind as AccountKind })
+                  }
                 >
                   <SelectTrigger
                     className={cn('h-8 w-full', EDIT_GHOST_FIELD)}
@@ -3168,35 +3133,6 @@ function EditAccountsDialog({
                   maxLength={4}
                   aria-label="Last four digits"
                 />
-                <Input
-                  className={cn('h-8', EDIT_GHOST_FIELD)}
-                  value={draft.purpose}
-                  onChange={(event) =>
-                    updateDraft(draft.id, { purpose: event.target.value })
-                  }
-                  placeholder=""
-                  aria-label="What this account is for"
-                />
-                {isDepositAccount(draft.kind) ? (
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={draft.leftover}
-                    aria-label="Rest of paycheck goes here"
-                    title="Rest of paycheck goes here"
-                    className={cn(
-                      'flex size-8 cursor-pointer items-center justify-center justify-self-center outline-none',
-                      EDIT_GHOST_BOX,
-                    )}
-                    onClick={() => setLeftover(draft.id, !draft.leftover)}
-                  >
-                    {draft.leftover ? (
-                      <Check className="size-3.5 text-neutral-500" />
-                    ) : null}
-                  </button>
-                ) : (
-                  <span />
-                )}
                 <Button
                   type="button"
                   variant="ghost"
@@ -3312,6 +3248,388 @@ export function EditAccountsButton() {
         Edit accounts
       </Button>
       <EditAccountsDialog open={open} onOpenChange={setOpen} />
+    </>
+  )
+}
+
+const DEPOSIT_EDIT_GRID =
+  'grid grid-cols-[minmax(10rem,14rem)_minmax(7rem,10rem)_5.5rem_7rem_28px] items-center gap-2'
+
+type DepositDraft = {
+  id: string
+  name: string
+  kind: 'checking' | 'debit'
+  lastFour: string
+  purpose: string
+  leftover: boolean
+  isNew: boolean
+}
+
+function depositSnapshot(drafts: DepositDraft[]) {
+  return JSON.stringify(
+    drafts.map((draft) => ({
+      id: draft.id,
+      name: draft.name.trim(),
+      kind: draft.kind,
+      lastFour: draft.lastFour,
+      purpose: draft.purpose.trim(),
+      leftover: draft.leftover,
+      isNew: draft.isNew,
+    })),
+  )
+}
+
+function DepositSettingsDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const { accounts, expenses, debts, replaceAccounts } = useBudget()
+  const { paystubs } = usePaystubs()
+  const [drafts, setDrafts] = useState<DepositDraft[]>([])
+  const [baseline, setBaseline] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [focusId, setFocusId] = useState<string | null>(null)
+  const monthlyNet = useMemo(
+    () => averageMonthlyNet(paystubs, new Date().getFullYear()),
+    [paystubs],
+  )
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const next = accounts
+      .filter((account) => accountInDeposits(account))
+      .map((account) => ({
+        id: account.id,
+        name: account.name,
+        kind: account.kind === 'debit' ? ('debit' as const) : ('checking' as const),
+        lastFour: account.lastFour,
+        purpose: account.purpose ?? '',
+        leftover: account.role === 'overflow',
+        isNew: false,
+      }))
+    setDrafts(next)
+    setBaseline(depositSnapshot(next))
+    setConfirmOpen(false)
+    setFocusId(null)
+  }, [open])
+
+  const dirty = depositSnapshot(drafts) !== baseline
+  const canSubmit =
+    dirty && drafts.every((draft) => !draft.isNew || draft.name.trim() !== '')
+  const available = accounts.filter(
+    (account) =>
+      isDepositAccount(account.kind) && !drafts.some((draft) => draft.id === account.id),
+  )
+
+  function updateDraft(id: string, patch: Partial<DepositDraft>) {
+    setDrafts((current) =>
+      current.map((draft) => (draft.id === id ? { ...draft, ...patch } : draft)),
+    )
+  }
+
+  function setLeftover(id: string, leftover: boolean) {
+    setDrafts((current) =>
+      current.map((draft) => ({
+        ...draft,
+        leftover: leftover ? draft.id === id : draft.id === id ? false : draft.leftover,
+      })),
+    )
+  }
+
+  function addExisting(accountId: string) {
+    const account = accounts.find((item) => item.id === accountId)
+    if (!account || !isDepositAccount(account.kind)) return
+    setDrafts((current) => [
+      ...current,
+      {
+        id: account.id,
+        name: account.name,
+        kind: account.kind === 'debit' ? 'debit' : 'checking',
+        lastFour: account.lastFour,
+        purpose: account.purpose ?? '',
+        leftover: false,
+        isNew: false,
+      },
+    ])
+  }
+
+  function addNew() {
+    const id = crypto.randomUUID()
+    setFocusId(id)
+    setDrafts((current) => [
+      ...current,
+      {
+        id,
+        name: '',
+        kind: 'checking',
+        lastFour: '',
+        purpose: '',
+        leftover: false,
+        isNew: true,
+      },
+    ])
+  }
+
+  function closeClean() {
+    setConfirmOpen(false)
+    onOpenChange(false)
+  }
+
+  function requestClose() {
+    if (confirmOpen) return
+    if (dirty) {
+      setConfirmOpen(true)
+      return
+    }
+    closeClean()
+  }
+
+  function handleSave() {
+    if (!canSubmit) return
+    const kept = drafts.filter((draft) => draft.name.trim() !== '')
+    const keptIds = new Set(kept.map((draft) => draft.id))
+    const leftoverId = kept.find((draft) => draft.leftover)?.id
+    const next = accounts.map((account) => {
+      const draft = kept.find((item) => item.id === account.id)
+      if (draft) {
+        let role = account.role
+        if (draft.id === leftoverId) role = 'overflow'
+        else if (role === 'overflow') role = 'other'
+        return {
+          ...account,
+          purpose: draft.purpose.trim(),
+          role,
+          inDeposits: true,
+        }
+      }
+      if (!accountInDeposits(account) && account.inDeposits !== false) return account
+      if (!isDepositAccount(account.kind)) return account
+      if (!keptIds.has(account.id)) {
+        return {
+          ...account,
+          role: account.role === 'overflow' ? ('other' as const) : account.role,
+          inDeposits: false,
+        }
+      }
+      return account
+    })
+    const created = kept
+      .filter((draft) => draft.isNew)
+      .map((draft) => ({
+        id: draft.id,
+        name: draft.name.trim(),
+        kind: draft.kind,
+        lastFour: draft.lastFour,
+        role: draft.id === leftoverId ? ('overflow' as const) : ('other' as const),
+        purpose: draft.purpose.trim(),
+        balance: 0,
+        inDeposits: true,
+      }))
+    replaceAccounts([...next, ...created])
+    closeClean()
+  }
+
+  return (
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) onOpenChange(true)
+        }}
+      >
+        <DialogContent
+          className="w-max max-w-[calc(100%-2rem)] gap-0 pt-4 pr-4 pb-4 pl-3.5 sm:max-w-none"
+          showCloseButton={false}
+          {...editDialogDismiss(confirmOpen, requestClose)}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault()
+            if (confirmOpen) {
+              setConfirmOpen(false)
+              return
+            }
+            requestClose()
+          }}
+        >
+          <div className="-ml-3.5 -mr-4 border-b pr-4 pb-4 pl-3.5">
+            <DialogHeader>
+              <DialogTitle className="pl-2.5 text-2xl tracking-tight">
+                Deposits
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+          <div className="mt-5 max-h-[min(70vh,40rem)] space-y-2 overflow-y-auto">
+            <div className={cn(DEPOSIT_EDIT_GRID, 'text-xs font-medium text-muted-foreground')}>
+              <span className={DEBT_LABEL_LEFT}>Account</span>
+              <span>For</span>
+              <span className="text-right">Bi-weekly</span>
+              <span className="text-center leading-tight">Rest of paycheck</span>
+              <span />
+            </div>
+            {drafts.map((draft) => {
+              const amount = accountDepositNeed(
+                expenses,
+                debts,
+                { id: draft.id, role: draft.leftover ? 'overflow' : 'other' },
+                accounts,
+                monthlyNet,
+              )
+              return (
+                <div key={draft.id} className={DEPOSIT_EDIT_GRID}>
+                  {draft.isNew ? (
+                    <div className="grid gap-1">
+                      <Input
+                        className={cn('h-8', EDIT_GHOST_FIELD)}
+                        value={draft.name}
+                        autoFocus={focusId === draft.id}
+                        placeholder="Name"
+                        aria-label="Account name"
+                        onChange={(event) =>
+                          updateDraft(draft.id, { name: event.target.value })
+                        }
+                      />
+                      <div className="grid grid-cols-[1fr_4.5rem] gap-1">
+                        <Select
+                          value={draft.kind}
+                          onValueChange={(kind) =>
+                            updateDraft(draft.id, {
+                              kind: kind === 'debit' ? 'debit' : 'checking',
+                            })
+                          }
+                        >
+                          <SelectTrigger
+                            className={cn('h-8 w-full', EDIT_GHOST_FIELD)}
+                            chevron="hover"
+                            aria-label="Account type"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="checking">Checking</SelectItem>
+                            <SelectItem value="debit">Debit</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          className={cn('h-8 tabular-nums', EDIT_GHOST_FIELD)}
+                          value={draft.lastFour}
+                          placeholder="0000"
+                          inputMode="numeric"
+                          maxLength={4}
+                          aria-label="Last four digits"
+                          onChange={(event) =>
+                            updateDraft(draft.id, {
+                              lastFour: event.target.value.replace(/\D/g, '').slice(0, 4),
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="truncate pl-2.5">
+                      {draft.name}
+                      {draft.lastFour ? (
+                        <span className="text-muted-foreground"> {draft.lastFour}</span>
+                      ) : null}
+                    </span>
+                  )}
+                  <Input
+                    className={cn('h-8', EDIT_GHOST_FIELD)}
+                    value={draft.purpose}
+                    placeholder="For"
+                    aria-label="What this deposit is for"
+                    onChange={(event) =>
+                      updateDraft(draft.id, { purpose: event.target.value })
+                    }
+                  />
+                  <span className="text-muted-foreground text-right text-xs tabular-nums">
+                    {formatUsdWholeUp(amount / 2)}
+                  </span>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={draft.leftover}
+                    aria-label="Rest of paycheck goes here"
+                    title="Rest of paycheck goes here"
+                    className={cn(
+                      'flex size-8 cursor-pointer items-center justify-center justify-self-center outline-none',
+                      EDIT_GHOST_BOX,
+                    )}
+                    onClick={() => setLeftover(draft.id, !draft.leftover)}
+                  >
+                    {draft.leftover ? (
+                      <Check className="size-3.5 text-neutral-500" />
+                    ) : null}
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground justify-self-end hover:bg-transparent"
+                    title="Remove from deposits"
+                    onClick={() =>
+                      setDrafts((current) => current.filter((item) => item.id !== draft.id))
+                    }
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              )
+            })}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" className="gap-1">
+                  <Plus className="size-3.5" />
+                  Add account
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
+                {available.map((account) => (
+                  <DropdownMenuItem
+                    key={account.id}
+                    onSelect={() => addExisting(account.id)}
+                  >
+                    {account.name}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuItem onSelect={addNew}>New account</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <DialogFooter className="-ml-3.5 -mr-4 mt-5 items-center px-6 py-4 sm:justify-end sm:gap-4">
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={requestClose}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={!canSubmit} onClick={handleSave}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="p-6 sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogDescription>
+              You have unsaved edits. If you cancel, that information will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between">
+            <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)}>
+              Keep editing
+            </Button>
+            <Button type="button" variant="destructive" onClick={closeClean}>
+              Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
@@ -3904,7 +4222,7 @@ export function EditDebtsDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { accounts, expenses, debts, replaceDebts } = useBudget()
+  const { accounts, expenses, debts, replaceAccounts, replaceDebts } = useBudget()
   const { plan } = useDebtPlan()
   const { paystubs } = usePaystubs()
   const monthlyNet = useMemo(
@@ -4069,7 +4387,50 @@ export function EditDebtsDialog({
       .map((draft) => draftToDebt(draft, previous.get(draft.id)))
       .filter((item): item is Debt => item != null)
     replaceDebts(kept)
+    const keptById = new Map(kept.map((debt) => [debt.id, debt]))
+    const nextAccounts = accounts.map((account) => {
+      const debt = keptById.get(account.id)
+      if (!debt || debt.id === AFFIRM_DEBT_ID) return account
+      return { ...account, name: debt.lender }
+    })
+    const extras = kept
+      .filter(
+        (debt) =>
+          debt.id !== AFFIRM_DEBT_ID &&
+          debt.type === 'credit-card' &&
+          !accounts.some((account) => account.id === debt.id),
+      )
+      .map((debt) => ({
+        id: debt.id,
+        name: debt.lender,
+        kind: 'credit' as const,
+        lastFour: debt.lastFour ?? '',
+        role: 'other' as const,
+        purpose: '',
+        balance: 0,
+        inDeposits: false,
+      }))
+    if (
+      extras.length > 0 ||
+      nextAccounts.some((account, index) => account !== accounts[index])
+    ) {
+      replaceAccounts([...nextAccounts, ...extras])
+    }
     closeClean()
+  }
+
+  function addDebtFromAccount(accountId: string) {
+    const account = accounts.find((item) => item.id === accountId)
+    if (!account) return
+    setFocusId(account.id)
+    setDrafts((current) => [
+      ...current,
+      {
+        ...emptyDebtDraft(account.id),
+        lender: account.name,
+        type: account.kind === 'credit' ? 'credit-card' : 'loan',
+      },
+    ])
   }
 
   function addDebtRow() {
@@ -4136,16 +4497,32 @@ export function EditDebtsDialog({
                 </DialogTitle>
               </DialogHeader>
               <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="bg-white gap-1"
-                  onClick={addDebtRow}
-                >
-                  <Plus className="size-3.5" />
-                  Add debt
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="bg-white gap-1"
+                    >
+                      <Plus className="size-3.5" />
+                      Add debt
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+                    {accounts
+                      .filter((account) => !drafts.some((draft) => draft.id === account.id))
+                      .map((account) => (
+                        <DropdownMenuItem
+                          key={account.id}
+                          onSelect={() => addDebtFromAccount(account.id)}
+                        >
+                          {account.name}
+                        </DropdownMenuItem>
+                      ))}
+                    <DropdownMenuItem onSelect={addDebtRow}>New account</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
