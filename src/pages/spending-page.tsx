@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { Link } from 'react-router-dom'
 import { Check, ChevronDown, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,7 @@ import {
 import { useBudget } from '@/lib/budget-context'
 import { useDebtPlan } from '@/lib/debt-plan-context'
 import type { AffirmLoan } from '@/lib/debt-plan'
+import { sortAffirmLoans } from '@/lib/debt-plan'
 import { formatDateWithoutYear, formatLongDate, formatUsd } from '@/lib/format'
 import { monthName } from '@/lib/income'
 import {
@@ -158,10 +160,19 @@ function formatTxnAmount(amount: number) {
   return formatUsd(amount)
 }
 
+const AFFIRM_PAYMENT_ID = 'payment-affirm'
+
 type PaymentAccount = {
   id: string
   name: string
-  kind: 'checking' | 'credit'
+  kind: 'checking' | 'credit' | 'affirm'
+}
+
+function affirmLoanLabel(loan: Pick<AffirmLoan, 'name' | 'loanId'>) {
+  const name = loan.name.trim()
+  const loanId = loan.loanId.trim()
+  if (name && loanId) return `${name} · ${loanId}`
+  return name || loanId || 'Affirm'
 }
 
 function accountName(
@@ -437,6 +448,7 @@ export function SpendingPage() {
       list.push({ id: debt.id, name: debt.lender, kind: 'credit' })
       seen.add(debt.id)
     }
+    list.push({ id: AFFIRM_PAYMENT_ID, name: 'Affirm', kind: 'affirm' })
     return list
   }, [accounts, debts])
   const now = useMemo(() => new Date(), [])
@@ -913,6 +925,7 @@ export function SpendingPage() {
                     key={txn.id}
                     txn={txn}
                     accounts={paymentAccounts}
+        affirmLoans={plan.affirmLoans}
                     categories={categories}
                     divided={itemIndex > 0}
                     onClick={() => setEditing(txn)}
@@ -1041,6 +1054,7 @@ export function SpendingPage() {
                                           key={txn.id}
                                           txn={txn}
                                           accounts={paymentAccounts}
+        affirmLoans={plan.affirmLoans}
                                           categories={categories}
                                           showAccount={false}
                                           showDate
@@ -1067,6 +1081,7 @@ export function SpendingPage() {
       <AddTxnDialog
         open={adding}
         accounts={paymentAccounts}
+        affirmLoans={plan.affirmLoans}
         categories={categories}
         defaultDate={defaultManualTxnDate(selectedYear, activeMonth, now)}
         defaultAccountId={
@@ -1119,6 +1134,7 @@ export function SpendingPage() {
       <EditTxnDialog
         txn={editing}
         accounts={paymentAccounts}
+        affirmLoans={plan.affirmLoans}
         categories={categories}
         uploads={uploads}
         onClose={() => setEditing(null)}
@@ -1915,6 +1931,7 @@ function BudgetDonut({
 function TransactionRow({
   txn,
   accounts,
+  affirmLoans = [],
   categories,
   showAccount = true,
   showDate = false,
@@ -1923,6 +1940,7 @@ function TransactionRow({
 }: {
   txn: SpendingTxn
   accounts: { id: string; name: string }[]
+  affirmLoans?: AffirmLoan[]
   categories: SpendingCategory[]
   showAccount?: boolean
   showDate?: boolean
@@ -1932,6 +1950,13 @@ function TransactionRow({
   const [open, setOpen] = useState(false)
   const category = categoryName(txn.categoryId, categories)
   const merchant = displayMerchant(txn)
+  const linkedLoan = affirmLoans.find((loan) => loan.id === txn.affirmLoanId)
+  const paidFrom =
+    txn.accountId === AFFIRM_PAYMENT_ID
+      ? linkedLoan
+        ? `Affirm · ${affirmLoanLabel(linkedLoan)}`
+        : 'Affirm'
+      : accountName(txn.accountId, accounts)
   const description =
     txn.description && txn.description !== merchant ? txn.description : ''
   return (
@@ -1970,7 +1995,7 @@ function TransactionRow({
         </span>
         {showAccount ? (
           <span className="text-muted-foreground hidden w-24 shrink-0 pt-0.5 text-xs lg:block">
-            {accountName(txn.accountId, accounts)}
+            {paidFrom}
           </span>
         ) : null}
         {showDate ? (
@@ -1996,7 +2021,7 @@ function TransactionRow({
             <dd className="min-w-0 break-words">{category}</dd>
             <dt className="text-muted-foreground">Account</dt>
             <dd className="min-w-0 break-words">
-              {accountName(txn.accountId, accounts)}
+              {paidFrom}
             </dd>
             <dt className="text-muted-foreground">Date</dt>
             <dd>{formatDateWithoutYear(txn.date, 'short')}</dd>
@@ -2276,14 +2301,16 @@ function AccountField({
   onChange: (id: string) => void
 }) {
   const known = accounts.some((account) => account.id === accountId)
-  const checking = accounts.filter((account) => account.kind !== 'credit')
+  const checking = accounts.filter((account) => account.kind === 'checking')
   const cards = accounts.filter((account) => account.kind === 'credit')
+  const affirm = accounts.filter((account) => account.kind === 'affirm')
   const options = (items: PaymentAccount[]) =>
     items.map((account) => (
       <SelectItem key={account.id} value={account.id}>
         {account.name}
       </SelectItem>
     ))
+  const grouped = cards.length > 0 || affirm.length > 0
   return (
     <label className="grid gap-1.5">
       <span className="text-muted-foreground text-xs">Account</span>
@@ -2295,16 +2322,24 @@ function AccountField({
           {accountId && !known ? (
             <SelectItem value={accountId}>Unknown</SelectItem>
           ) : null}
-          {cards.length > 0 ? (
+          {grouped ? (
             <>
               <SelectGroup>
                 <SelectLabel>Checking</SelectLabel>
                 {options(checking)}
               </SelectGroup>
-              <SelectGroup>
-                <SelectLabel>Credit card</SelectLabel>
-                {options(cards)}
-              </SelectGroup>
+              {cards.length > 0 ? (
+                <SelectGroup>
+                  <SelectLabel>Credit card</SelectLabel>
+                  {options(cards)}
+                </SelectGroup>
+              ) : null}
+              {affirm.length > 0 ? (
+                <SelectGroup>
+                  <SelectLabel>Affirm</SelectLabel>
+                  {options(affirm)}
+                </SelectGroup>
+              ) : null}
             </>
           ) : (
             options(checking)
@@ -2315,9 +2350,50 @@ function AccountField({
   )
 }
 
+function AffirmLoanField({
+  loans,
+  loanId,
+  onChange,
+}: {
+  loans: AffirmLoan[]
+  loanId: string
+  onChange: (id: string) => void
+}) {
+  const choices = sortAffirmLoans(loans)
+  if (choices.length === 0) {
+    return (
+      <p className="text-muted-foreground text-xs">
+        Add the Affirm on the{' '}
+        <Link to="/debt" className="underline">
+          Debt page
+        </Link>{' '}
+        first.
+      </p>
+    )
+  }
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-muted-foreground text-xs">Affirm</span>
+      <Select value={loanId || undefined} onValueChange={onChange}>
+        <SelectTrigger className="w-full" aria-label="Affirm">
+          <SelectValue placeholder="Choose an Affirm" />
+        </SelectTrigger>
+        <SelectContent>
+          {choices.map((loan) => (
+            <SelectItem key={loan.id} value={loan.id}>
+              {affirmLoanLabel(loan)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
+  )
+}
+
 function AddTxnDialog({
   open,
   accounts,
+  affirmLoans,
   categories,
   defaultDate,
   defaultAccountId,
@@ -2327,6 +2403,7 @@ function AddTxnDialog({
 }: {
   open: boolean
   accounts: PaymentAccount[]
+  affirmLoans: AffirmLoan[]
   categories: SpendingCategory[]
   defaultDate: string
   defaultAccountId: string
@@ -2338,6 +2415,7 @@ function AddTxnDialog({
     accountId: string
     amount: number
     categoryId?: string
+    affirmLoanId?: string
   }) => void
   onEditCategories: () => void
 }) {
@@ -2348,6 +2426,7 @@ function AddTxnDialog({
           <AddTxnForm
             key={`${defaultDate}-${defaultAccountId}`}
             accounts={accounts}
+            affirmLoans={affirmLoans}
             categories={categories}
             defaultDate={defaultDate}
             defaultAccountId={defaultAccountId}
@@ -2369,8 +2448,10 @@ function AddTxnForm({
   onClose,
   onSave,
   onEditCategories,
+  affirmLoans,
 }: {
   accounts: PaymentAccount[]
+  affirmLoans: AffirmLoan[]
   categories: SpendingCategory[]
   defaultDate: string
   defaultAccountId: string
@@ -2382,6 +2463,7 @@ function AddTxnForm({
     accountId: string
     amount: number
     categoryId?: string
+    affirmLoanId?: string
   }) => void
   onEditCategories: () => void
 }) {
@@ -2390,8 +2472,12 @@ function AddTxnForm({
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(defaultDate)
   const [accountId, setAccountId] = useState(defaultAccountId)
+  const [affirmLoanId, setAffirmLoanId] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const parsedAmount = parseAmount(amount)
+  const payingWithAffirm = accountId === AFFIRM_PAYMENT_ID
+  const affirmReady =
+    !payingWithAffirm || affirmLoans.some((loan) => loan.id === affirmLoanId)
 
   return (
     <>
@@ -2448,6 +2534,13 @@ function AddTxnForm({
           accountId={accountId}
           onChange={setAccountId}
         />
+        {payingWithAffirm ? (
+          <AffirmLoanField
+            loans={affirmLoans}
+            loanId={affirmLoanId}
+            onChange={setAffirmLoanId}
+          />
+        ) : null}
       </div>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
@@ -2461,7 +2554,8 @@ function AddTxnForm({
             parsedAmount == null ||
             parsedAmount <= 0 ||
             !date ||
-            !accountId
+            !accountId ||
+            !affirmReady
           }
           onClick={() => {
             if (parsedAmount == null) return
@@ -2472,6 +2566,7 @@ function AddTxnForm({
               accountId,
               amount: parsedAmount,
               ...(categoryId ? { categoryId } : {}),
+              ...(payingWithAffirm ? { affirmLoanId } : {}),
             })
           }}
         >
@@ -2485,6 +2580,7 @@ function AddTxnForm({
 function EditTxnDialog({
   txn,
   accounts,
+  affirmLoans,
   categories,
   uploads,
   onClose,
@@ -2494,6 +2590,7 @@ function EditTxnDialog({
 }: {
   txn: SpendingTxn | null
   accounts: PaymentAccount[]
+  affirmLoans: AffirmLoan[]
   categories: SpendingCategory[]
   uploads: SpendingUpload[]
   onClose: () => void
@@ -2516,6 +2613,7 @@ function EditTxnDialog({
             key={txn.id}
             txn={txn}
             accounts={accounts}
+            affirmLoans={affirmLoans}
             categories={categories}
             uploads={uploads}
             onSave={onSave}
@@ -2531,6 +2629,7 @@ function EditTxnDialog({
 function EditTxnForm({
   txn,
   accounts,
+  affirmLoans,
   categories,
   uploads,
   onSave,
@@ -2539,6 +2638,7 @@ function EditTxnForm({
 }: {
   txn: SpendingTxn
   accounts: PaymentAccount[]
+  affirmLoans: AffirmLoan[]
   categories: SpendingCategory[]
   uploads: SpendingUpload[]
   onSave: (
@@ -2557,12 +2657,16 @@ function EditTxnForm({
   const [amount, setAmount] = useState(Math.abs(txn.amount).toFixed(2))
   const [date, setDate] = useState(txn.date)
   const [accountId, setAccountId] = useState(txn.accountId)
+  const [affirmLoanId, setAffirmLoanId] = useState(txn.affirmLoanId ?? '')
   const [categoryId, setCategoryId] = useState(() => txn.categoryId ?? '')
   const [createRule, setCreateRule] = useState(false)
   const [match, setMatch] = useState(() => defaultRuleMatch(txn.description))
   const fromStatement = statementName(txn, uploads)
   const parsedAmount = parseAmount(amount)
   const deposit = txn.amount < 0
+  const payingWithAffirm = accountId === AFFIRM_PAYMENT_ID
+  const affirmReady =
+    !payingWithAffirm || affirmLoans.some((loan) => loan.id === affirmLoanId)
 
   return (
     <>
@@ -2622,6 +2726,13 @@ function EditTxnForm({
           accountId={accountId}
           onChange={setAccountId}
         />
+        {payingWithAffirm ? (
+          <AffirmLoanField
+            loans={affirmLoans}
+            loanId={affirmLoanId}
+            onChange={setAffirmLoanId}
+          />
+        ) : null}
         <Button
           type="button"
           variant={createRule ? 'secondary' : 'outline'}
@@ -2664,6 +2775,7 @@ function EditTxnForm({
             parsedAmount == null ||
             parsedAmount <= 0 ||
             !date ||
+            !affirmReady ||
             (createRule && !match.trim())
           }
           onClick={() => {
@@ -2672,6 +2784,11 @@ function EditTxnForm({
             const nextCategory = categoryId || undefined
             const nextName = toSentenceCase(name)
             const nextMerchant = toSentenceCase(merchant)
+            const linkedLoan = payingWithAffirm
+              ? affirmLoanId
+              : accountId === txn.accountId
+                ? txn.affirmLoanId ?? ''
+                : ''
             onSave(
               txn.id,
               {
@@ -2680,6 +2797,7 @@ function EditTxnForm({
                 amount: signed,
                 date,
                 accountId,
+                affirmLoanId: linkedLoan,
                 categoryId: nextCategory,
                 customName:
                   nextMerchant !== displayMerchant(txn) ? true : txn.customName,
