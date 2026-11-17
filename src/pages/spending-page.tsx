@@ -2360,33 +2360,37 @@ function AffirmLoanField({
   onChange: (id: string) => void
 }) {
   const choices = sortAffirmLoans(loans)
-  if (choices.length === 0) {
-    return (
-      <p className="text-muted-foreground text-xs">
-        Add the Affirm on the{' '}
-        <Link to="/debt" className="underline">
-          Debt page
-        </Link>{' '}
-        first.
-      </p>
-    )
-  }
   return (
-    <label className="grid gap-1.5">
-      <span className="text-muted-foreground text-xs">Affirm</span>
-      <Select value={loanId || undefined} onValueChange={onChange}>
-        <SelectTrigger className="w-full" aria-label="Affirm">
-          <SelectValue placeholder="Choose an Affirm" />
-        </SelectTrigger>
-        <SelectContent>
-          {choices.map((loan) => (
-            <SelectItem key={loan.id} value={loan.id}>
-              {affirmLoanLabel(loan)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </label>
+    <div className="grid gap-1.5">
+      <label className="grid gap-1.5">
+        <span className="text-muted-foreground text-xs">Affirm log</span>
+        <Select
+          value={loanId || undefined}
+          onValueChange={(id) => onChange(id === 'later' ? '' : id)}
+        >
+          <SelectTrigger className="w-full" aria-label="Affirm log">
+            <SelectValue placeholder="Link later" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="later">Link later</SelectItem>
+            {choices.map((loan) => (
+              <SelectItem key={loan.id} value={loan.id}>
+                {affirmLoanLabel(loan)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </label>
+      {choices.length === 0 ? (
+        <p className="text-muted-foreground text-xs">
+          Add the Affirm on the{' '}
+          <Link to="/debt" className="underline">
+            Debt page
+          </Link>
+          , then link it here.
+        </p>
+      ) : null}
+    </div>
   )
 }
 
@@ -2476,8 +2480,9 @@ function AddTxnForm({
   const [categoryId, setCategoryId] = useState('')
   const parsedAmount = parseAmount(amount)
   const payingWithAffirm = accountId === AFFIRM_PAYMENT_ID
-  const affirmReady =
-    !payingWithAffirm || affirmLoans.some((loan) => loan.id === affirmLoanId)
+  const linkedAffirmId = affirmLoans.some((loan) => loan.id === affirmLoanId)
+    ? affirmLoanId
+    : ''
 
   return (
     <>
@@ -2554,8 +2559,7 @@ function AddTxnForm({
             parsedAmount == null ||
             parsedAmount <= 0 ||
             !date ||
-            !accountId ||
-            !affirmReady
+            !accountId
           }
           onClick={() => {
             if (parsedAmount == null) return
@@ -2566,7 +2570,9 @@ function AddTxnForm({
               accountId,
               amount: parsedAmount,
               ...(categoryId ? { categoryId } : {}),
-              ...(payingWithAffirm ? { affirmLoanId } : {}),
+              ...(payingWithAffirm && linkedAffirmId
+                ? { affirmLoanId: linkedAffirmId }
+                : {}),
             })
           }}
         >
@@ -2665,8 +2671,6 @@ function EditTxnForm({
   const parsedAmount = parseAmount(amount)
   const deposit = txn.amount < 0
   const payingWithAffirm = accountId === AFFIRM_PAYMENT_ID
-  const affirmReady =
-    !payingWithAffirm || affirmLoans.some((loan) => loan.id === affirmLoanId)
 
   return (
     <>
@@ -2775,7 +2779,6 @@ function EditTxnForm({
             parsedAmount == null ||
             parsedAmount <= 0 ||
             !date ||
-            !affirmReady ||
             (createRule && !match.trim())
           }
           onClick={() => {
@@ -2784,8 +2787,11 @@ function EditTxnForm({
             const nextCategory = categoryId || undefined
             const nextName = toSentenceCase(name)
             const nextMerchant = toSentenceCase(merchant)
-            const linkedLoan = payingWithAffirm
+            const chosenLoan = affirmLoans.some((loan) => loan.id === affirmLoanId)
               ? affirmLoanId
+              : ''
+            const linkedLoan = payingWithAffirm
+              ? chosenLoan
               : accountId === txn.accountId
                 ? txn.affirmLoanId ?? ''
                 : ''
