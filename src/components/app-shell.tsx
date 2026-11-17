@@ -236,14 +236,14 @@ export function AppShell() {
             <Menu />
           </Button>
           <AccountMenu />
-          <div className="flex-1" />
-          <PaystubUploadButton iconOnly />
         </header>
 
-        <div className="min-w-0 flex-1 lg:pt-[60px]">
+        <div className="min-w-0 flex-1 pb-24 lg:pt-[60px] lg:pb-0">
           <Outlet />
         </div>
       </div>
+
+      <PaystubUploadButton floating />
 
       {menuOpen ? (
         <div

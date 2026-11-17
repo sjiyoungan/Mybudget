@@ -26,6 +26,12 @@ import {
   type SpendingUploadBatch,
 } from '@/lib/spending'
 import { supabase } from '@/lib/supabase'
+
+export const ADD_TRANSACTION_EVENT = 'mybudget:add-transaction'
+
+export function requestAddTransaction() {
+  window.dispatchEvent(new Event(ADD_TRANSACTION_EVENT))
+}
 import {
   markCloudReady,
   rememberSpending,
@@ -228,6 +234,9 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
             ...(expenseIds.length > 0 ? { expenseIds } : {}),
             ...(item.parentId ? { parentId: item.parentId } : {}),
             ...(item.budget != null ? { budget: item.budget } : {}),
+            ...(item.merchant?.trim()
+              ? { merchant: toSentenceCase(item.merchant) }
+              : {}),
             ...(item.grouped ? { grouped: true } : {}),
             ...(item.enabled === false ? { enabled: false } : {}),
             updatedAt: nowIso(),

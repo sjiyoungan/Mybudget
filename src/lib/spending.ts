@@ -32,6 +32,8 @@ export type SpendingCategory = {
   parentId?: string
   /** Budget allotted to a child category, in dollars. */
   budget?: number
+  /** Merchant shown on purchases in this category, such as Wayfair. */
+  merchant?: string
   /** Created with Add category so several expenses can share this name. */
   grouped?: boolean
   /** When false, hidden from the pie and categorize options. */
@@ -442,12 +444,17 @@ function normalizeCategory(value: unknown): SpendingCategory | null {
     typeof row.budget === 'number' && Number.isFinite(row.budget)
       ? row.budget
       : undefined
+  const merchant =
+    typeof row.merchant === 'string' && row.merchant.trim()
+      ? toSentenceCase(row.merchant)
+      : undefined
   return {
     id,
     name,
     ...(expenseIds.length > 0 ? { expenseIds } : {}),
     ...(parentId ? { parentId } : {}),
     ...(budget != null ? { budget } : {}),
+    ...(merchant ? { merchant } : {}),
     ...(row.grouped === true ? { grouped: true } : {}),
     ...(row.enabled === false ? { enabled: false } : {}),
     ...(updatedAt ? { updatedAt } : {}),

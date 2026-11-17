@@ -7,9 +7,14 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Card,
   CardAction,
@@ -46,7 +51,7 @@ import { useDebtPlan } from '@/lib/debt-plan-context'
 import type { AffirmLoan } from '@/lib/debt-plan'
 import { formatDateWithoutYear, formatLongDate, formatUsd } from '@/lib/format'
 import { monthName } from '@/lib/income'
-import { useSpending } from '@/lib/spending-context'
+import { ADD_TRANSACTION_EVENT, useSpending } from '@/lib/spending-context'
 import {
   categoryExpenseIds,
   displayMerchant,
@@ -164,6 +169,19 @@ function categoryName(
   const parent = categories.find((item) => item.id === current.parentId)
   const parentName = parent ? toSentenceCase(parent.name) : ''
   return parentName ? `${parentName} · ${childName}` : childName
+}
+
+function categoryMerchant(
+  categoryId: string | undefined,
+  categories: SpendingCategory[],
+) {
+  if (!categoryId) return ''
+  const current = categories.find((item) => item.id === categoryId)
+  if (!current) return ''
+  if (current.merchant?.trim()) return toSentenceCase(current.merchant)
+  if (!current.parentId) return ''
+  const parent = categories.find((item) => item.id === current.parentId)
+  return parent?.merchant?.trim() ? toSentenceCase(parent.merchant) : ''
 }
 
 function localIsoDate(date: Date) {
@@ -454,8 +472,16 @@ export function SpendingPage() {
       : defaultMonth
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [adding, setAdding] = useState(false)
+  useEffect(() => {
+    function openAdd() {
+      setAdding(true)
+    }
+    window.addEventListener(ADD_TRANSACTION_EVENT, openAdd)
+    return () => window.removeEventListener(ADD_TRANSACTION_EVENT, openAdd)
+  }, [])
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [calendarScope, setCalendarScope] = useState<'month' | 'year'>('month')
+  const [calendarCategoryIds, setCalendarCategoryIds] = useState<string[]>([])
   /** null means every day is open. */
   const [expandedDays, setExpandedDays] = useState<string[] | null>(null)
   const [expandedStatementMonth, setExpandedStatementMonth] = useState<
@@ -525,13 +551,27 @@ export function SpendingPage() {
     )
   }, [countsAsVariable, selectedYear, transactions])
   const totalSpent = spentTxns.reduce((sum, txn) => sum + txn.amount, 0)
+  const calendarYearTxns = useMemo(
+    () =>
+      yearSpentTxns.filter((txn) =>
+        txnInCalendarCategories(txn, categories, calendarCategoryIds),
+      ),
+    [calendarCategoryIds, categories, yearSpentTxns],
+  )
+  const calendarMonthTxns = useMemo(
+    () =>
+      spentTxns.filter((txn) =>
+        txnInCalendarCategories(txn, categories, calendarCategoryIds),
+      ),
+    [calendarCategoryIds, categories, spentTxns],
+  )
   const spentByDay = useMemo(() => {
     const totals = new Map<string, number>()
-    for (const txn of yearSpentTxns) {
+    for (const txn of calendarYearTxns) {
       totals.set(txn.date, (totals.get(txn.date) ?? 0) + txn.amount)
     }
     return totals
-  }, [yearSpentTxns])
+  }, [calendarYearTxns])
   const monthBudget = useMemo(
     () =>
       activeMonth == null
@@ -561,7 +601,7 @@ export function SpendingPage() {
   }, [activeMonth, categories, expenses, selectedYear, spentTxns])
   const dayRows = useMemo(() => {
     const byDay = new Map<string, SpendingTxn[]>()
-    for (const txn of spentTxns) {
+    for (const txn of calendarMonthTxns) {
       const items = byDay.get(txn.date)
       if (items) items.push(txn)
       else byDay.set(txn.date, [txn])
@@ -573,19 +613,19 @@ export function SpendingPage() {
         items,
         amount: items.reduce((sum, txn) => sum + txn.amount, 0),
       }))
-  }, [spentTxns])
+  }, [calendarMonthTxns])
   const selectedRow = useMemo(() => {
     if (selectedDay == null) return null
     const listed = dayRows.find((row) => row.date === selectedDay)
     if (listed) return listed
-    const items = yearSpentTxns.filter((txn) => txn.date === selectedDay)
+    const items = calendarYearTxns.filter((txn) => txn.date === selectedDay)
     if (items.length === 0) return null
     return {
       date: selectedDay,
       items,
       amount: items.reduce((sum, txn) => sum + txn.amount, 0),
     }
-  }, [dayRows, selectedDay, yearSpentTxns])
+  }, [calendarYearTxns, dayRows, selectedDay])
   const pendingAffirm = useMemo(() => {
     const linked = new Set(
       transactions.flatMap((txn) => (txn.affirmLoanId ? [txn.affirmLoanId] : [])),
@@ -798,6 +838,13 @@ export function SpendingPage() {
           year={selectedYear}
           month={activeMonth}
           scope={calendarScope}
+          categories={categories}
+          categoryIds={calendarCategoryIds}
+          onCategories={(ids) => {
+            setCalendarCategoryIds(ids)
+            setSelectedDay(null)
+            setExpandedDays(null)
+          }}
           spentByDay={spentByDay}
           now={now}
           selected={selectedDay}
@@ -827,6 +874,7 @@ export function SpendingPage() {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="hidden lg:inline-flex"
                 onClick={() => setAdding(true)}
               >
                 Add
@@ -1204,7 +1252,49 @@ export function SpendingPage() {
   )
 }
 
-const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+const WEEKDAYS = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+]
+const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+
+function calendarCategoryOptions(categories: SpendingCategory[]) {
+  const mains = mainCategoryChoices(categories)
+  const spending = mains.find((item) => isSpendingMainName(item.name))
+  const children = (
+    spending
+      ? categories.filter(
+          (item) =>
+            item.parentId === spending.id && isActiveSpendingCategory(item),
+        )
+      : []
+  ).sort((left, right) => left.name.localeCompare(right.name))
+  const rows: { id: string; label: string; depth: number }[] = []
+  for (const main of mains) {
+    rows.push({ id: main.id, label: toSentenceCase(main.name), depth: 0 })
+    if (main.id !== spending?.id) continue
+    for (const child of children) {
+      rows.push({ id: child.id, label: toSentenceCase(child.name), depth: 1 })
+    }
+  }
+  return rows
+}
+
+function txnInCalendarCategories(
+  txn: SpendingTxn,
+  categories: SpendingCategory[],
+  selectedIds: readonly string[],
+) {
+  if (selectedIds.length === 0) return true
+  if (txn.categoryId && selectedIds.includes(txn.categoryId)) return true
+  const rolled = rolledSpendingCategoryId(txn.categoryId, categories)
+  return rolled != null && selectedIds.includes(rolled)
+}
 
 function formatWeekdayDate(iso: string) {
   const [year, month, day] = iso.split('-').map(Number)
@@ -1219,6 +1309,9 @@ function SpendingCalendar({
   year,
   month,
   scope,
+  categories,
+  categoryIds,
+  onCategories,
   spentByDay,
   now,
   selected,
@@ -1228,6 +1321,9 @@ function SpendingCalendar({
   year: number
   month: number
   scope: 'month' | 'year'
+  categories: SpendingCategory[]
+  categoryIds: string[]
+  onCategories: (ids: string[]) => void
   spentByDay: Map<string, number>
   now: Date
   selected: string | null
@@ -1240,33 +1336,40 @@ function SpendingCalendar({
   return (
     <Card>
       <CardHeader>
-        <Select
-          value={scope === 'year' ? 'year' : String(month)}
-          onValueChange={(value) => {
-            if (value === 'year') onScope('year')
-            else onScope('month', Number(value))
-          }}
-        >
-          <SelectTrigger aria-label="Calendar view" size="sm" className="h-8 text-base">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent
-            position="popper"
-            align="start"
-            side="bottom"
-            sideOffset={4}
-            className="max-h-80"
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={scope === 'year' ? 'year' : String(month)}
+            onValueChange={(value) => {
+              if (value === 'year') onScope('year')
+              else onScope('month', Number(value))
+            }}
           >
-            <SelectItem value="year" className="text-base">
-              Whole year
-            </SelectItem>
-            {Array.from({ length: 12 }, (_, index) => (
-              <SelectItem key={index} value={String(index)} className="text-base">
-                {monthName(index)}
+            <SelectTrigger aria-label="Calendar view" size="sm" className="h-8 text-base">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent
+              position="popper"
+              align="start"
+              side="bottom"
+              sideOffset={4}
+              className="max-h-80"
+            >
+              <SelectItem value="year" className="text-base">
+                Whole year
               </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              {Array.from({ length: 12 }, (_, index) => (
+                <SelectItem key={index} value={String(index)} className="text-base">
+                  {monthName(index)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <CalendarCategoryFilter
+            categories={categories}
+            selectedIds={categoryIds}
+            onChange={onCategories}
+          />
+        </div>
       </CardHeader>
       <CardContent>
         <div className={cn(scope === 'year' && 'grid gap-x-4 gap-y-5 sm:grid-cols-2')}>
@@ -1285,6 +1388,78 @@ function SpendingCalendar({
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function CalendarCategoryFilter({
+  categories,
+  selectedIds,
+  onChange,
+}: {
+  categories: SpendingCategory[]
+  selectedIds: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const options = calendarCategoryOptions(categories)
+  const label =
+    selectedIds.length === 0
+      ? 'All categories'
+      : selectedIds.length === 1
+        ? (options.find((option) => option.id === selectedIds[0])?.label ??
+          '1 category')
+        : `${selectedIds.length} categories`
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Calendar categories"
+          className="flex h-8 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-base whitespace-nowrap outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          {label}
+          <ChevronDown className="size-4 text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-1">
+        <button
+          type="button"
+          aria-pressed={selectedIds.length === 0}
+          onClick={() => onChange([])}
+          className={cn(
+            'hover-fill flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm',
+            selectedIds.length === 0 && 'hover-fill-active font-medium',
+          )}
+        >
+          All categories
+        </button>
+        {options.map((option) => {
+          const on = selectedIds.includes(option.id)
+          return (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={on}
+              onClick={() =>
+                onChange(
+                  on
+                    ? selectedIds.filter((id) => id !== option.id)
+                    : [...selectedIds, option.id],
+                )
+              }
+              className={cn(
+                'hover-fill flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+                option.depth > 0 && 'pl-6',
+                on && 'hover-fill-active font-medium',
+              )}
+            >
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              {on ? <Check className="size-3.5 shrink-0" /> : null}
+            </button>
+          )
+        })}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -1320,13 +1495,16 @@ function CalendarMonth({
       <div className={cn('grid grid-cols-7', compact ? 'gap-0.5' : 'gap-1.5')}>
         {WEEKDAYS.map((label, index) => (
           <div
-            key={index}
+            key={label}
             className={cn(
-              'text-muted-foreground text-center',
-              compact ? 'pb-0.5 text-[10px] leading-3' : 'pb-1 text-xs',
+              'text-muted-foreground text-left',
+              compact
+                ? 'px-1 pb-0.5 text-[10px] leading-3'
+                : 'px-1 pb-1 text-xs lg:px-2',
             )}
           >
-            {label}
+            <span className="lg:hidden">{WEEKDAY_LETTERS[index]}</span>
+            <span className="hidden truncate lg:inline">{label}</span>
           </div>
         ))}
         {cells.map((day, index) => {
@@ -1344,18 +1522,23 @@ function CalendarMonth({
               <span
                 className={cn(
                   'shrink-0 font-medium',
-                  compact ? 'text-[11px] leading-none' : 'text-sm leading-5',
+                  compact ? 'text-[11px] leading-none' : 'text-sm leading-none lg:leading-5',
                 )}
               >
                 {day}
               </span>
+              {compact ? null : (
+                <span className="text-[10px] leading-none lg:hidden">
+                  {SHORT_MONTHS[month]}
+                </span>
+              )}
               {openable ? (
                 <span
                   className={cn(
                     'tabular-nums',
                     compact
                       ? 'text-[10px] leading-none whitespace-nowrap'
-                      : 'min-w-0 truncate text-[11px] leading-4',
+                      : 'text-[10px] leading-none whitespace-nowrap lg:min-w-0 lg:truncate lg:text-[11px] lg:leading-4',
                   )}
                 >
                   {amount}
@@ -1364,10 +1547,10 @@ function CalendarMonth({
             </>
           )
           const className = cn(
-            'flex w-full min-w-0 text-left',
+            'flex w-full min-w-0 flex-col items-start justify-center gap-0.5 text-left',
             compact
-              ? 'min-h-8 flex-col items-start justify-center gap-0.5 rounded-md px-1 py-0.5'
-              : 'min-h-10 flex-row items-center justify-between gap-1 rounded-lg px-1.5 py-1.5 sm:px-2',
+              ? 'min-h-8 rounded-md px-1 py-0.5'
+              : 'min-h-12 rounded-lg px-1 py-1 lg:min-h-10 lg:flex-row lg:items-center lg:justify-between lg:gap-1 lg:px-1.5 lg:py-1.5',
             future && 'text-muted-foreground/40',
             past && 'text-[#404040]',
             openable && 'spent-day cursor-pointer',
@@ -1720,52 +1903,99 @@ function TransactionRow({
   divided?: boolean
   onClick: () => void
 }) {
+  const [open, setOpen] = useState(false)
   const category = categoryName(txn.categoryId, categories)
+  const merchant = categoryMerchant(txn.categoryId, categories)
+  const name = displayMerchant(txn)
+  const description =
+    txn.description && txn.description !== name ? txn.description : ''
   return (
     <li className={cn('min-w-0', divided && 'border-border border-t border-dotted')}>
       <button
         type="button"
+        aria-expanded={open}
         className={cn(
           'hover-fill group grid w-full min-w-0 items-start gap-x-3 rounded-lg px-2.5 py-2 text-left',
+          'grid-cols-[minmax(0,1fr)_3.25rem_5.5rem]',
           showAccount && showDate &&
-            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_5.75rem_1rem] sm:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_6rem_auto_5.75rem_1rem]',
+            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_6rem_auto_5.75rem_1rem]',
           showAccount && !showDate &&
-            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_5.75rem_1rem] sm:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_6rem_5.75rem_1rem]',
+            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_6rem_5.75rem_1rem]',
           !showAccount && showDate &&
-            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto_5.75rem_1rem]',
+            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_auto_5.75rem_1rem]',
           !showAccount && !showDate &&
-            'grid-cols-[minmax(0,1fr)_minmax(0,8rem)_5.75rem_1rem]',
+            'lg:grid-cols-[minmax(0,1fr)_minmax(0,8rem)_minmax(0,8rem)_5.75rem_1rem]',
         )}
-        onClick={onClick}
+        onClick={() => {
+          if (window.matchMedia('(max-width: 1023px)').matches) {
+            setOpen((current) => !current)
+            return
+          }
+          onClick()
+        }}
       >
         <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-          {displayMerchant(txn)}
+          {name}
         </span>
-        <span className="text-muted-foreground min-w-0 break-words pt-0.5 text-xs [overflow-wrap:anywhere]">
+        <span className="text-muted-foreground w-full min-w-0 truncate pt-0.5 text-xs lg:overflow-visible lg:whitespace-normal lg:break-words">
           {category}
         </span>
+        <span className="text-muted-foreground hidden min-w-0 break-words pt-0.5 text-xs [overflow-wrap:anywhere] lg:block">
+          {merchant}
+        </span>
         {showAccount ? (
-          <span className="text-muted-foreground hidden w-24 shrink-0 pt-0.5 text-xs sm:block">
+          <span className="text-muted-foreground hidden w-24 shrink-0 pt-0.5 text-xs lg:block">
             {accountName(txn.accountId, accounts)}
           </span>
         ) : null}
         {showDate ? (
-          <span className="text-muted-foreground shrink-0 pt-0.5">
+          <span className="text-muted-foreground hidden shrink-0 pt-0.5 lg:block">
             {formatDateWithoutYear(txn.date, 'short')}
           </span>
         ) : null}
         <span
           className={cn(
-            'w-[5.75rem] shrink-0 pt-0.5 text-right tabular-nums',
+            'w-[5.5rem] shrink-0 pt-0.5 text-right tabular-nums lg:w-[5.75rem]',
             txn.amount < 0 && 'text-muted-foreground',
           )}
         >
           {formatTxnAmount(txn.amount)}
         </span>
-        <span className="flex size-4 shrink-0 items-center justify-center">
+        <span className="hidden size-4 shrink-0 items-center justify-center lg:flex">
           <Pencil className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
         </span>
       </button>
+      {open ? (
+        <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 px-2.5 pb-2 text-xs lg:hidden">
+          <dt className="text-muted-foreground">Category</dt>
+          <dd className="min-w-0 break-words">{category}</dd>
+          <dt className="text-muted-foreground">Merchant</dt>
+          <dd className="min-w-0 break-words">{merchant || '—'}</dd>
+          <dt className="text-muted-foreground">Account</dt>
+          <dd className="min-w-0 break-words">
+            {accountName(txn.accountId, accounts)}
+          </dd>
+          <dt className="text-muted-foreground">Date</dt>
+          <dd>{formatDateWithoutYear(txn.date, 'short')}</dd>
+          {description ? (
+            <>
+              <dt className="text-muted-foreground">Description</dt>
+              <dd className="min-w-0 break-words [overflow-wrap:anywhere]">
+                {description}
+              </dd>
+            </>
+          ) : null}
+          <dd className="col-span-2 pt-1">
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={onClick}
+            >
+              Edit
+            </button>
+          </dd>
+        </dl>
+      ) : null}
     </li>
   )
 }
@@ -2414,11 +2644,13 @@ function EditTxnForm({
 type ChildDraft = {
   id: string
   name: string
+  merchant: string
 }
 
 type GroupDraft = {
   id: string
   name: string
+  merchant: string
   expenseIds: string[]
   categories: ChildDraft[]
   open: boolean
@@ -2430,10 +2662,12 @@ function snapshotCategoryPicks(groups: GroupDraft[]) {
     groups.map((group) => ({
       id: group.id,
       name: group.name.trim(),
+      merchant: group.merchant.trim(),
       expenseIds: [...group.expenseIds].sort(),
       categories: group.categories.map((item) => ({
         id: item.id,
         name: item.name.trim(),
+        merchant: item.merchant.trim(),
       })),
     })),
   )
@@ -2445,6 +2679,7 @@ function ensureMainGroupDrafts(groups: GroupDraft[]) {
     next.push({
       id: crypto.randomUUID(),
       name,
+      merchant: '',
       expenseIds: [],
       categories: [],
       open: false,
@@ -2578,6 +2813,7 @@ function EditCategoriesDialog({
       list.push({
         id: item.id,
         name: item.name,
+        merchant: item.merchant ?? '',
       })
       children.set(item.parentId, list)
     }
@@ -2593,6 +2829,7 @@ function EditCategoriesDialog({
       nextDrafts.push({
         id: item.id,
         name: item.name,
+        merchant: item.merchant ?? '',
         expenseIds: categoryExpenseIds(item),
         categories: children.get(item.id) ?? [],
         open: false,
@@ -2646,7 +2883,7 @@ function EditCategoriesDialog({
     pendingScrollId.current = id
     setDrafts((current) => [
       ...current,
-      { id, name: '', expenseIds: [], categories: [], open: true, subcategories: false },
+      { id, name: '', merchant: '', expenseIds: [], categories: [], open: true, subcategories: false },
     ])
   }
 
@@ -2659,7 +2896,7 @@ function EditCategoriesDialog({
           ? {
               ...item,
               open: true,
-              categories: [...item.categories, { id, name: '' }],
+              categories: [...item.categories, { id, name: '', merchant: '' }],
             }
           : item,
       ),
@@ -2671,19 +2908,23 @@ function EditCategoriesDialog({
     for (const group of drafts) {
       const name = toSentenceCase(group.name)
       if (!name) continue
+      const merchant = toSentenceCase(group.merchant)
       next.push({
         id: group.id,
         name,
         grouped: true,
         ...(group.expenseIds.length > 0 ? { expenseIds: group.expenseIds } : {}),
+        ...(merchant ? { merchant } : {}),
       })
       for (const child of group.categories) {
         const childName = toSentenceCase(child.name)
         if (!childName) continue
+        const childMerchant = toSentenceCase(child.merchant)
         next.push({
           id: child.id,
           name: childName,
           parentId: group.id,
+          ...(childMerchant ? { merchant: childMerchant } : {}),
         })
       }
     }
@@ -2751,7 +2992,7 @@ function EditCategoriesDialog({
                     data-scroll-id={group.id}
                     className="py-1"
                   >
-                    <div className="grid grid-cols-[minmax(0,1fr)_28px_28px] items-center gap-2 py-1.5 pr-2.5 pl-2.5">
+                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px_28px] items-center gap-2 py-1.5 pr-2.5 pl-2.5">
                       <Input
                         className={cn('h-8 min-w-0', GHOST_FIELD)}
                         value={group.name}
@@ -2759,6 +3000,15 @@ function EditCategoriesDialog({
                         aria-label="Group name"
                         onChange={(event) =>
                           updateGroup(group.id, { name: event.target.value })
+                        }
+                      />
+                      <Input
+                        className={cn('h-8 min-w-0', GHOST_FIELD)}
+                        value={group.merchant}
+                        placeholder="Merchant"
+                        aria-label={`Merchant for ${group.name || 'group'}`}
+                        onChange={(event) =>
+                          updateGroup(group.id, { merchant: event.target.value })
                         }
                       />
                       {group.subcategories ? (
@@ -2806,7 +3056,7 @@ function EditCategoriesDialog({
                           <div
                             key={child.id}
                             data-scroll-id={child.id}
-                            className="grid grid-cols-[minmax(0,1fr)_28px_28px] items-center gap-2 py-1 pr-2.5 pl-2.5"
+                            className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px_28px] items-center gap-2 py-1 pr-2.5 pl-2.5"
                           >
                             <Input
                               className={cn(
@@ -2821,6 +3071,21 @@ function EditCategoriesDialog({
                                   categories: group.categories.map((item) =>
                                     item.id === child.id
                                       ? { ...item, name: event.target.value }
+                                      : item,
+                                  ),
+                                })
+                              }
+                            />
+                            <Input
+                              className={cn('h-8 min-w-0', GHOST_FIELD)}
+                              value={child.merchant}
+                              placeholder="Merchant"
+                              aria-label={`Merchant for ${child.name || 'subcategory'}`}
+                              onChange={(event) =>
+                                updateGroup(group.id, {
+                                  categories: group.categories.map((item) =>
+                                    item.id === child.id
+                                      ? { ...item, merchant: event.target.value }
                                       : item,
                                   ),
                                 })
@@ -2845,7 +3110,7 @@ function EditCategoriesDialog({
                             </Button>
                           </div>
                         ))}
-                        <div className="grid grid-cols-[minmax(0,1fr)_28px_28px] items-center gap-2 pr-2.5 pl-2.5">
+                        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_28px_28px] items-center gap-2 pr-2.5 pl-2.5">
                           <Button
                             type="button"
                             variant="ghost"

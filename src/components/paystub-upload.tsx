@@ -1,6 +1,6 @@
 import { useRef, useState, type ChangeEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ChevronDown, Upload } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
+import { CirclePlus } from 'lucide-react'
 
 import {
   AlertDialog,
@@ -13,28 +13,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { useBudget } from '@/lib/budget-context'
-import { SPENDING_ENABLED } from '@/lib/features'
 import { formatLongDate } from '@/lib/format'
 import { parseAdpPaystub, type Paystub } from '@/lib/paystub'
 import { usePaystubs } from '@/lib/paystub-context'
-import { parseStatementFile } from '@/lib/spending-parse'
-import { useSpending } from '@/lib/spending-context'
-import type { SpendingUploadBatch } from '@/lib/spending'
+import { requestAddTransaction } from '@/lib/spending-context'
 import { cn } from '@/lib/utils'
 
 async function readPaystubFile(file: File): Promise<Paystub> {
@@ -55,22 +37,6 @@ async function readPaystubFile(file: File): Promise<Paystub> {
 
 const MAX_FILES = 20
 
-type PendingStatement = {
-  id: string
-  file: File
-  pageCount: number | null
-}
-
-function isStatementPdf(file: File) {
-  return (
-    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-  )
-}
-
-function allPages(count: number) {
-  return Array.from({ length: count }, (_, index) => index + 1)
-}
-
 function summaryMessage(saved: number, skipped: number, failed: string[]) {
   const parts: string[] = []
   if (saved > 0) {
@@ -87,41 +53,24 @@ function summaryMessage(saved: number, skipped: number, failed: string[]) {
   return parts.join(' ')
 }
 
-function spendingSummary(saved: number, failed: string[]) {
-  const parts: string[] = []
-  if (saved > 0) {
-    parts.push(`Logged ${saved} purchase${saved === 1 ? '' : 's'}.`)
-  }
-  if (failed.length > 0) {
-    parts.push(`Could not read ${failed.join(', ')}.`)
-  }
-  return parts.join(' ')
-}
-
 export function PaystubUploadButton({
   className,
   iconOnly = false,
+  floating = false,
 }: {
   className?: string
   iconOnly?: boolean
+  floating?: boolean
 }) {
+  const { pathname } = useLocation()
   const { paystubs, upsertPaystub } = usePaystubs()
-  const { accounts } = useBudget()
-  const { importTransactions } = useSpending()
-  const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
-  const spendingInputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(
     null,
   )
   const [message, setMessage] = useState<string | null>(null)
-  const [pendingStatements, setPendingStatements] = useState<PendingStatement[]>(
-    [],
-  )
-  const [selectedPages, setSelectedPages] = useState<Record<string, number[]>>(
-    {},
-  )
   const [pendingStub, setPendingStub] = useState<Paystub | null>(null)
+  const addingSpend = pathname === '/spending'
 
   const busy = progress != null
 
@@ -197,135 +146,19 @@ export function PaystubUploadButton({
     event.target.value = ''
   }
 
-  async function handleSpendingFiles(fileList: FileList) {
-    const files = [...fileList]
-    if (files.length === 0) return
-
-    if (files.length > MAX_FILES) {
-      setMessage(`Upload up to ${MAX_FILES} statements at a time.`)
+  function onPress() {
+    if (addingSpend) {
+      requestAddTransaction()
       return
     }
-
-    setMessage(null)
-    setProgress({ current: 0, total: files.length })
-    const pending: PendingStatement[] = []
-    const pages: Record<string, number[]> = {}
-
-    for (const [index, file] of files.entries()) {
-      setProgress({ current: index + 1, total: files.length })
-      const id = crypto.randomUUID()
-      if (isStatementPdf(file)) {
-        try {
-          const { countPdfPages } = await import('@/lib/extract-pdf')
-          const pageCount = await countPdfPages(file)
-          pending.push({ id, file, pageCount })
-          pages[id] = allPages(pageCount)
-        } catch {
-          pending.push({ id, file, pageCount: 0 })
-          pages[id] = []
-        }
-      } else {
-        pending.push({ id, file, pageCount: null })
-      }
-    }
-
-    setProgress(null)
-    setSelectedPages(pages)
-    setPendingStatements(pending)
+    inputRef.current?.click()
   }
 
-  function toggleStatementPage(id: string, page: number) {
-    setSelectedPages((current) => {
-      const selected = current[id] ?? []
-      const next = selected.includes(page)
-        ? selected.filter((item) => item !== page)
-        : [...selected, page].sort((left, right) => left - right)
-      return { ...current, [id]: next }
-    })
-  }
-
-  function canImportStatements() {
-    return pendingStatements.some((item) => {
-      if (item.pageCount == null) return true
-      return (selectedPages[item.id] ?? []).length > 0
-    })
-  }
-
-  async function importPendingStatements() {
-    const pending = pendingStatements
-    if (pending.length === 0) return
-    setPendingStatements([])
-    setProgress({ current: 0, total: pending.length })
-    const batches: SpendingUploadBatch[] = []
-    const failed: string[] = []
-
-    for (const [index, item] of pending.entries()) {
-      setProgress({ current: index + 1, total: pending.length })
-      const pages =
-        item.pageCount == null ? undefined : (selectedPages[item.id] ?? [])
-      if (item.pageCount != null && (!pages || pages.length === 0)) {
-        failed.push(`${item.file.name}: choose at least one page.`)
-        continue
-      }
-      try {
-        batches.push({
-          name: item.file.name,
-          transactions: await parseStatementFile(item.file, accounts, pages),
-        })
-      } catch (caught) {
-        failed.push(
-          caught instanceof Error
-            ? caught.message
-            : item.file.name || 'one file',
-        )
-        batches.push({ name: item.file.name, transactions: [] })
-      }
-    }
-
-    const { added } = importTransactions(batches)
-    setProgress(null)
-    setSelectedPages({})
-
-    if (added > 0) navigate('/spending')
-    if (added > 0 || failed.length > 0) {
-      setMessage(
-        spendingSummary(added, failed) ||
-          'None of those files could be added.',
-      )
-    }
-  }
-
-  function onSpendingInputChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = event.target.files
-    if (files && files.length > 0) void handleSpendingFiles(files)
-    event.target.value = ''
-  }
-
-  const uploadButton = (
-    <Button
-      type="button"
-      variant={iconOnly ? 'ghost' : 'outline'}
-      size={iconOnly ? 'icon' : 'sm'}
-      disabled={busy}
-      className={cn(iconOnly && 'hover-fill hover-fill-icon', className)}
-      onClick={SPENDING_ENABLED ? undefined : () => inputRef.current?.click()}
-      aria-label={
-        progress
-          ? `Reading ${progress.current}/${progress.total}`
-          : 'Upload'
-      }
-    >
-      <Upload data-icon={iconOnly ? undefined : 'inline-start'} />
-      {iconOnly ? null : progress ? (
-        `Reading ${progress.current}/${progress.total}…`
-      ) : (
-        'Upload'
-      )}
-      {iconOnly || progress || !SPENDING_ENABLED ? null : (
-        <ChevronDown className="size-3.5 text-muted-foreground" />
-      )}
-    </Button>
-  )
+  const label = progress
+    ? `Reading ${progress.current}/${progress.total}`
+    : addingSpend
+      ? 'Add transaction'
+      : 'Upload income'
 
   return (
     <>
@@ -337,124 +170,29 @@ export function PaystubUploadButton({
         className="sr-only"
         onChange={onInputChange}
       />
-      <input
-        ref={spendingInputRef}
-        type="file"
-        accept="application/pdf,.pdf,.csv,text/csv,.ofx,.qfx"
-        multiple
-        className="sr-only"
-        onChange={onSpendingInputChange}
-      />
-      {SPENDING_ENABLED ? (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          {uploadButton}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align={iconOnly ? 'end' : 'start'}>
-          <DropdownMenuItem
-            onSelect={() => {
-              inputRef.current?.click()
-            }}
-          >
-            Income
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              spendingInputRef.current?.click()
-            }}
-          >
-            Spending
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      ) : (
-        uploadButton
-      )}
-
-      <Dialog
-        open={pendingStatements.length > 0}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPendingStatements([])
-            setSelectedPages({})
-          }
-        }}
+      <Button
+        type="button"
+        variant={floating ? 'default' : iconOnly ? 'ghost' : 'outline'}
+        size={floating || iconOnly ? 'icon' : 'sm'}
+        disabled={busy}
+        className={cn(
+          floating
+            ? 'fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full shadow-lg lg:hidden'
+            : iconOnly && 'hover-fill hover-fill-icon',
+          className,
+        )}
+        onClick={onPress}
+        aria-label={label}
       >
-        <DialogContent className="flex max-h-[min(36rem,calc(100vh-2rem))] w-[min(42rem,calc(100%-2rem))] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-4 sm:max-w-[min(42rem,calc(100%-2rem))]">
-          <DialogHeader className="pb-3">
-            <DialogTitle>Choose pages</DialogTitle>
-            <DialogDescription>
-              Pick which pages to read from each statement.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-            <div className="grid gap-3">
-              {pendingStatements.map((item) => {
-                const selected = selectedPages[item.id] ?? []
-                return (
-                  <div
-                    key={item.id}
-                    className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3"
-                  >
-                    <span className="min-w-0 break-words pt-1 [overflow-wrap:anywhere]">
-                      {item.file.name}
-                    </span>
-                    {item.pageCount == null ? (
-                      <span className="text-muted-foreground pt-1 text-sm">
-                        All rows
-                      </span>
-                    ) : item.pageCount <= 0 ? (
-                      <span className="text-muted-foreground pt-1 text-sm">
-                        Could not read pages
-                      </span>
-                    ) : (
-                      <div className="flex max-w-[16rem] flex-wrap justify-end gap-1">
-                        {allPages(item.pageCount).map((page) => {
-                          const on = selected.includes(page)
-                          return (
-                            <button
-                              key={page}
-                              type="button"
-                              aria-pressed={on}
-                              aria-label={`Page ${page}${on ? ', selected' : ''}`}
-                              onClick={() => toggleStatementPage(item.id, page)}
-                              className={cn(
-                                'hover-fill flex size-7 items-center justify-center rounded-md text-sm tabular-nums',
-                                on && 'hover-fill-active font-medium',
-                              )}
-                            >
-                              {page}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setPendingStatements([])
-                setSelectedPages({})
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              disabled={!canImportStatements()}
-              onClick={() => void importPendingStatements()}
-            >
-              Import
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <CirclePlus className={floating ? 'size-7' : undefined} />
+        {floating || iconOnly ? null : progress ? (
+          `Reading ${progress.current}/${progress.total}…`
+        ) : addingSpend ? (
+          'Add'
+        ) : (
+          'Upload income'
+        )}
+      </Button>
 
       <AlertDialog
         open={pendingStub != null}
