@@ -412,12 +412,13 @@ export function SpendingPage() {
     monthRows[0]?.month ??
     null
   const activeMonth =
-    selectedMonth != null && monthRows.some((row) => row.month === selectedMonth)
+    selectedMonth != null && selectedMonth >= 0 && selectedMonth <= 11
       ? selectedMonth
       : defaultMonth
   const [editing, setEditing] = useState<SpendingTxn | null>(null)
   const [adding, setAdding] = useState(false)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [calendarScope, setCalendarScope] = useState<'month' | 'year'>('month')
   /** null means every day is open. */
   const [expandedDays, setExpandedDays] = useState<string[] | null>(null)
   const [expandedStatementMonth, setExpandedStatementMonth] = useState<
@@ -477,14 +478,22 @@ export function SpendingPage() {
     () => monthTxns.filter(countsAsVariable),
     [countsAsVariable, monthTxns],
   )
+  const yearSpentTxns = useMemo(() => {
+    const prefix = `${selectedYear}-`
+    return sortSpendingTxns(
+      transactions.filter(
+        (txn) => txn.date.startsWith(prefix) && countsAsVariable(txn),
+      ),
+    )
+  }, [countsAsVariable, selectedYear, transactions])
   const totalSpent = spentTxns.reduce((sum, txn) => sum + txn.amount, 0)
   const spentByDay = useMemo(() => {
     const totals = new Map<string, number>()
-    for (const txn of spentTxns) {
+    for (const txn of yearSpentTxns) {
       totals.set(txn.date, (totals.get(txn.date) ?? 0) + txn.amount)
     }
     return totals
-  }, [spentTxns])
+  }, [yearSpentTxns])
   const monthBudget = useMemo(
     () =>
       activeMonth == null
@@ -527,7 +536,18 @@ export function SpendingPage() {
         amount: items.reduce((sum, txn) => sum + txn.amount, 0),
       }))
   }, [spentTxns])
-  const selectedRow = dayRows.find((row) => row.date === selectedDay) ?? null
+  const selectedRow = useMemo(() => {
+    if (selectedDay == null) return null
+    const listed = dayRows.find((row) => row.date === selectedDay)
+    if (listed) return listed
+    const items = yearSpentTxns.filter((txn) => txn.date === selectedDay)
+    if (items.length === 0) return null
+    return {
+      date: selectedDay,
+      items,
+      amount: items.reduce((sum, txn) => sum + txn.amount, 0),
+    }
+  }, [dayRows, selectedDay, yearSpentTxns])
   const pendingAffirm = useMemo(() => {
     const linked = new Set(
       transactions.flatMap((txn) => (txn.affirmLoanId ? [txn.affirmLoanId] : [])),
@@ -566,6 +586,7 @@ export function SpendingPage() {
               const next = Number(value)
               setYear(next)
               setSelectedMonth(null)
+              setCalendarScope('month')
               setSelectedDay(null)
               setExpandedDays(null)
             }}
@@ -637,6 +658,7 @@ export function SpendingPage() {
                   type="button"
                   aria-current={selected ? 'true' : undefined}
                   onClick={() => {
+                    setCalendarScope('month')
                     setSelectedMonth(row.month)
                     setSelectedDay(null)
                     setExpandedDays(null)
@@ -727,9 +749,16 @@ export function SpendingPage() {
         <SpendingCalendar
           year={selectedYear}
           month={activeMonth}
+          scope={calendarScope}
           spentByDay={spentByDay}
           now={now}
           selected={selectedDay}
+          onScope={(next, nextMonth) => {
+            setCalendarScope(next)
+            if (nextMonth != null) setSelectedMonth(nextMonth)
+            setSelectedDay(null)
+            setExpandedDays(null)
+          }}
           onSelect={(date) => {
             setSelectedDay((current) => (current === date ? null : date))
             setExpandedDays((current) =>
@@ -1134,15 +1163,90 @@ function formatWeekdayDate(iso: string) {
 function SpendingCalendar({
   year,
   month,
+  scope,
   spentByDay,
   now,
+  selected,
+  onScope,
+  onSelect,
+}: {
+  year: number
+  month: number
+  scope: 'month' | 'year'
+  spentByDay: Map<string, number>
+  now: Date
+  selected: string | null
+  onScope: (scope: 'month' | 'year', month?: number) => void
+  onSelect: (date: string) => void
+}) {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const months = scope === 'year' ? Array.from({ length: 12 }, (_, index) => index) : [month]
+
+  return (
+    <Card>
+      <CardHeader>
+        <Select
+          value={scope === 'year' ? 'year' : String(month)}
+          onValueChange={(value) => {
+            if (value === 'year') onScope('year')
+            else onScope('month', Number(value))
+          }}
+        >
+          <SelectTrigger aria-label="Calendar view" size="sm" className="h-8 text-base">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent
+            position="popper"
+            align="start"
+            side="bottom"
+            sideOffset={4}
+            className="max-h-80"
+          >
+            <SelectItem value="year" className="text-base">
+              Whole year
+            </SelectItem>
+            {Array.from({ length: 12 }, (_, index) => (
+              <SelectItem key={index} value={String(index)} className="text-base">
+                {monthName(index)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </CardHeader>
+      <CardContent>
+        <div className={cn(scope === 'year' && 'grid gap-x-4 gap-y-5 sm:grid-cols-2')}>
+          {months.map((shown) => (
+            <CalendarMonth
+              key={shown}
+              year={year}
+              month={shown}
+              compact={scope === 'year'}
+              spentByDay={spentByDay}
+              today={today}
+              selected={selected}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function CalendarMonth({
+  year,
+  month,
+  compact,
+  spentByDay,
+  today,
   selected,
   onSelect,
 }: {
   year: number
   month: number
+  compact: boolean
   spentByDay: Map<string, number>
-  now: Date
+  today: Date
   selected: string | null
   onSelect: (date: string) => void
 }) {
@@ -1152,76 +1256,94 @@ function SpendingCalendar({
     ...Array.from({ length: firstWeekday }, () => null),
     ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
   ]
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          {year === now.getFullYear()
-            ? monthName(month)
-            : `${monthName(month)} ${year}`}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-7 gap-1.5">
-          {WEEKDAYS.map((label, index) => (
-            <div key={index} className="text-muted-foreground pb-1 text-center text-xs">
-              {label}
-            </div>
-          ))}
-          {cells.map((day, index) => {
-            if (day == null) return <div key={`pad-${index}`} />
-            const date = new Date(year, month, day)
-            const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-            const spent = spentByDay.get(key) ?? 0
-            const future = date > today
-            const past = date < today
-            const isToday = date.getTime() === today.getTime()
-            const openable = !future && spent > 0.005
-            const body = (
-              <>
-                <span className="text-sm font-medium leading-5">{day}</span>
-                {openable ? (
-                  <span className="min-w-0 truncate text-[11px] leading-4 tabular-nums">
-                    {formatUsd(spent)}
-                  </span>
-                ) : null}
-              </>
-            )
-            const className = cn(
-              'flex min-h-10 w-full items-center justify-between gap-1 rounded-lg px-1.5 py-1.5 text-left sm:px-2',
-              future && 'text-muted-foreground/40',
-              past && 'text-[#404040]',
-              openable && 'spent-day cursor-pointer',
-              isToday && 'text-black ring-1 ring-black',
-            )
-            const style = openable
-              ? { background: selected === key ? '#F6C6DB' : '#FDE4EF' }
-              : undefined
-            if (!openable) {
-              return (
-                <div key={key} className={className} style={style}>
-                  {body}
-                </div>
-              )
-            }
-            return (
-              <button
-                key={key}
-                type="button"
-                className={className}
-                style={style}
-                aria-pressed={selected === key}
-                onClick={() => onSelect(key)}
+    <div className="min-w-0">
+      {compact ? (
+        <div className="pb-1 text-xs font-medium">{monthName(month)}</div>
+      ) : null}
+      <div className={cn('grid grid-cols-7', compact ? 'gap-0.5' : 'gap-1.5')}>
+        {WEEKDAYS.map((label, index) => (
+          <div
+            key={index}
+            className={cn(
+              'text-muted-foreground text-center',
+              compact ? 'pb-0.5 text-[10px] leading-3' : 'pb-1 text-xs',
+            )}
+          >
+            {label}
+          </div>
+        ))}
+        {cells.map((day, index) => {
+          if (day == null) return <div key={`pad-${index}`} />
+          const date = new Date(year, month, day)
+          const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const spent = spentByDay.get(key) ?? 0
+          const future = date > today
+          const past = date < today
+          const isToday = date.getTime() === today.getTime()
+          const openable = !future && spent > 0.005
+          const amount = formatUsd(spent)
+          const body = (
+            <>
+              <span
+                className={cn(
+                  'shrink-0 font-medium',
+                  compact ? 'text-[11px] leading-none' : 'text-sm leading-5',
+                )}
               >
+                {day}
+              </span>
+              {openable ? (
+                <span
+                  className={cn(
+                    'tabular-nums',
+                    compact
+                      ? 'text-[10px] leading-none whitespace-nowrap'
+                      : 'min-w-0 truncate text-[11px] leading-4',
+                  )}
+                >
+                  {amount}
+                </span>
+              ) : null}
+            </>
+          )
+          const className = cn(
+            'flex w-full min-w-0 text-left',
+            compact
+              ? 'min-h-8 flex-col items-start justify-center gap-0.5 rounded-md px-1 py-0.5'
+              : 'min-h-10 flex-row items-center justify-between gap-1 rounded-lg px-1.5 py-1.5 sm:px-2',
+            future && 'text-muted-foreground/40',
+            past && 'text-[#404040]',
+            openable && 'spent-day cursor-pointer',
+            isToday && 'text-black ring-1 ring-black',
+          )
+          const style = openable
+            ? { background: selected === key ? '#F6C6DB' : '#FDE4EF' }
+            : undefined
+          if (!openable) {
+            return (
+              <div key={key} className={className} style={style}>
                 {body}
-              </button>
+              </div>
             )
-          })}
-        </div>
-      </CardContent>
-    </Card>
+          }
+          return (
+            <button
+              key={key}
+              type="button"
+              className={className}
+              style={style}
+              aria-pressed={selected === key}
+              title={amount}
+              onClick={() => onSelect(key)}
+            >
+              {body}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
