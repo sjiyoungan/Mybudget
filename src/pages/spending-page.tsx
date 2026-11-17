@@ -819,39 +819,24 @@ export function SpendingPage() {
             <div className="flex flex-wrap items-center gap-8">
               <BudgetDonut parts={donutParts} total={totalSpent} budget={monthBudget} />
               <ul className="grid min-w-[14rem] flex-1 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-baseline gap-x-2 gap-y-2.5 text-sm">
-                {donutParts.map((part) => {
-                  const delta = part.spent - part.budget
-                  const over = delta > 0.005
-                  const under = delta < -0.005
-                  return (
-                    <Fragment key={part.id}>
-                      <span
-                        className="size-2.5 self-center rounded-[3px]"
-                        style={{ background: part.color }}
-                      />
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span>{part.name}</span>
-                        <span className="mb-1 min-w-4 flex-1 border-b border-dotted border-neutral-300" />
-                      </span>
-                      <span className="justify-self-end tabular-nums">
-                        {formatUsd(part.spent)}
-                      </span>
-                      {over || under ? (
-                        <span
-                          className={cn(
-                            'justify-self-start text-xs tabular-nums',
-                            under && 'text-muted-foreground',
-                          )}
-                          style={over ? { color: darkerShade(part.color) } : undefined}
-                        >
-                          {formatUsd(Math.abs(delta))} {over ? 'over' : 'left'}
-                        </span>
-                      ) : (
-                        <span />
-                      )}
-                    </Fragment>
-                  )
-                })}
+                {donutParts.map((part) => (
+                  <Fragment key={part.id}>
+                    <span
+                      className="size-2.5 self-center rounded-[3px]"
+                      style={{ background: part.color }}
+                    />
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span>{part.name}</span>
+                      <span className="mb-1 min-w-4 flex-1 border-b border-dotted border-neutral-300" />
+                    </span>
+                    <span className="justify-self-end tabular-nums">
+                      {formatUsd(part.spent)}
+                    </span>
+                    <span className="text-muted-foreground justify-self-start text-xs tabular-nums">
+                      / {formatUsd(part.budget)}
+                    </span>
+                  </Fragment>
+                ))}
               </ul>
             </div>
           </CardContent>
