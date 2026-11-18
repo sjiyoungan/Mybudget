@@ -119,7 +119,6 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
       stored.rules.length !== state.rules.length ||
       (stored.uploads?.length ?? 0) !== (state.uploads?.length ?? 0)
     ) {
-      if (fromCloudApply) suppressNextPush()
       setState(stored)
     }
   }, [state])

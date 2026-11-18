@@ -100,20 +100,17 @@ function withExclusiveRole(
 
 export function BudgetProvider({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
-  const [state, setState] = useState<BudgetState | null>(null)
+  const [state, setState] = useState<BudgetState>(() => loadBudget())
 
   useEffect(() => {
-    if (state) {
-      saveBudget(state)
-      rememberBudget(state)
-      schedulePush()
-    }
+    saveBudget(state)
+    rememberBudget(state)
+    schedulePush()
   }, [state])
 
   useEffect(() => {
     if (loading) return
     if (!supabase || !user) {
-      setState(loadBudget())
       if (!supabase) markCloudReady()
       else resetSync()
       return
@@ -125,8 +122,6 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       
       if (cloudState) {
         setState(cloudState.budget)
-      } else {
-        setState(loadBudget())
       }
       
       markCloudReady()
@@ -137,14 +132,12 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
     }
   }, [loading, user])
 
-  const currentState = state || loadBudget()
-  
   const value = useMemo<BudgetContextValue>(
     () => ({
-      accounts: currentState.accounts,
-      categories: currentState.categories,
-      expenses: currentState.expenses,
-      debts: debtsWithAffirmPlan(currentState.debts, loadDebtPlan().affirmLoans),
+      accounts: state.accounts,
+      categories: state.categories,
+      expenses: state.expenses,
+      debts: debtsWithAffirmPlan(state.debts, loadDebtPlan().affirmLoans),
       addAccount({ name, kind, role }) {
         const id = crypto.randomUUID()
         setState((current) => {
