@@ -51,6 +51,8 @@ type AppStatePaystubData = {
   spending?: unknown
 }
 
+const PENDING_KEY = 'mybudget.appstate.pending'
+
 let cache: UserAppState | null = null
 let ready = false
 let inflight: Promise<CloudSync> | null = null
@@ -58,6 +60,43 @@ let pushTimer: ReturnType<typeof setTimeout> | null = null
 let pullIntervalId: ReturnType<typeof setInterval> | null = null
 let ongoingPull: Promise<void> | null = null
 let syncCleanupFns: Array<() => void> = []
+let epoch = 0
+let suppressPushes = 0
+
+function hasPendingEdit() {
+  try {
+    return localStorage.getItem(PENDING_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markPendingEdit() {
+  epoch += 1
+  try {
+    localStorage.setItem(PENDING_KEY, '1')
+  } catch {
+    // The in-memory epoch still keeps this page from adopting a stale cloud copy.
+  }
+}
+
+function clearPendingEdit(scheduled: number) {
+  if (scheduled !== epoch) return
+  try {
+    localStorage.removeItem(PENDING_KEY)
+  } catch {
+    // The next load will try the upload again.
+  }
+}
+
+/** Cloud apply updates three providers. Skip those echo writes. */
+export function beginCloudApply() {
+  suppressPushes = 3
+}
+
+export function suppressNextPush() {
+  suppressPushes += 1
+}
 
 async function currentUserId() {
   if (!supabase) return null
@@ -93,6 +132,8 @@ export function resetUserAppStateSync() {
   cache = null
   ready = false
   inflight = null
+  epoch += 1
+  suppressPushes = 0
   if (pushTimer) {
     clearTimeout(pushTimer)
     pushTimer = null
@@ -214,7 +255,7 @@ async function upsertPaystubAppState(state: UserAppState) {
     typeof existing?.id === 'string' && existing.id
       ? existing.id
       : crypto.randomUUID()
-  await upsertPaystubRecord(id, APP_STATE_PAY_DATE, {
+  return upsertPaystubRecord(id, APP_STATE_PAY_DATE, {
     id,
     fileName: '__app_state__',
     uploadedAt: new Date().toISOString(),
@@ -231,27 +272,24 @@ async function upsertPaystubAppState(state: UserAppState) {
 }
 
 async function upsertUserAppState(state: UserAppState) {
-  // Before pushing, fetch current remote state and merge to prevent conflicts
   const read = await readCloudAppState()
   let mergedState = state
-  
+
   if (read.status === 'ready') {
-    // Merge local changes with remote state
     mergedState = {
       budget: mergeBudgetStates(state.budget, read.state.budget),
       plan: mergeDebtPlanStates(state.plan, read.state.plan),
       spending: mergeSpendingStates(state.spending, read.state.spending),
     }
-    
-    // Update cache and local storage with merged state
     cache = mergedState
     saveBudget(mergedState.budget)
     saveDebtPlan(mergedState.plan)
     saveSpending(mergedState.spending)
   }
-  
-  await upsertPaystubAppState(mergedState)
+
+  const saved = await upsertPaystubAppState(mergedState)
   await upsertDedicatedAppState(mergedState)
+  return saved
 }
 
 function applyLocal(state: UserAppState) {
@@ -271,36 +309,74 @@ export type CloudSync = {
 export function syncUserAppStateFromCloud(): Promise<CloudSync> {
   if (!inflight) {
     inflight = (async () => {
+      const seen = epoch
       const read = await readCloudAppState()
+      if (hasPendingEdit() || epoch !== seen) {
+        const local = localAppState()
+        const scheduled = epoch
+        const saved = await upsertUserAppState(local)
+        if (saved) clearPendingEdit(scheduled)
+        return { state: local, fromCloud: false }
+      }
       if (read.status === 'error') {
         return { state: localAppState(), fromCloud: false }
       }
       if (read.status === 'empty') {
         const local = localAppState()
         applyLocal(local)
-        await upsertUserAppState(local)
+        const scheduled = epoch
+        const saved = await upsertUserAppState(local)
+        if (saved) clearPendingEdit(scheduled)
+        beginCloudApply()
         return { state: local, fromCloud: true }
       }
       applyLocal(read.state)
-      if (read.upload) await upsertUserAppState(read.state)
+      if (read.upload) {
+        const scheduled = epoch
+        const saved = await upsertUserAppState(read.state)
+        if (saved) clearPendingEdit(scheduled)
+      }
+      beginCloudApply()
       return { state: read.state, fromCloud: true }
-    })()
+    })().finally(() => {
+      inflight = null
+    })
   }
   return inflight
 }
 
+async function finishPush(scheduled: number) {
+  const saved = await upsertUserAppState(localAppState())
+  if (saved) clearPendingEdit(scheduled)
+}
+
 export function scheduleUserAppStatePush() {
+  if (suppressPushes > 0) {
+    suppressPushes -= 1
+    return
+  }
   if (!ready || !supabase) return
+  markPendingEdit()
   if (pushTimer) clearTimeout(pushTimer)
+  const scheduled = epoch
   pushTimer = setTimeout(() => {
     pushTimer = null
-    void upsertUserAppState(localAppState())
+    void finishPush(scheduled)
   }, 400)
 }
 
 export async function pushUserAppStateNow() {
   ready = true
-  await upsertUserAppState(localAppState())
+  markPendingEdit()
+  const scheduled = epoch
+  await finishPush(scheduled)
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    if (!hasPendingEdit()) return
+    void finishPush(epoch)
+  })
 }
 
 /**

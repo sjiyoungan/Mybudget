@@ -25,6 +25,15 @@ import {
   type SpendingUploadBatch,
 } from '@/lib/spending'
 import { supabase } from '@/lib/supabase'
+import {
+  markCloudReady,
+  rememberSpending,
+  suppressNextPush,
+  resetUserAppStateSync,
+  scheduleUserAppStatePush,
+  startPeriodicSync,
+  syncUserAppStateFromCloud,
+} from '@/lib/user-app-state'
 
 export const ADD_TRANSACTION_EVENT = 'mybudget:add-transaction'
 
@@ -40,14 +49,6 @@ export function takeAddTransactionRequest() {
   addTransactionRequested = false
   return requested
 }
-import {
-  markCloudReady,
-  rememberSpending,
-  resetUserAppStateSync,
-  scheduleUserAppStatePush,
-  startPeriodicSync,
-  syncUserAppStateFromCloud,
-} from '@/lib/user-app-state'
 
 type SpendingContextValue = {
   transactions: SpendingTxn[]
@@ -105,7 +106,8 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
   })
 
   useEffect(() => {
-    const skipStamp = firstPersist.current || applyingCloud.current
+    const fromCloudApply = applyingCloud.current
+    const skipStamp = firstPersist.current || fromCloudApply
     firstPersist.current = false
     applyingCloud.current = false
     const next = skipStamp ? state : touchSpending(state)
@@ -118,6 +120,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
       stored.rules.length !== state.rules.length ||
       (stored.uploads?.length ?? 0) !== (state.uploads?.length ?? 0)
     ) {
+      if (fromCloudApply) suppressNextPush()
       setState(stored)
     }
   }, [state])
