@@ -469,6 +469,7 @@ export function SpendingPage() {
   )
   const [year, setYear] = useState<number | null>(null)
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
+  const [period, setPeriod] = useState<'month' | 'ytd'>('month')
   const selectedYear = year ?? latest?.year ?? now.getFullYear()
   const variableExpenseIds = useMemo(
     () =>
@@ -516,7 +517,6 @@ export function SpendingPage() {
     return () => window.removeEventListener(ADD_TRANSACTION_EVENT, openAdd)
   }, [])
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
-  const [calendarScope, setCalendarScope] = useState<'month' | 'year'>('month')
   const [calendarCategoryIds, setCalendarCategoryIds] = useState<string[]>([])
   const [expandedStatementMonth, setExpandedStatementMonth] = useState<
     string | null
@@ -530,19 +530,36 @@ export function SpendingPage() {
   const [affirmIds, setAffirmIds] = useState<string[]>([])
   const [affirmIndex, setAffirmIndex] = useState(0)
 
+  const ytd = period === 'ytd'
+  const ytdThrough =
+    selectedYear > now.getFullYear()
+      ? -1
+      : selectedYear < now.getFullYear()
+        ? 11
+        : now.getMonth()
   const monthPrefix =
     activeMonth == null
       ? ''
       : `${selectedYear}-${String(activeMonth + 1).padStart(2, '0')}-`
-  const monthTxns = useMemo(
-    () =>
-      sortSpendingTxns(
-        monthPrefix
-          ? transactions.filter((txn) => txn.date.startsWith(monthPrefix))
-          : [],
-      ),
-    [monthPrefix, transactions],
-  )
+  const periodEnd =
+    selectedYear < now.getFullYear()
+      ? `${selectedYear}-12-31`
+      : selectedYear > now.getFullYear()
+        ? ''
+        : localIsoDate(now)
+  const periodTxns = useMemo(() => {
+    if (ytd) {
+      const start = `${selectedYear}-01-01`
+      return sortSpendingTxns(
+        transactions.filter((txn) => txn.date >= start && txn.date <= periodEnd),
+      )
+    }
+    return sortSpendingTxns(
+      monthPrefix
+        ? transactions.filter((txn) => txn.date.startsWith(monthPrefix))
+        : [],
+    )
+  }, [monthPrefix, periodEnd, selectedYear, transactions, ytd])
   const statementMonths = useMemo(() => {
     const groups = new Map<
       string,
@@ -573,25 +590,25 @@ export function SpendingPage() {
     }))
   }, [transactions, uploads])
   const spentTxns = useMemo(
-    () => monthTxns.filter(countsAsVariable),
-    [countsAsVariable, monthTxns],
+    () => periodTxns.filter(countsAsVariable),
+    [countsAsVariable, periodTxns],
   )
-  const yearSpentTxns = useMemo(() => {
-    const prefix = `${selectedYear}-`
-    return sortSpendingTxns(
-      transactions.filter(
-        (txn) => txn.date.startsWith(prefix) && countsAsVariable(txn),
-      ),
-    )
-  }, [countsAsVariable, selectedYear, transactions])
+  const ytdSpent = useMemo(() => {
+    const start = `${selectedYear}-01-01`
+    return transactions.reduce((sum, txn) => {
+      if (!countsAsVariable(txn) || txn.date < start || txn.date > periodEnd) return sum
+      return sum + txn.amount
+    }, 0)
+  }, [countsAsVariable, periodEnd, selectedYear, transactions])
+  const ytdBudget = useMemo(() => {
+    if (ytdThrough < 0) return 0
+    let sum = 0
+    for (let month = 0; month <= ytdThrough; month += 1) {
+      sum += variableBudgetForMonth(expenses, selectedYear, month)
+    }
+    return sum
+  }, [expenses, selectedYear, ytdThrough])
   const totalSpent = spentTxns.reduce((sum, txn) => sum + txn.amount, 0)
-  const calendarYearTxns = useMemo(
-    () =>
-      yearSpentTxns.filter((txn) =>
-        txnInCalendarCategories(txn, categories, calendarCategoryIds),
-      ),
-    [calendarCategoryIds, categories, yearSpentTxns],
-  )
   const calendarMonthTxns = useMemo(
     () =>
       spentTxns.filter((txn) =>
@@ -601,24 +618,33 @@ export function SpendingPage() {
   )
   const spentByDay = useMemo(() => {
     const totals = new Map<string, number>()
-    for (const txn of calendarYearTxns) {
+    for (const txn of calendarMonthTxns) {
       totals.set(txn.date, (totals.get(txn.date) ?? 0) + txn.amount)
     }
     return totals
-  }, [calendarYearTxns])
-  const monthBudget = useMemo(
-    () =>
-      activeMonth == null
-        ? 0
-        : variableBudgetForMonth(expenses, selectedYear, activeMonth),
-    [activeMonth, expenses, selectedYear],
-  )
+  }, [calendarMonthTxns])
+  const calendarMonths = ytd
+    ? Array.from({ length: Math.max(0, ytdThrough + 1) }, (_, index) => index)
+    : activeMonth == null
+      ? []
+      : [activeMonth]
+  const monthBudget = useMemo(() => {
+    if (ytd) return ytdBudget
+    return activeMonth == null
+      ? 0
+      : variableBudgetForMonth(expenses, selectedYear, activeMonth)
+  }, [activeMonth, expenses, selectedYear, ytd, ytdBudget])
   const donutParts = useMemo(() => {
     const budget = { spending: 0, food: 0, gas: 0 }
-    if (activeMonth != null) {
+    const months = ytd
+      ? Array.from({ length: Math.max(0, ytdThrough + 1) }, (_, index) => index)
+      : activeMonth == null
+        ? []
+        : [activeMonth]
+    for (const month of months) {
       for (const item of expenses) {
         if (item.category !== VARIABLE_CATEGORY_ID || isHiddenExpense(item)) continue
-        if (!isExpenseActiveInMonth(item, selectedYear, activeMonth)) continue
+        if (!isExpenseActiveInMonth(item, selectedYear, month)) continue
         budget[expenseDonutKey(item.name)] += ceiledMonthlyAmount(item)
       }
     }
@@ -632,7 +658,7 @@ export function SpendingPage() {
       spent: spent[key],
       budget: budget[key],
     }))
-  }, [activeMonth, categories, expenses, selectedYear, spentTxns])
+  }, [activeMonth, categories, expenses, selectedYear, spentTxns, ytd, ytdThrough])
   const dayRows = useMemo(() => {
     const byDay = new Map<string, SpendingTxn[]>()
     for (const txn of calendarMonthTxns) {
@@ -652,14 +678,14 @@ export function SpendingPage() {
     if (selectedDay == null) return null
     const listed = dayRows.find((row) => row.date === selectedDay)
     if (listed) return listed
-    const items = calendarYearTxns.filter((txn) => txn.date === selectedDay)
+    const items = calendarMonthTxns.filter((txn) => txn.date === selectedDay)
     if (items.length === 0) return null
     return {
       date: selectedDay,
       items,
       amount: items.reduce((sum, txn) => sum + txn.amount, 0),
     }
-  }, [calendarYearTxns, dayRows, selectedDay])
+  }, [calendarMonthTxns, dayRows, selectedDay])
   const pendingAffirm = useMemo(() => {
     const linked = new Set(
       transactions.flatMap((txn) => (txn.affirmLoanId ? [txn.affirmLoanId] : [])),
@@ -698,7 +724,6 @@ export function SpendingPage() {
               const next = Number(value)
               setYear(next)
               setSelectedMonth(null)
-              setCalendarScope('month')
               setSelectedDay(null)
             }}
           >
@@ -762,14 +787,14 @@ export function SpendingPage() {
           </CardHeader>
           <CardContent className="grid gap-1 pl-3">
             {monthRows.map((row) => {
-              const selected = row.month === activeMonth
+              const selected = !ytd && row.month === activeMonth
               return (
                 <button
                   key={row.month}
                   type="button"
                   aria-current={selected ? 'true' : undefined}
                   onClick={() => {
-                    setCalendarScope('month')
+                    setPeriod('month')
                     setSelectedMonth(row.month)
                     setSelectedDay(null)
                   }}
@@ -795,6 +820,31 @@ export function SpendingPage() {
                 </button>
               )
             })}
+            <div className="border-border mt-1 border-t pt-1">
+            <button
+              type="button"
+              aria-current={ytd ? 'true' : undefined}
+              onClick={() => {
+                setPeriod('ytd')
+                setSelectedDay(null)
+              }}
+              className={cn(
+                'hover-fill grid w-full cursor-pointer grid-cols-[1fr_auto] items-baseline gap-4 rounded-lg py-2 pr-2.5 pl-1 text-left',
+                ytd && 'hover-fill-active',
+              )}
+            >
+              <span className={ytd ? 'font-medium' : undefined}>Year to date</span>
+              <span className="whitespace-nowrap tabular-nums">
+                <span className={ytdSpent === 0 ? 'text-muted-foreground' : undefined}>
+                  {formatUsd(ytdSpent)}
+                </span>
+                <span className="text-muted-foreground">
+                  {' / '}
+                  {formatUsd(ytdBudget)}
+                </span>
+              </span>
+            </button>
+            </div>
           </CardContent>
         </Card>
 
@@ -850,11 +900,10 @@ export function SpendingPage() {
         </Card>
       </section>
 
-      {activeMonth != null ? (
+      {calendarMonths.length > 0 ? (
         <SpendingCalendar
           year={selectedYear}
-          month={activeMonth}
-          scope={calendarScope}
+          months={calendarMonths}
           categories={categories}
           categoryIds={calendarCategoryIds}
           onCategories={(ids) => {
@@ -864,11 +913,6 @@ export function SpendingPage() {
           spentByDay={spentByDay}
           now={now}
           selected={selectedDay}
-          onScope={(next, nextMonth) => {
-            setCalendarScope(next)
-            if (nextMonth != null) setSelectedMonth(nextMonth)
-            setSelectedDay(null)
-          }}
           onSelect={(date) => {
             setSelectedDay((current) => (current === date ? null : date))
           }}
@@ -895,7 +939,7 @@ export function SpendingPage() {
         <CardContent className="grid gap-1">
           {selectedRow == null && dayRows.length === 0 ? (
             <p className="text-muted-foreground py-2 text-sm">
-              No purchases this month.
+              {ytd ? 'No purchases yet this year.' : 'No purchases this month.'}
             </p>
           ) : null}
           {(selectedRow ? [selectedRow] : dayRows).map((row, index) => (
@@ -1288,41 +1332,32 @@ function formatWeekdayDate(iso: string) {
 
 function SpendingCalendar({
   year,
-  month,
-  scope,
+  months,
   categories,
   categoryIds,
   onCategories,
   spentByDay,
   now,
   selected,
-  onScope,
   onSelect,
 }: {
   year: number
-  month: number
-  scope: 'month' | 'year'
+  months: number[]
   categories: SpendingCategory[]
   categoryIds: string[]
   onCategories: (ids: string[]) => void
   spentByDay: Map<string, number>
   now: Date
   selected: string | null
-  onScope: (scope: 'month' | 'year', month?: number) => void
   onSelect: (date: string) => void
 }) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const months = scope === 'year' ? Array.from({ length: 12 }, (_, index) => index) : [month]
+  const spread = months.length > 1
 
   return (
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
-          <CalendarMonthPicker
-            scope={scope}
-            month={month}
-            onScope={onScope}
-          />
           <CalendarCategoryFilter
             categories={categories}
             selectedIds={categoryIds}
@@ -1331,13 +1366,13 @@ function SpendingCalendar({
         </div>
       </CardHeader>
       <CardContent>
-        <div className={cn(scope === 'year' && 'grid gap-x-4 gap-y-5 sm:grid-cols-2')}>
+        <div className={cn(spread && 'grid gap-x-4 gap-y-5 sm:grid-cols-2')}>
           {months.map((shown) => (
             <CalendarMonth
               key={shown}
               year={year}
               month={shown}
-              compact={scope === 'year'}
+              compact={spread}
               spentByDay={spentByDay}
               today={today}
               selected={selected}
@@ -1347,70 +1382,6 @@ function SpendingCalendar({
         </div>
       </CardContent>
     </Card>
-  )
-}
-
-function CalendarMonthPicker({
-  scope,
-  month,
-  onScope,
-}: {
-  scope: 'month' | 'year'
-  month: number
-  onScope: (scope: 'month' | 'year', month?: number) => void
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="Calendar view"
-          className="flex h-8 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-base whitespace-nowrap outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-        >
-          {scope === 'year' ? 'Whole year' : monthName(month)}
-          <ChevronDown className="size-4 text-muted-foreground" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-2">
-        <div className="grid grid-cols-3 gap-1">
-          {Array.from({ length: 12 }, (_, index) => {
-            const selected = scope === 'month' && month === index
-            return (
-              <button
-                key={index}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => {
-                  onScope('month', index)
-                  setOpen(false)
-                }}
-                className={cn(
-                  'hover-fill rounded-md px-2 py-1.5 text-sm',
-                  selected && 'hover-fill-active font-medium',
-                )}
-              >
-                {SHORT_MONTHS[index]}
-              </button>
-            )
-          })}
-        </div>
-        <button
-          type="button"
-          aria-pressed={scope === 'year'}
-          onClick={() => {
-            onScope('year')
-            setOpen(false)
-          }}
-          className={cn(
-            'hover-fill mt-1 w-full rounded-md px-2 py-1.5 text-sm',
-            scope === 'year' && 'hover-fill-active font-medium',
-          )}
-        >
-          Whole year
-        </button>
-      </PopoverContent>
-    </Popover>
   )
 }
 
@@ -1525,9 +1496,9 @@ function CalendarMonth({
 
   return (
     <div className="min-w-0">
-      {compact ? (
-        <div className="pb-1 text-xs font-medium">{monthName(month)}</div>
-      ) : null}
+      <div className={cn('pb-1 font-medium', compact ? 'text-xs' : 'text-sm')}>
+        {monthName(month)}
+      </div>
       <div className={cn('grid grid-cols-7', compact ? 'gap-0.5' : 'gap-1.5')}>
         {WEEKDAYS.map((label, index) => (
           <div
