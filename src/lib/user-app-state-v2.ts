@@ -29,10 +29,8 @@ import {
 import {
   APP_STATE_PAY_DATE,
   fetchPaystubDataByDate,
-  type Paystub,
 } from '@/lib/paystub'
 import {
-  emptySpending,
   loadSpending,
   parseSpendingState,
   saveSpending,
@@ -78,6 +76,7 @@ let pushTimer: ReturnType<typeof setTimeout> | null = null
 let pullIntervalId: ReturnType<typeof setInterval> | null = null
 let ongoingPull: Promise<void> | null = null
 let syncCleanupFns: Array<() => void> = []
+let suppressPushCount = 0
 
 async function currentUserId() {
   if (!supabase) return null
@@ -311,9 +310,20 @@ export function rememberSpending(spending: SpendingState) {
 }
 
 /**
+ * Suppress the next scheduled push (used when applying cloud data to avoid echo).
+ */
+export function suppressNextPush() {
+  suppressPushCount += 1
+}
+
+/**
  * Schedule a debounced push to cloud.
  */
 export function schedulePush() {
+  if (suppressPushCount > 0) {
+    suppressPushCount -= 1
+    return
+  }
   if (!ready || !supabase) return
 
   if (pushTimer) clearTimeout(pushTimer)
@@ -464,6 +474,7 @@ export function resetSync() {
   cache = null
   ready = false
   inflight = null
+  suppressPushCount = 0
   
   if (pushTimer) {
     clearTimeout(pushTimer)

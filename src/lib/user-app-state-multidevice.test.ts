@@ -8,7 +8,7 @@
  * 4. Device B has ancient localStorage with resurrected items, should NOT resurrect to cloud
  */
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mergeDebtPlanStates } from './debt-plan-merge'
 import { mergeSpendingStates } from './spending-merge'
 import type { DebtPlanState } from './debt-plan'
@@ -364,17 +364,21 @@ describe('Multi-device sync scenarios', () => {
           {
             id: 'tx1',
             date: '2026-11-01',
+            merchant: 'Store A',
+            accountId: 'acct-1',
             amount: 50,
             description: 'Old Transaction',
-            category: 'groceries',
+            categoryId: 'groceries',
             updatedAt: '2026-11-01T10:00:00Z',
           },
           {
             id: 'tx2',
             date: '2026-11-18',
+            merchant: 'Store B',
+            accountId: 'acct-1',
             amount: 100,
             description: 'New Transaction',
-            category: 'gas',
+            categoryId: 'gas',
             updatedAt: '2026-11-18T03:00:00Z',
           },
         ],
@@ -392,9 +396,11 @@ describe('Multi-device sync scenarios', () => {
           {
             id: 'tx1',
             date: '2026-11-01',
+            merchant: 'Store A',
+            accountId: 'acct-1',
             amount: 50,
             description: 'Old Transaction',
-            category: 'groceries',
+            categoryId: 'groceries',
           },
         ],
         removedTransactionIds: [],
@@ -421,9 +427,11 @@ describe('Multi-device sync scenarios', () => {
           {
             id: 'tx1',
             date: '2026-11-01',
+            merchant: 'Store A',
+            accountId: 'acct-1',
             amount: 50,
             description: 'Active Transaction',
-            category: 'groceries',
+            categoryId: 'groceries',
             updatedAt: '2026-11-01T10:00:00Z',
           },
         ],
@@ -441,16 +449,20 @@ describe('Multi-device sync scenarios', () => {
           {
             id: 'tx1',
             date: '2026-11-01',
+            merchant: 'Store A',
+            accountId: 'acct-1',
             amount: 50,
             description: 'Active Transaction',
-            category: 'groceries',
+            categoryId: 'groceries',
           },
           {
             id: 'tx-deleted',
             date: '2026-10-01',
+            merchant: 'Store B',
+            accountId: 'acct-1',
             amount: 25,
             description: 'Deleted Transaction',
-            category: 'other',
+            categoryId: 'other',
           },
         ],
         removedTransactionIds: [],
