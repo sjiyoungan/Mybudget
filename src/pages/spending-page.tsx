@@ -20,7 +20,6 @@ import {
   Card,
   CardAction,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
@@ -1418,8 +1417,6 @@ type MonthHabit = {
   years: number
 }
 
-type HabitView = 'weekday' | 'days' | 'months'
-
 function dayPoints(
   year: number,
   month: number | null,
@@ -1666,7 +1663,6 @@ function WeekdaySpending({
   history: SpendingTxn[]
   now: Date
 }) {
-  const [view, setView] = useState<HabitView>('weekday')
   const days = useMemo(
     () => weekdayStats(year, month, ytd, periodEnd, transactions),
     [month, periodEnd, transactions, year, ytd],
@@ -1676,55 +1672,28 @@ function WeekdaySpending({
     [month, periodEnd, transactions, year, ytd],
   )
   const habits = useMemo(() => monthHabits(history, now), [history, now])
-  const periodLabel = ytd ? 'Year to date' : month == null ? '' : monthName(month)
-  const summary =
-    view === 'weekday'
-      ? weekdayPatternCopy(days)
-      : view === 'days'
-        ? dayScatterCopy(points)
-        : monthHabitCopy(habits)
-  const scope =
-    view === 'months'
-      ? habits.years.length > 1
-        ? `${habits.years[0]}–${habits.years[habits.years.length - 1]}`
-        : habits.years.length === 1
-          ? String(habits.years[0])
-          : ''
-      : periodLabel
-  const tabs: { id: HabitView; label: string }[] = [
-    { id: 'weekday', label: 'Weekday' },
-    { id: 'days', label: 'Each day' },
-    { id: 'months', label: 'Months' },
-  ]
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Spending habits</CardTitle>
-        {scope ? <CardDescription>{scope}</CardDescription> : null}
       </CardHeader>
-      <CardContent className="grid gap-5">
-        <div role="tablist" aria-label="Spending habits" className="flex flex-wrap gap-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={view === tab.id}
-              onClick={() => setView(tab.id)}
-              className={cn(
-                'hover-fill rounded-lg px-2.5 py-1 text-sm',
-                view === tab.id && 'hover-fill-active font-medium',
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <p className="max-w-3xl text-sm">{summary}</p>
-        {view === 'weekday' ? <WeekdayBars days={days} /> : null}
-        {view === 'days' ? <DayScatter points={points} /> : null}
-        {view === 'months' ? <MonthBars rows={habits.rows} /> : null}
+      <CardContent className="grid gap-8">
+        <section className="grid gap-3">
+          <h3 className="text-sm font-medium">Week</h3>
+          <p className="max-w-3xl text-sm">{weekdayPatternCopy(days)}</p>
+          <WeekdayBars days={days} />
+        </section>
+        <section className="grid gap-3">
+          <h3 className="text-sm font-medium">Days</h3>
+          <p className="max-w-3xl text-sm">{dayScatterCopy(points)}</p>
+          <DayScatter points={points} />
+        </section>
+        <section className="grid gap-3">
+          <h3 className="text-sm font-medium">Months</h3>
+          <p className="max-w-3xl text-sm">{monthHabitCopy(habits)}</p>
+          <MonthBars rows={habits.rows} />
+        </section>
       </CardContent>
     </Card>
   )
