@@ -2430,7 +2430,12 @@ function TransactionRow({
         }}
       >
         <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-          {description || merchant}
+          <span className="block">{description || merchant}</span>
+          {txn.note ? (
+            <span className="text-muted-foreground mt-0.5 hidden text-xs break-words lg:block">
+              {txn.note}
+            </span>
+          ) : null}
         </span>
         <span className="text-muted-foreground hidden w-full min-w-0 truncate pt-0.5 text-xs lg:block lg:overflow-visible lg:whitespace-normal lg:break-words">
           {category}
@@ -2470,6 +2475,12 @@ function TransactionRow({
             </dd>
             <dt className="text-muted-foreground">Date</dt>
             <dd>{formatDateWithoutYear(txn.date, 'short')}</dd>
+            {txn.note ? (
+              <>
+                <dt className="text-muted-foreground">Note</dt>
+                <dd className="min-w-0 break-words whitespace-pre-wrap">{txn.note}</dd>
+              </>
+            ) : null}
           </dl>
           <Button type="button" variant="outline" size="sm" onClick={onClick}>
             Edit
@@ -2846,6 +2857,27 @@ function AffirmLoanField({
   )
 }
 
+function NoteField({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-muted-foreground text-xs">Note</span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Anything you want to remember"
+        rows={3}
+        className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 w-full resize-y rounded-lg border bg-transparent px-2.5 py-1.5 text-base outline-none focus-visible:ring-3 md:text-sm"
+      />
+    </label>
+  )
+}
+
 function AddTxnDialog({
   open,
   accounts,
@@ -2872,6 +2904,7 @@ function AddTxnDialog({
     amount: number
     categoryId?: string
     affirmLoanId?: string
+    note?: string
   }) => void
   onEditCategories: () => void
 }) {
@@ -2920,11 +2953,13 @@ function AddTxnForm({
     amount: number
     categoryId?: string
     affirmLoanId?: string
+    note?: string
   }) => void
   onEditCategories: () => void
 }) {
   const [name, setName] = useState('')
   const [merchant, setMerchant] = useState('')
+  const [note, setNote] = useState('')
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(defaultDate)
   const [accountId, setAccountId] = useState(defaultAccountId)
@@ -2998,6 +3033,7 @@ function AddTxnForm({
             onChange={setAffirmLoanId}
           />
         ) : null}
+        <NoteField value={note} onChange={setNote} />
       </div>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
@@ -3025,6 +3061,7 @@ function AddTxnForm({
               ...(payingWithAffirm && linkedAffirmId
                 ? { affirmLoanId: linkedAffirmId }
                 : {}),
+              ...(note.trim() ? { note: note.trim() } : {}),
             })
           }}
         >
@@ -3112,6 +3149,7 @@ function EditTxnForm({
     return txn.description && txn.description !== shown ? txn.description : shown
   })
   const [merchant, setMerchant] = useState(() => displayMerchant(txn))
+  const [note, setNote] = useState(txn.note ?? '')
   const [amount, setAmount] = useState(Math.abs(txn.amount).toFixed(2))
   const [date, setDate] = useState(txn.date)
   const [accountId, setAccountId] = useState(txn.accountId)
@@ -3131,7 +3169,7 @@ function EditTxnForm({
         <DialogDescription>
           {fromStatement
             ? `From ${fromStatement}`
-            : 'Change the name, merchant, category, or amount.'}
+            : 'Change the name, merchant, category, amount, or note.'}
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
@@ -3189,6 +3227,7 @@ function EditTxnForm({
             onChange={setAffirmLoanId}
           />
         ) : null}
+        <NoteField value={note} onChange={setNote} />
         <Button
           type="button"
           variant={createRule ? 'secondary' : 'outline'}
@@ -3261,6 +3300,7 @@ function EditTxnForm({
                   nextMerchant !== displayMerchant(txn) ? true : txn.customName,
                 customCategory:
                   nextCategory !== txn.categoryId ? true : txn.customCategory,
+                note: note.trim() || undefined,
               },
               createRule
                 ? {

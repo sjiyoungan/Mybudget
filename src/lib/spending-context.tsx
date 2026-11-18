@@ -66,6 +66,7 @@ type SpendingContextValue = {
     amount: number
     categoryId?: string
     affirmLoanId?: string
+    note?: string
   }) => string
   updateTransaction: (
     id: string,
@@ -191,6 +192,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
         const merchant = toSentenceCase(input.merchant)
         const description = input.description.trim() || merchant
         const categoryId = input.categoryId?.trim()
+        const note = input.note?.trim()
         const txn: SpendingTxn = {
           id,
           date: input.date,
@@ -202,6 +204,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
           customName: true,
           customCategory: true,
           ...(input.affirmLoanId ? { affirmLoanId: input.affirmLoanId } : {}),
+          ...(note ? { note } : {}),
           updatedAt: nowIso(),
         }
         setState((current) => ({
@@ -216,9 +219,16 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
       updateTransaction(id, patch) {
         setState((current) => ({
           ...current,
-          transactions: current.transactions.map((txn) =>
-            txn.id === id ? { ...txn, ...patch, updatedAt: nowIso() } : txn,
-          ),
+          transactions: current.transactions.map((txn) => {
+            if (txn.id !== id) return txn
+            const next = { ...txn, ...patch, updatedAt: nowIso() }
+            if ('note' in patch) {
+              const note = next.note?.trim()
+              if (note) next.note = note
+              else delete next.note
+            }
+            return next
+          }),
         }))
       },
       removeTransaction(id) {

@@ -18,6 +18,8 @@ export type SpendingTxn = {
   customCategory?: boolean
   /** Affirm loan this purchase confirms. */
   affirmLoanId?: string
+  /** Optional note kept with this purchase. */
+  note?: string
   updatedAt?: string
 }
 
@@ -409,6 +411,9 @@ function normalizeTxn(value: unknown): SpendingTxn | null {
     ...(row.customCategory === true ? { customCategory: true } : {}),
     ...(typeof row.affirmLoanId === 'string' && row.affirmLoanId
       ? { affirmLoanId: row.affirmLoanId }
+      : {}),
+    ...(typeof row.note === 'string' && row.note.trim()
+      ? { note: row.note.trim() }
       : {}),
     ...(updatedAt ? { updatedAt } : {}),
   }
