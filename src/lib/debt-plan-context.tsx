@@ -20,12 +20,13 @@ import {
 } from '@/lib/debt-plan'
 import { supabase } from '@/lib/supabase'
 import {
+  initialSync,
   markCloudReady,
   rememberPlan,
-  resetUserAppStateSync,
-  scheduleUserAppStatePush,
-  syncUserAppStateFromCloud,
-} from '@/lib/user-app-state'
+  resetSync,
+  schedulePush,
+  startPeriodicSync,
+} from '@/lib/user-app-state-v2'
 
 type DebtPlanContextValue = {
   plan: DebtPlanState
@@ -36,29 +37,45 @@ const DebtPlanContext = createContext<DebtPlanContextValue | null>(null)
 
 export function DebtPlanProvider({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
-  const [plan, setPlanState] = useState<DebtPlanState>(() => loadDebtPlan())
+  const [plan, setPlanState] = useState<DebtPlanState | null>(null)
+  const [isLoadingCloud, setIsLoadingCloud] = useState(true)
 
   useEffect(() => {
-    saveDebtPlan(plan)
-    rememberPlan(plan)
-    scheduleUserAppStatePush()
+    if (plan) {
+      saveDebtPlan(plan)
+      rememberPlan(plan)
+      schedulePush()
+    }
   }, [plan])
 
   useEffect(() => {
     if (loading) return
     if (!supabase || !user) {
+      // Offline mode: use localStorage
+      setPlanState(loadDebtPlan())
+      setIsLoadingCloud(false)
       if (!supabase) markCloudReady()
-      else resetUserAppStateSync()
+      else resetSync()
       return
     }
+    
     let cancelled = false
     void (async () => {
-      const synced = await syncUserAppStateFromCloud()
+      const cloudState = await initialSync()
       if (cancelled) return
+      
+      if (cloudState) {
+        setPlanState(cloudState.plan)
+      } else {
+        // Fallback to localStorage (offline or error)
+        setPlanState(loadDebtPlan())
+      }
+      
+      setIsLoadingCloud(false)
       markCloudReady()
-      if (!synced.fromCloud) return
-      setPlanState(synced.state.plan)
+      startPeriodicSync()
     })()
+    
     return () => {
       cancelled = true
     }
@@ -66,20 +83,26 @@ export function DebtPlanProvider({ children }: { children: ReactNode }) {
 
   const { debts, removeDebt } = useBudget()
   useEffect(() => {
+    if (!plan) return
     const paidOff = paidOffLoggedDebtIds(plan)
     const closing = debts.filter((debt) => paidOff.has(debt.id))
     if (closing.length === 0) return
-    setPlanState((current) => withClosedDebts(current, closing))
+    setPlanState((current) => current ? withClosedDebts(current, closing) : current)
     for (const debt of closing) removeDebt(debt.id)
   }, [plan, debts, removeDebt])
 
   const value = useMemo<DebtPlanContextValue>(
     () => ({
-      plan,
-      setPlan: setPlanState,
+      plan: plan || loadDebtPlan(),
+      setPlan: setPlanState as Dispatch<SetStateAction<DebtPlanState>>,
     }),
     [plan],
   )
+
+  // Show loading state while fetching cloud
+  if (isLoadingCloud && user && supabase) {
+    return <DebtPlanContext.Provider value={value}>{children}</DebtPlanContext.Provider>
+  }
 
   return (
     <DebtPlanContext.Provider value={value}>{children}</DebtPlanContext.Provider>
