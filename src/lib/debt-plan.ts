@@ -1895,6 +1895,7 @@ export function completeAffirmLoan(
     startingBalance,
     monthly,
     remaining,
+    updatedAt: new Date().toISOString(),
     ...(input.needsSpending ? { needsSpending: true } : {}),
   }
 }

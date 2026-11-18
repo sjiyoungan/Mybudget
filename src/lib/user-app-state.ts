@@ -271,7 +271,10 @@ async function upsertPaystubAppState(state: UserAppState) {
   })
 }
 
-async function upsertUserAppState(state: UserAppState) {
+async function upsertUserAppState(state: UserAppState): Promise<{
+  saved: boolean
+  merged: UserAppState
+}> {
   const read = await readCloudAppState()
   let mergedState = state
 
@@ -289,7 +292,7 @@ async function upsertUserAppState(state: UserAppState) {
 
   const saved = await upsertPaystubAppState(mergedState)
   await upsertDedicatedAppState(mergedState)
-  return saved
+  return { saved, merged: mergedState }
 }
 
 function applyLocal(state: UserAppState) {
@@ -314,9 +317,10 @@ export function syncUserAppStateFromCloud(): Promise<CloudSync> {
       if (hasPendingEdit() || epoch !== seen) {
         const local = localAppState()
         const scheduled = epoch
-        const saved = await upsertUserAppState(local)
-        if (saved) clearPendingEdit(scheduled)
-        return { state: local, fromCloud: false }
+        const result = await upsertUserAppState(local)
+        if (result.saved) clearPendingEdit(scheduled)
+        // Return merged state so UI updates with remote changes
+        return { state: result.merged, fromCloud: true }
       }
       if (read.status === 'error') {
         return { state: localAppState(), fromCloud: false }
@@ -325,16 +329,16 @@ export function syncUserAppStateFromCloud(): Promise<CloudSync> {
         const local = localAppState()
         applyLocal(local)
         const scheduled = epoch
-        const saved = await upsertUserAppState(local)
-        if (saved) clearPendingEdit(scheduled)
+        const result = await upsertUserAppState(local)
+        if (result.saved) clearPendingEdit(scheduled)
         beginCloudApply()
-        return { state: local, fromCloud: true }
+        return { state: result.merged, fromCloud: true }
       }
       applyLocal(read.state)
       if (read.upload) {
         const scheduled = epoch
-        const saved = await upsertUserAppState(read.state)
-        if (saved) clearPendingEdit(scheduled)
+        const result = await upsertUserAppState(read.state)
+        if (result.saved) clearPendingEdit(scheduled)
       }
       beginCloudApply()
       return { state: read.state, fromCloud: true }
@@ -346,8 +350,8 @@ export function syncUserAppStateFromCloud(): Promise<CloudSync> {
 }
 
 async function finishPush(scheduled: number) {
-  const saved = await upsertUserAppState(localAppState())
-  if (saved) clearPendingEdit(scheduled)
+  const result = await upsertUserAppState(localAppState())
+  if (result.saved) clearPendingEdit(scheduled)
 }
 
 export function scheduleUserAppStatePush() {
