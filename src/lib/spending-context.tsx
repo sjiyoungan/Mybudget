@@ -13,6 +13,7 @@ import {
   applySpendingRules,
   importSpendingTxns,
   loadSpending,
+  merchantMenuNames,
   removeSpendingUpload,
   saveSpending,
   toSentenceCase,
@@ -55,6 +56,9 @@ type SpendingContextValue = {
   rules: SpendingRule[]
   categories: SpendingCategory[]
   uploads: SpendingUpload[]
+  merchantNames: string[]
+  addMerchant: (name: string) => void
+  removeMerchant: (name: string) => void
   importTransactions: (batches: SpendingUploadBatch[]) => {
     added: number
   }
@@ -182,6 +186,33 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
       rules: state.rules,
       categories: state.categories,
       uploads: state.uploads ?? [],
+      merchantNames: merchantMenuNames(state),
+      addMerchant(name) {
+        const clean = toSentenceCase(name)
+        if (!clean) return
+        const id = clean.toLowerCase()
+        setState((current) => ({
+          ...current,
+          merchants: [
+            ...(current.merchants ?? []).filter((merchant) => merchant.id !== id),
+            { id, name: clean },
+          ],
+          hiddenMerchantNames: (current.hiddenMerchantNames ?? []).filter(
+            (hidden) => hidden !== id,
+          ),
+        }))
+      },
+      removeMerchant(name) {
+        const id = toSentenceCase(name).toLowerCase()
+        if (!id) return
+        setState((current) => ({
+          ...current,
+          merchants: (current.merchants ?? []).filter((merchant) => merchant.id !== id),
+          hiddenMerchantNames: [
+            ...new Set([...(current.hiddenMerchantNames ?? []), id]),
+          ],
+        }))
+      },
       importTransactions(batches) {
         const next = importSpendingTxns(state, batches)
         setState(next.state)

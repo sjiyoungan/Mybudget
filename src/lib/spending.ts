@@ -203,11 +203,20 @@ export type SpendingUpload = {
   uploadedAt: string
 }
 
+export type SpendingMerchant = {
+  id: string
+  name: string
+}
+
 export type SpendingState = {
   transactions: SpendingTxn[]
   rules: SpendingRule[]
   categories: SpendingCategory[]
   uploads: SpendingUpload[]
+  /** Names the user saved for the purchase merchant menu. */
+  merchants?: SpendingMerchant[]
+  /** Lowercase merchant names the user removed from that menu. */
+  hiddenMerchantNames?: string[]
   /** Purchases the user deleted. Sync must not bring these back. */
   removedTransactionIds?: string[]
   removedUploadIds?: string[]
@@ -497,6 +506,34 @@ function normalizeUpload(value: unknown): SpendingUpload | null {
   return { id, name, uploadedAt }
 }
 
+function normalizeMerchant(value: unknown): SpendingMerchant | null {
+  const row = asRecord(value)
+  if (!row) return null
+  const name = typeof row.name === 'string' ? toSentenceCase(row.name) : ''
+  if (!name) return null
+  const id =
+    typeof row.id === 'string' && row.id ? row.id.toLowerCase() : name.toLowerCase()
+  return { id, name }
+}
+
+export function merchantMenuNames(state: Pick<
+  SpendingState,
+  'transactions' | 'rules' | 'merchants' | 'hiddenMerchantNames'
+>) {
+  const hidden = new Set((state.hiddenMerchantNames ?? []).map((name) => name.toLowerCase()))
+  const names = new Map<string, string>()
+  const add = (value: string) => {
+    const name = toSentenceCase(value)
+    const key = name.toLowerCase()
+    if (!name || hidden.has(key) || names.has(key)) return
+    names.set(key, name)
+  }
+  for (const merchant of state.merchants ?? []) add(merchant.name)
+  for (const txn of state.transactions) add(displayMerchant(txn, state.rules))
+  for (const rule of state.rules) add(rule.merchant)
+  return [...names.values()].sort((left, right) => left.localeCompare(right))
+}
+
 function stringIds(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return [
@@ -538,6 +575,14 @@ export function parseSpendingState(value: unknown): SpendingState | null {
           .map(normalizeUpload)
           .filter((item): item is SpendingUpload => item != null)
       : [],
+    merchants: Array.isArray(row.merchants)
+      ? row.merchants
+          .map(normalizeMerchant)
+          .filter((item): item is SpendingMerchant => item != null)
+      : undefined,
+    hiddenMerchantNames: stringIds(row.hiddenMerchantNames).map((name) =>
+      name.toLowerCase(),
+    ),
     removedTransactionIds: stringIds(row.removedTransactionIds),
     removedUploadIds: stringIds(row.removedUploadIds),
     removedCategoryIds: stringIds(row.removedCategoryIds),

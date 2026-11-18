@@ -87,7 +87,6 @@ import {
 } from '@/lib/spending'
 import { cn } from '@/lib/utils'
 
-const NONE = 'none'
 const DONUT_COLORS = {
   spending: '#F94BA4',
   food: '#F8C42A',
@@ -436,6 +435,9 @@ export function SpendingPage() {
     transactions,
     categories,
     addTransaction,
+    merchantNames,
+    addMerchant,
+    removeMerchant,
     updateTransaction,
     removeTransaction,
     replaceCategories,
@@ -1140,6 +1142,9 @@ export function SpendingPage() {
         accounts={paymentAccounts}
         affirmLoans={plan.affirmLoans}
         categories={categories}
+        merchants={merchantNames}
+        onAddMerchant={addMerchant}
+        onDeleteMerchant={removeMerchant}
         defaultDate={defaultManualTxnDate(selectedYear, activeMonth, now)}
         defaultAccountId={
           billsAccount(accounts)?.id ??
@@ -1193,6 +1198,9 @@ export function SpendingPage() {
         accounts={paymentAccounts}
         affirmLoans={plan.affirmLoans}
         categories={categories}
+        merchants={merchantNames}
+        onAddMerchant={addMerchant}
+        onDeleteMerchant={removeMerchant}
         uploads={uploads}
         onClose={() => setEditing(null)}
         onEditCategories={() => setEditCategoriesOpen(true)}
@@ -1754,6 +1762,30 @@ function calendarCategoryOptions(categories: SpendingCategory[]) {
     }
   }
   return rows
+}
+
+function purchaseCategoryOptions(categories: SpendingCategory[]) {
+  const rows = calendarCategoryOptions(categories).filter(
+    (item) => item.id !== '__spending__',
+  )
+  const tops = categories.filter(
+    (item) => !item.parentId && isActiveSpendingCategory(item),
+  )
+  const food = tops.find((item) => categoryDonutKey(item.name) === 'food')
+  const gas = tops.find((item) => categoryDonutKey(item.name) === 'gas')
+  const leadIds = new Set<string>()
+  const lead: typeof rows = []
+  for (const main of [food, gas]) {
+    if (!main) continue
+    for (const row of rows) {
+      const parentId = categories.find((item) => item.id === row.id)?.parentId
+      if (row.id === main.id || parentId === main.id) {
+        lead.push(row)
+        leadIds.add(row.id)
+      }
+    }
+  }
+  return [...lead, ...rows.filter((row) => !leadIds.has(row.id))]
 }
 
 function txnInCalendarCategories(
@@ -2496,33 +2528,34 @@ function CategoryPairFields({
   categoryId,
   onChange,
   onAddCategory,
+  bare = false,
 }: {
   categories: SpendingCategory[]
   categoryId: string
   onChange: (categoryId: string) => void
   onAddCategory?: () => void
+  bare?: boolean
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const choices = calendarCategoryOptions(categories).filter(
-    (item) => item.id !== '__spending__',
-  )
+  const choices = purchaseCategoryOptions(categories)
   const listed = choices.some((item) => item.id === categoryId)
   const selected = categories.find((item) => item.id === categoryId)
 
   return (
-    <label className="grid gap-1.5">
-      <span className="text-muted-foreground text-xs">Category</span>
+    <div className="grid gap-1.5">
+      {bare ? null : (
+        <span className="text-muted-foreground text-xs">Category</span>
+      )}
       <Select
         open={menuOpen}
         onOpenChange={setMenuOpen}
-        value={categoryId || NONE}
-        onValueChange={(value) => onChange(value === NONE ? '' : value)}
+        value={categoryId || undefined}
+        onValueChange={onChange}
       >
         <SelectTrigger className="w-full" aria-label="Category">
-          <SelectValue placeholder="Uncategorized" />
+          <SelectValue placeholder="Select a category" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={NONE}>Uncategorized</SelectItem>
           {selected && !listed ? (
             <SelectItem value={selected.id}>
               {toSentenceCase(selected.name)}
@@ -2556,7 +2589,7 @@ function CategoryPairFields({
           ) : null}
         </SelectContent>
       </Select>
-    </label>
+    </div>
   )
 }
 
@@ -2751,10 +2784,12 @@ function AccountField({
   accounts,
   accountId,
   onChange,
+  bare = false,
 }: {
   accounts: PaymentAccount[]
   accountId: string
   onChange: (id: string) => void
+  bare?: boolean
 }) {
   const known = accounts.some((account) => account.id === accountId)
   const checking = accounts.filter((account) => account.kind === 'checking')
@@ -2769,8 +2804,10 @@ function AccountField({
     ))
   const grouped = debit.length > 0 || cards.length > 0 || affirm.length > 0
   return (
-    <label className="grid gap-1.5">
-      <span className="text-muted-foreground text-xs">Account</span>
+    <div className="grid gap-1.5">
+      {bare ? null : (
+        <span className="text-muted-foreground text-xs">Account</span>
+      )}
       <Select value={accountId || undefined} onValueChange={onChange}>
         <SelectTrigger className="w-full" aria-label="Account">
           <SelectValue placeholder="Account" />
@@ -2809,7 +2846,7 @@ function AccountField({
           )}
         </SelectContent>
       </Select>
-    </label>
+    </div>
   )
 }
 
@@ -2860,21 +2897,139 @@ function AffirmLoanField({
 function NoteField({
   value,
   onChange,
+  bare = false,
 }: {
   value: string
   onChange: (value: string) => void
+  bare?: boolean
 }) {
   return (
     <label className="grid gap-1.5">
-      <span className="text-muted-foreground text-xs">Note</span>
+      {bare ? null : (
+        <span className="text-muted-foreground text-xs">Note</span>
+      )}
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="Anything you want to remember"
+        aria-label="Note"
+        placeholder={bare ? 'Note' : 'Anything you want to remember'}
         rows={3}
         className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 w-full resize-y rounded-lg border bg-transparent px-2.5 py-1.5 text-base outline-none focus-visible:ring-3 md:text-sm"
       />
     </label>
+  )
+}
+
+function MerchantField({
+  merchants,
+  value,
+  onChange,
+  onAdd,
+  onDelete,
+  bare = false,
+}: {
+  merchants: string[]
+  value: string
+  onChange: (name: string) => void
+  onAdd: (name: string) => void
+  onDelete: (name: string) => void
+  bare?: boolean
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+  const known = merchants.some(
+    (name) => name.toLowerCase() === value.trim().toLowerCase(),
+  )
+  const saveDraft = () => {
+    const name = toSentenceCase(draft)
+    if (!name) return
+    onAdd(name)
+    onChange(name)
+    setDraft('')
+    setAdding(false)
+  }
+
+  return (
+    <div className="grid gap-1.5">
+      {bare ? null : (
+        <span className="text-muted-foreground text-xs">Merchant</span>
+      )}
+      <Select
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        value={value || undefined}
+        onValueChange={onChange}
+      >
+        <SelectTrigger className="w-full" aria-label="Merchant">
+          <SelectValue placeholder="Select a merchant" />
+        </SelectTrigger>
+        <SelectContent>
+          {value && !known ? <SelectItem value={value}>{value}</SelectItem> : null}
+          {merchants.map((name) => (
+            <div key={name} className="relative">
+              <SelectItem value={name} className="pr-8">
+                {name}
+              </SelectItem>
+              <button
+                type="button"
+                aria-label={`Delete ${name}`}
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded-md"
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onDelete(name)
+                  if (value.toLowerCase() === name.toLowerCase()) onChange('')
+                }}
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </div>
+          ))}
+          <SelectSeparator />
+          <button
+            type="button"
+            className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-left text-sm outline-hidden"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => {
+              setMenuOpen(false)
+              setAdding(true)
+            }}
+          >
+            <Plus className="size-3.5" />
+            Add merchant
+          </button>
+        </SelectContent>
+      </Select>
+      {adding ? (
+        <div className="flex gap-2">
+          <Input
+            value={draft}
+            placeholder="Merchant"
+            autoFocus
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                saveDraft()
+              }
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!draft.trim()}
+            onClick={saveDraft}
+          >
+            Add
+          </Button>
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -2883,16 +3038,20 @@ function AddTxnDialog({
   accounts,
   affirmLoans,
   categories,
+  merchants,
   defaultDate,
   defaultAccountId,
   onClose,
   onSave,
   onEditCategories,
+  onAddMerchant,
+  onDeleteMerchant,
 }: {
   open: boolean
   accounts: PaymentAccount[]
   affirmLoans: AffirmLoan[]
   categories: SpendingCategory[]
+  merchants: string[]
   defaultDate: string
   defaultAccountId: string
   onClose: () => void
@@ -2907,6 +3066,8 @@ function AddTxnDialog({
     note?: string
   }) => void
   onEditCategories: () => void
+  onAddMerchant: (name: string) => void
+  onDeleteMerchant: (name: string) => void
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -2917,11 +3078,14 @@ function AddTxnDialog({
             accounts={accounts}
             affirmLoans={affirmLoans}
             categories={categories}
+            merchants={merchants}
             defaultDate={defaultDate}
             defaultAccountId={defaultAccountId}
             onClose={onClose}
             onSave={onSave}
             onEditCategories={onEditCategories}
+            onAddMerchant={onAddMerchant}
+            onDeleteMerchant={onDeleteMerchant}
           />
         ) : null}
       </DialogContent>
@@ -2932,16 +3096,20 @@ function AddTxnDialog({
 function AddTxnForm({
   accounts,
   categories,
+  merchants,
   defaultDate,
   defaultAccountId,
   onClose,
   onSave,
   onEditCategories,
+  onAddMerchant,
+  onDeleteMerchant,
   affirmLoans,
 }: {
   accounts: PaymentAccount[]
   affirmLoans: AffirmLoan[]
   categories: SpendingCategory[]
+  merchants: string[]
   defaultDate: string
   defaultAccountId: string
   onClose: () => void
@@ -2956,6 +3124,8 @@ function AddTxnForm({
     note?: string
   }) => void
   onEditCategories: () => void
+  onAddMerchant: (name: string) => void
+  onDeleteMerchant: (name: string) => void
 }) {
   const [name, setName] = useState('')
   const [merchant, setMerchant] = useState('')
@@ -2975,56 +3145,50 @@ function AddTxnForm({
     <>
       <DialogHeader>
         <DialogTitle>Add transaction</DialogTitle>
-        <DialogDescription>
-          Enter what you bought and where you bought it.
-        </DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
-        <label className="grid gap-1.5">
-          <span className="text-muted-foreground text-xs">Name</span>
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Sunscreen"
-            autoFocus
-          />
-        </label>
-        <label className="grid gap-1.5">
-          <span className="text-muted-foreground text-xs">Merchant</span>
-          <Input
-            value={merchant}
-            onChange={(event) => setMerchant(event.target.value)}
-            placeholder="Amazon"
-          />
-        </label>
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Name"
+          aria-label="Name"
+          autoFocus
+        />
+        <MerchantField
+          merchants={merchants}
+          value={merchant}
+          onChange={setMerchant}
+          onAdd={onAddMerchant}
+          onDelete={onDeleteMerchant}
+          bare
+        />
         <CategoryPairFields
           categories={categories}
           categoryId={categoryId}
           onChange={setCategoryId}
           onAddCategory={onEditCategories}
+          bare
         />
         <div className="grid grid-cols-2 gap-3">
-          <label className="grid gap-1.5">
-            <span className="text-muted-foreground text-xs">Amount</span>
-            <Input
-              inputMode="decimal"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-muted-foreground text-xs">Date</span>
-            <Input
-              type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-            />
-          </label>
+          <Input
+            inputMode="decimal"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="Amount"
+            aria-label="Amount"
+          />
+          <Input
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+            aria-label="Date"
+          />
         </div>
         <AccountField
           accounts={accounts}
           accountId={accountId}
           onChange={setAccountId}
+          bare
         />
         {payingWithAffirm ? (
           <AffirmLoanField
@@ -3033,7 +3197,7 @@ function AddTxnForm({
             onChange={setAffirmLoanId}
           />
         ) : null}
-        <NoteField value={note} onChange={setNote} />
+        <NoteField value={note} onChange={setNote} bare />
       </div>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
@@ -3077,16 +3241,20 @@ function EditTxnDialog({
   accounts,
   affirmLoans,
   categories,
+  merchants,
   uploads,
   onClose,
   onSave,
   onDelete,
   onEditCategories,
+  onAddMerchant,
+  onDeleteMerchant,
 }: {
   txn: SpendingTxn | null
   accounts: PaymentAccount[]
   affirmLoans: AffirmLoan[]
   categories: SpendingCategory[]
+  merchants: string[]
   uploads: SpendingUpload[]
   onClose: () => void
   onSave: (
@@ -3096,6 +3264,8 @@ function EditTxnDialog({
   ) => void
   onDelete: (id: string) => void
   onEditCategories: () => void
+  onAddMerchant: (name: string) => void
+  onDeleteMerchant: (name: string) => void
 }) {
   return (
     <Dialog open={txn != null} onOpenChange={(open) => !open && onClose()}>
@@ -3110,10 +3280,13 @@ function EditTxnDialog({
             accounts={accounts}
             affirmLoans={affirmLoans}
             categories={categories}
+            merchants={merchants}
             uploads={uploads}
             onSave={onSave}
             onDelete={onDelete}
             onEditCategories={onEditCategories}
+            onAddMerchant={onAddMerchant}
+            onDeleteMerchant={onDeleteMerchant}
           />
         ) : null}
       </DialogContent>
@@ -3126,15 +3299,19 @@ function EditTxnForm({
   accounts,
   affirmLoans,
   categories,
+  merchants,
   uploads,
   onSave,
   onDelete,
   onEditCategories,
+  onAddMerchant,
+  onDeleteMerchant,
 }: {
   txn: SpendingTxn
   accounts: PaymentAccount[]
   affirmLoans: AffirmLoan[]
   categories: SpendingCategory[]
+  merchants: string[]
   uploads: SpendingUpload[]
   onSave: (
     id: string,
@@ -3143,6 +3320,8 @@ function EditTxnForm({
   ) => void
   onDelete: (id: string) => void
   onEditCategories: () => void
+  onAddMerchant: (name: string) => void
+  onDeleteMerchant: (name: string) => void
 }) {
   const [name, setName] = useState(() => {
     const shown = displayMerchant(txn)
@@ -3178,17 +3357,17 @@ function EditTxnForm({
           <Input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Sunscreen"
+            placeholder="Name"
+            aria-label="Name"
           />
         </label>
-        <label className="grid gap-1.5">
-          <span className="text-muted-foreground text-xs">Merchant</span>
-          <Input
-            value={merchant}
-            onChange={(event) => setMerchant(event.target.value)}
-            placeholder="Amazon"
-          />
-        </label>
+        <MerchantField
+          merchants={merchants}
+          value={merchant}
+          onChange={setMerchant}
+          onAdd={onAddMerchant}
+          onDelete={onDeleteMerchant}
+        />
         <CategoryPairFields
           categories={categories}
           categoryId={categoryId}

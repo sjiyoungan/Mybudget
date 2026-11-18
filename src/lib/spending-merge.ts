@@ -53,6 +53,14 @@ export function mergeSpendingStates(
   // Merge uploads
   const uploads = mergeItems(local.uploads, remote.uploads, removedUploadIds)
 
+  const merchants = mergeItems(local.merchants ?? [], remote.merchants ?? [], new Set())
+  const hiddenMerchantNames = [
+    ...new Set([
+      ...(local.hiddenMerchantNames ?? []).map((name) => name.toLowerCase()),
+      ...(remote.hiddenMerchantNames ?? []).map((name) => name.toLowerCase()),
+    ]),
+  ]
+
   // Use the latest top-level updatedAt
   const updatedAt =
     local.updatedAt && remote.updatedAt
@@ -66,6 +74,8 @@ export function mergeSpendingStates(
     categories,
     rules,
     uploads,
+    ...(merchants.length > 0 ? { merchants } : {}),
+    ...(hiddenMerchantNames.length > 0 ? { hiddenMerchantNames } : {}),
     removedTransactionIds: [...removedTransactionIds],
     removedCategoryIds: [...removedCategoryIds],
     removedRuleIds: [...removedRuleIds],
