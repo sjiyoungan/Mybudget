@@ -55,7 +55,13 @@ import { useBudget } from '@/lib/budget-context'
 import { useDebtPlan } from '@/lib/debt-plan-context'
 import type { AffirmLoan } from '@/lib/debt-plan'
 import { sortAffirmLoans } from '@/lib/debt-plan'
-import { formatDateWithoutYear, formatLongDate, formatUsd, formatUsdWholeUp } from '@/lib/format'
+import {
+  formatDateWithoutYear,
+  formatLongDate,
+  formatUsd,
+  formatUsdWhole,
+  formatUsdWholeUp,
+} from '@/lib/format'
 import { monthName } from '@/lib/income'
 import {
   ADD_TRANSACTION_EVENT,
@@ -900,6 +906,14 @@ export function SpendingPage() {
         </Card>
       </section>
 
+      <WeekdaySpending
+        year={selectedYear}
+        month={activeMonth}
+        ytd={ytd}
+        periodEnd={periodEnd}
+        transactions={spentTxns}
+      />
+
       {calendarMonths.length > 0 ? (
         <SpendingCalendar
           year={selectedYear}
@@ -1266,6 +1280,189 @@ const WEEKDAYS = [
 ]
 const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+type WeekdayStat = {
+  label: string
+  short: string
+  weekend: boolean
+  total: number
+  count: number
+  average: number
+}
+
+function spendingPeriodBounds(
+  year: number,
+  month: number | null,
+  ytd: boolean,
+  periodEnd: string,
+) {
+  if (!periodEnd || (!ytd && month == null)) return { start: '', end: '' }
+  const start = ytd
+    ? `${year}-01-01`
+    : `${year}-${String((month ?? 0) + 1).padStart(2, '0')}-01`
+  const hardEnd = ytd
+    ? `${year}-12-31`
+    : `${year}-${String((month ?? 0) + 1).padStart(2, '0')}-${String(new Date(year, (month ?? 0) + 1, 0).getDate()).padStart(2, '0')}`
+  return { start, end: hardEnd < periodEnd ? hardEnd : periodEnd }
+}
+
+function datesFrom(start: string, end: string) {
+  if (!start || !end || start > end) return []
+  const [year, month, day] = start.split('-').map(Number)
+  const cursor = new Date(year, month - 1, day)
+  const [endYear, endMonth, endDay] = end.split('-').map(Number)
+  const last = new Date(endYear, endMonth - 1, endDay)
+  const dates: string[] = []
+  while (cursor <= last) {
+    dates.push(localIsoDate(cursor))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return dates
+}
+
+function weekdayStats(
+  year: number,
+  month: number | null,
+  ytd: boolean,
+  periodEnd: string,
+  transactions: SpendingTxn[],
+) {
+  const { start, end } = spendingPeriodBounds(year, month, ytd, periodEnd)
+  const spentOn = new Map<string, number>()
+  for (const txn of transactions) {
+    spentOn.set(txn.date, (spentOn.get(txn.date) ?? 0) + txn.amount)
+  }
+  const stats: WeekdayStat[] = WEEKDAYS.map((label, index) => ({
+    label,
+    short: WEEKDAY_SHORT[index],
+    weekend: index === 0 || index === 6,
+    total: 0,
+    count: 0,
+    average: 0,
+  }))
+  for (const date of datesFrom(start, end)) {
+    const [dateYear, dateMonth, dateDay] = date.split('-').map(Number)
+    const weekday = new Date(dateYear, dateMonth - 1, dateDay).getDay()
+    const stat = stats[weekday]
+    stat.count += 1
+    stat.total += spentOn.get(date) ?? 0
+  }
+  for (const stat of stats) {
+    stat.average = stat.count > 0 ? stat.total / stat.count : 0
+  }
+  return stats
+}
+
+function weekdayPatternCopy(days: WeekdayStat[]) {
+  const counted = days.reduce((sum, day) => sum + day.count, 0)
+  if (counted === 0) return 'Nothing to compare for this period yet.'
+  const spent = days.reduce((sum, day) => sum + day.total, 0)
+  if (spent < 0.005) return 'No spending in this period yet.'
+
+  const weekendDays = days.filter((day) => day.weekend)
+  const weekdayDays = days.filter((day) => !day.weekend)
+  const weekendCount = weekendDays.reduce((sum, day) => sum + day.count, 0)
+  const weekdayCount = weekdayDays.reduce((sum, day) => sum + day.count, 0)
+  const weekendAverage = weekendCount
+    ? weekendDays.reduce((sum, day) => sum + day.total, 0) / weekendCount
+    : 0
+  const weekdayAverage = weekdayCount
+    ? weekdayDays.reduce((sum, day) => sum + day.total, 0) / weekdayCount
+    : 0
+  const peak = Math.max(...days.map((day) => day.average))
+  const leaders = days.filter((day) => peak - day.average < 0.005)
+  const leaderNames = leaders.map((day) => day.label)
+  const leaderLabel =
+    leaderNames.length <= 1
+      ? leaderNames[0]
+      : leaderNames.length === 2
+        ? `${leaderNames[0]} and ${leaderNames[1]}`
+        : `${leaderNames.slice(0, -1).join(', ')}, and ${leaderNames.at(-1)}`
+  const biggest =
+    leaders.length === 1
+      ? `${leaderLabel} is the biggest day, at ${formatUsdWhole(peak)}.`
+      : `${leaderLabel} tie for the biggest day, at ${formatUsdWhole(peak)}.`
+  const gap = Math.abs(weekendAverage - weekdayAverage)
+  const base = Math.max(weekendAverage, weekdayAverage, 1)
+  const lead =
+    gap / base < 0.15
+      ? `Weekends and weekdays are close. A weekend day averages ${formatUsdWhole(weekendAverage)}, and a weekday averages ${formatUsdWhole(weekdayAverage)}.`
+      : weekendAverage > weekdayAverage
+        ? `You spend more on weekends. A weekend day averages ${formatUsdWhole(weekendAverage)}, and a weekday averages ${formatUsdWhole(weekdayAverage)}.`
+        : `You spend more on weekdays. A weekday averages ${formatUsdWhole(weekdayAverage)}, and a weekend day averages ${formatUsdWhole(weekendAverage)}.`
+  return `${lead} ${biggest}`
+}
+
+function WeekdaySpending({
+  year,
+  month,
+  ytd,
+  periodEnd,
+  transactions,
+}: {
+  year: number
+  month: number | null
+  ytd: boolean
+  periodEnd: string
+  transactions: SpendingTxn[]
+}) {
+  const days = useMemo(
+    () => weekdayStats(year, month, ytd, periodEnd, transactions),
+    [month, periodEnd, transactions, year, ytd],
+  )
+  const peak = Math.max(...days.map((day) => day.average))
+  const summary = weekdayPatternCopy(days)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>By weekday</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-5">
+        <p className="max-w-3xl text-sm">{summary}</p>
+        <div
+          className="grid grid-cols-7 gap-2"
+          role="img"
+          aria-label={summary}
+        >
+          {days.map((day) => {
+            const top = peak > 0 && peak - day.average < 0.005
+            const height = peak > 0 ? Math.max(day.average > 0 ? 4 : 0, (day.average / peak) * 100) : 0
+            return (
+              <div key={day.label} className="grid justify-items-center gap-2">
+                <div className="flex h-32 w-full items-end justify-center">
+                  <div
+                    className={cn(
+                      'w-full max-w-10 rounded-sm',
+                      top
+                        ? 'bg-[#F94BA4]'
+                        : day.weekend
+                          ? 'bg-[#F8C4DE]'
+                          : 'bg-neutral-200',
+                    )}
+                    style={{ height: `${height}%` }}
+                    title={`${day.label}, ${formatUsd(day.average)} average across ${day.count} ${day.count === 1 ? 'day' : 'days'}`}
+                  />
+                </div>
+                <div className="text-center">
+                  <div className="text-muted-foreground text-xs">{day.short}</div>
+                  <div
+                    className={cn(
+                      'text-xs tabular-nums',
+                      day.average < 0.005 && 'text-muted-foreground',
+                    )}
+                  >
+                    {formatUsdWhole(day.average)}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 function calendarCategoryOptions(categories: SpendingCategory[]) {
   const tops = categories.filter(
