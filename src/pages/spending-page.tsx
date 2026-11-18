@@ -1568,8 +1568,8 @@ function CalendarMonth({
           const className = cn(
             'flex w-full min-w-0 flex-col items-start justify-center gap-0.5 text-left',
             compact
-              ? 'min-h-8 rounded-md px-1 py-0.5'
-              : 'min-h-10 rounded-lg px-1 py-1 lg:flex-row lg:items-center lg:justify-between lg:gap-1 lg:px-1.5 lg:py-1.5',
+              ? 'min-h-8 rounded-sm px-1 py-0.5'
+              : 'min-h-10 rounded-sm px-1 py-1 lg:flex-row lg:items-center lg:justify-between lg:gap-1 lg:px-1.5 lg:py-1.5',
             future && 'text-muted-foreground/40',
             past && 'text-[#404040]',
             openable && 'spent-day cursor-pointer',
