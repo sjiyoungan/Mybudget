@@ -1510,11 +1510,22 @@ function CalendarMonth({
     ...Array.from({ length: firstWeekday }, () => null),
     ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
   ]
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}-`
+  let monthSpent = 0
+  for (const [date, amount] of spentByDay) {
+    if (date.startsWith(monthPrefix)) monthSpent += amount
+  }
 
   return (
     <div className="min-w-0">
-      <div className={cn('pb-1 font-medium', compact ? 'text-xs' : 'text-sm')}>
-        {monthName(month)}
+      <div
+        className={cn(
+          'flex items-baseline justify-between gap-3 pb-1 font-medium',
+          compact ? 'text-xs' : 'text-sm',
+        )}
+      >
+        <div>{monthName(month)}</div>
+        <div className="tabular-nums">{formatUsdWholeUp(monthSpent)}</div>
       </div>
       <div className={cn('grid grid-cols-7', compact ? 'gap-0.5' : 'gap-1.5')}>
         {WEEKDAYS.map((label, index) => (
