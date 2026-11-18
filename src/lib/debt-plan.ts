@@ -26,7 +26,10 @@ const PLAN_KEY = 'mybudget.debt-plan.v1'
 const PLAN_HISTORY_RESET = 'mybudget.planner-history-reset.v1'
 const FRESH_PLAN_START = '2026-08'
 
-export type AffirmLoan = SeededAffirmLoan
+export type AffirmLoan = SeededAffirmLoan & {
+  /** Set when the loan is edited. Used for conflict resolution across devices. */
+  updatedAt?: string
+}
 
 export const PAYOFF_STRATEGIES = [
   { id: 'avalanche', label: 'Avalanche' },
@@ -59,6 +62,10 @@ export type DebtPlanState = {
   affirmLoans: AffirmLoan[]
   /** Debts removed from the budget after a logged payoff, kept for history. */
   closedDebts: Debt[]
+  /** Loan IDs that were deleted. Prevents resurrection across devices. */
+  removedLoanIds?: string[]
+  /** Debt IDs that were closed and should not reappear in active debts. */
+  removedClosedDebtIds?: string[]
 }
 
 export type PlannerLine = {
@@ -438,6 +445,16 @@ export function parseDebtPlan(value: unknown): DebtPlanState | null {
             typeof debt.lender === 'string',
         )
       : [],
+    removedLoanIds: Array.isArray(item.removedLoanIds)
+      ? item.removedLoanIds.filter(
+          (id): id is string => typeof id === 'string' && id.length > 0,
+        )
+      : undefined,
+    removedClosedDebtIds: Array.isArray(item.removedClosedDebtIds)
+      ? item.removedClosedDebtIds.filter(
+          (id): id is string => typeof id === 'string' && id.length > 0,
+        )
+      : undefined,
   }
 }
 

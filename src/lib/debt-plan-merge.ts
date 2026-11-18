@@ -5,23 +5,45 @@ import type { AffirmLoan, DebtPlanState } from './debt-plan'
  * Merges two debt plan states with smart handling of Affirm loans and debts.
  * 
  * Strategy:
- * - affirmLoans: Merge by ID, union of both lists (no deletions - loans persist once added)
- * - closedDebts: Merge by ID, union of both lists
+ * - affirmLoans: Merge by ID with updatedAt timestamps, respecting tombstones
+ * - closedDebts: Merge by ID, respecting tombstones
+ * - Tombstones (removedLoanIds, removedClosedDebtIds): Union, prevents resurrection
  * - History data (loggedHistory, chargesByMonth, paymentsByMonth, etc.):
- *   Merge by month key, preferring remote when month data differs (user likely editing current month)
+ *   Merge by month key, preferring remote when month data differs
  * - Scalar fields (monthlyBudget, strategy, etc.): Prefer remote (most recent user input)
  * 
- * This ensures Affirm loans added on one device appear on all devices within 30 seconds.
+ * This ensures:
+ * - Loans added on one device appear on all devices
+ * - Loans deleted on one device stay deleted
+ * - Edits with newer timestamps win conflicts
  */
 export function mergeDebtPlanStates(
   local: DebtPlanState,
   remote: DebtPlanState,
 ): DebtPlanState {
-  // Merge Affirm loans by ID (union - loans are never deleted, only closed)
-  const affirmLoans = mergeLoans(local.affirmLoans, remote.affirmLoans)
+  // Merge tombstone lists (union)
+  const removedLoanIds = new Set([
+    ...(local.removedLoanIds ?? []),
+    ...(remote.removedLoanIds ?? []),
+  ])
+  const removedClosedDebtIds = new Set([
+    ...(local.removedClosedDebtIds ?? []),
+    ...(remote.removedClosedDebtIds ?? []),
+  ])
   
-  // Merge closed debts by ID (union)
-  const closedDebts = mergeDebts(local.closedDebts, remote.closedDebts)
+  // Merge Affirm loans by ID with timestamp-based conflict resolution
+  const affirmLoans = mergeLoans(
+    local.affirmLoans,
+    remote.affirmLoans,
+    removedLoanIds,
+  )
+  
+  // Merge closed debts by ID
+  const closedDebts = mergeDebts(
+    local.closedDebts,
+    remote.closedDebts,
+    removedClosedDebtIds,
+  )
   
   // Merge logged months (union)
   const loggedMonths = [...new Set([...local.loggedMonths, ...remote.loggedMonths])]
@@ -59,43 +81,73 @@ export function mergeDebtPlanStates(
     loggedHistory,
     affirmLoans,
     closedDebts,
+    removedLoanIds: [...removedLoanIds],
+    removedClosedDebtIds: [...removedClosedDebtIds],
   }
 }
 
-function mergeLoans(local: AffirmLoan[], remote: AffirmLoan[]): AffirmLoan[] {
+function mergeLoans(
+  local: AffirmLoan[],
+  remote: AffirmLoan[],
+  removedIds: Set<string>,
+): AffirmLoan[] {
   const merged = new Map<string, AffirmLoan>()
   
-  // Add all local loans
+  // Add all local loans (except deleted ones)
   for (const loan of local) {
-    merged.set(loan.id, loan)
+    if (!removedIds.has(loan.id)) {
+      merged.set(loan.id, loan)
+    }
   }
   
-  // Add/update with remote loans
+  // Merge with remote loans
   for (const loan of remote) {
-    const existing = merged.get(loan.id)
-    if (!existing) {
-      // New loan from remote
-      merged.set(loan.id, loan)
+    if (removedIds.has(loan.id)) {
+      // Remote loan is deleted - remove from merged if present
+      merged.delete(loan.id)
     } else {
-      // Both have this loan - prefer remote (more recent data)
-      merged.set(loan.id, loan)
+      const existing = merged.get(loan.id)
+      if (!existing) {
+        // New loan from remote
+        merged.set(loan.id, loan)
+      } else {
+        // Both have this loan - take version with later updatedAt
+        const localTime = existing.updatedAt ?? ''
+        const remoteTime = loan.updatedAt ?? ''
+        if (remoteTime > localTime) {
+          merged.set(loan.id, loan)
+        }
+        // If localTime >= remoteTime, keep existing (local wins ties)
+      }
     }
   }
   
   return [...merged.values()]
 }
 
-function mergeDebts(local: Debt[], remote: Debt[]): Debt[] {
+function mergeDebts(
+  local: Debt[],
+  remote: Debt[],
+  removedIds: Set<string>,
+): Debt[] {
   const merged = new Map<string, Debt>()
   
-  // Add all local debts
+  // Add all local debts (except deleted ones)
   for (const debt of local) {
-    merged.set(debt.id, debt)
+    if (!removedIds.has(debt.id)) {
+      merged.set(debt.id, debt)
+    }
   }
   
-  // Add/update with remote debts
+  // Merge with remote debts
   for (const debt of remote) {
-    merged.set(debt.id, debt)
+    if (removedIds.has(debt.id)) {
+      // Remote debt is deleted - remove from merged if present
+      merged.delete(debt.id)
+    } else {
+      // Prefer remote version (closedDebts are historical, rarely edited)
+      merged.set(debt.id, debt)
+    }
   }
   
   return [...merged.values()]

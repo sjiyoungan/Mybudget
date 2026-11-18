@@ -102,7 +102,7 @@ describe('mergeDebtPlanStates', () => {
     expect(merged.affirmLoans.find((l) => l.id === 'affirm2')).toBeDefined()
   })
 
-  it('prefers remote version when same loan exists on both sides', () => {
+  it('prefers remote version when remote has newer timestamp', () => {
     const loanLocal: AffirmLoan = {
       id: 'affirm1',
       name: 'Couch',
@@ -112,6 +112,7 @@ describe('mergeDebtPlanStates', () => {
       startingBalance: 1000,
       monthly: 100,
       remaining: 600,
+      updatedAt: '2026-11-18T09:00:00Z',
     }
 
     const loanRemote: AffirmLoan = {
@@ -123,6 +124,7 @@ describe('mergeDebtPlanStates', () => {
       startingBalance: 1000,
       monthly: 100,
       remaining: 500, // Updated remaining balance
+      updatedAt: '2026-11-18T11:00:00Z', // Newer
     }
 
     const local: DebtPlanState = {
@@ -295,5 +297,196 @@ describe('mergeDebtPlanStates', () => {
 
     expect(merged.affirmLoans).toHaveLength(1)
     expect(merged.affirmLoans[0].id).toBe('affirm1')
+  })
+
+  it('respects loan deletions via tombstones', () => {
+    const loan1: AffirmLoan = {
+      id: 'affirm1',
+      name: 'Couch',
+      loanId: 'ABC-123',
+      startMonth: '2026-01',
+      lastPayment: '2026-12',
+      startingBalance: 1000,
+      monthly: 100,
+      remaining: 600,
+    }
+
+    const loan2: AffirmLoan = {
+      id: 'affirm2',
+      name: 'Mattress',
+      loanId: 'BCO6-S031',
+      startMonth: '2026-02',
+      lastPayment: '2027-01',
+      startingBalance: 800,
+      monthly: 80,
+      remaining: 640,
+    }
+
+    // Device A: Has both loans, deletes loan2
+    const local: DebtPlanState = {
+      ...baseDebtPlan,
+      affirmLoans: [loan1],
+      removedLoanIds: ['affirm2'],
+    }
+
+    // Device B: Still has both loans (stale)
+    const remote: DebtPlanState = {
+      ...baseDebtPlan,
+      affirmLoans: [loan1, loan2],
+    }
+
+    const merged = mergeDebtPlanStates(local, remote)
+
+    // Loan2 should stay deleted
+    expect(merged.affirmLoans).toHaveLength(1)
+    expect(merged.affirmLoans[0].id).toBe('affirm1')
+    expect(merged.removedLoanIds).toContain('affirm2')
+  })
+
+  it('uses updatedAt timestamp to resolve edit conflicts', () => {
+    const loanLocal: AffirmLoan = {
+      id: 'affirm1',
+      name: 'Couch',
+      loanId: 'ABC-123',
+      startMonth: '2026-01',
+      lastPayment: '2026-12',
+      startingBalance: 1000,
+      monthly: 100,
+      remaining: 600,
+      updatedAt: '2026-11-18T10:00:00Z',
+    }
+
+    const loanRemote: AffirmLoan = {
+      id: 'affirm1',
+      name: 'Couch',
+      loanId: 'ABC-123',
+      startMonth: '2026-01',
+      lastPayment: '2026-12',
+      startingBalance: 1000,
+      monthly: 100,
+      remaining: 500, // Different remaining balance
+      updatedAt: '2026-11-18T12:00:00Z', // Newer timestamp
+    }
+
+    const local: DebtPlanState = {
+      ...baseDebtPlan,
+      affirmLoans: [loanLocal],
+    }
+
+    const remote: DebtPlanState = {
+      ...baseDebtPlan,
+      affirmLoans: [loanRemote],
+    }
+
+    const merged = mergeDebtPlanStates(local, remote)
+
+    // Remote version should win (newer timestamp)
+    expect(merged.affirmLoans).toHaveLength(1)
+    expect(merged.affirmLoans[0].remaining).toBe(500)
+    expect(merged.affirmLoans[0].updatedAt).toBe('2026-11-18T12:00:00Z')
+  })
+
+  it('prefers local when timestamps are equal', () => {
+    const timestamp = '2026-11-18T10:00:00Z'
+
+    const loanLocal: AffirmLoan = {
+      id: 'affirm1',
+      name: 'Couch',
+      loanId: 'ABC-123',
+      startMonth: '2026-01',
+      lastPayment: '2026-12',
+      startingBalance: 1000,
+      monthly: 100,
+      remaining: 600,
+      updatedAt: timestamp,
+    }
+
+    const loanRemote: AffirmLoan = {
+      id: 'affirm1',
+      name: 'Couch',
+      loanId: 'ABC-123',
+      startMonth: '2026-01',
+      lastPayment: '2026-12',
+      startingBalance: 1000,
+      monthly: 100,
+      remaining: 500,
+      updatedAt: timestamp,
+    }
+
+    const local: DebtPlanState = {
+      ...baseDebtPlan,
+      affirmLoans: [loanLocal],
+    }
+
+    const remote: DebtPlanState = {
+      ...baseDebtPlan,
+      affirmLoans: [loanRemote],
+    }
+
+    const merged = mergeDebtPlanStates(local, remote)
+
+    // Local should win on tie
+    expect(merged.affirmLoans[0].remaining).toBe(600)
+  })
+
+  it('treats missing updatedAt as oldest', () => {
+    const loanLocal: AffirmLoan = {
+      id: 'affirm1',
+      name: 'Couch',
+      loanId: 'ABC-123',
+      startMonth: '2026-01',
+      lastPayment: '2026-12',
+      startingBalance: 1000,
+      monthly: 100,
+      remaining: 600,
+      // No updatedAt
+    }
+
+    const loanRemote: AffirmLoan = {
+      id: 'affirm1',
+      name: 'Couch',
+      loanId: 'ABC-123',
+      startMonth: '2026-01',
+      lastPayment: '2026-12',
+      startingBalance: 1000,
+      monthly: 100,
+      remaining: 500,
+      updatedAt: '2026-11-18T10:00:00Z',
+    }
+
+    const local: DebtPlanState = {
+      ...baseDebtPlan,
+      affirmLoans: [loanLocal],
+    }
+
+    const remote: DebtPlanState = {
+      ...baseDebtPlan,
+      affirmLoans: [loanRemote],
+    }
+
+    const merged = mergeDebtPlanStates(local, remote)
+
+    // Remote with timestamp should win over local without
+    expect(merged.affirmLoans[0].remaining).toBe(500)
+    expect(merged.affirmLoans[0].updatedAt).toBe('2026-11-18T10:00:00Z')
+  })
+
+  it('merges tombstone arrays from both sides', () => {
+    const local: DebtPlanState = {
+      ...baseDebtPlan,
+      removedLoanIds: ['loan1', 'loan2'],
+      removedClosedDebtIds: ['debt1'],
+    }
+
+    const remote: DebtPlanState = {
+      ...baseDebtPlan,
+      removedLoanIds: ['loan2', 'loan3'],
+      removedClosedDebtIds: ['debt2'],
+    }
+
+    const merged = mergeDebtPlanStates(local, remote)
+
+    expect(merged.removedLoanIds).toEqual(expect.arrayContaining(['loan1', 'loan2', 'loan3']))
+    expect(merged.removedClosedDebtIds).toEqual(expect.arrayContaining(['debt1', 'debt2']))
   })
 })
