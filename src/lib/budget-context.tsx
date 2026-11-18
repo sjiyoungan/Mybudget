@@ -148,6 +148,7 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
       addAccount({ name, kind, role }) {
         const id = crypto.randomUUID()
         setState((current) => {
+          if (!current) return null
           const next: BankAccount = {
             id,
             name,
@@ -169,61 +170,68 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         return id
       },
       updateAccountBalance(id, balance) {
-        setState((current) =>
-          withBudgetEdit({
+        setState((current) => {
+          if (!current) return null
+          return withBudgetEdit({
             ...current,
             accounts: current.accounts.map((account) =>
               account.id === id ? { ...account, balance } : account,
             ),
-          }),
-        )
+          })
+        })
       },
       setAccountRole(id, role) {
-        setState((current) =>
-          withBudgetEdit({
+        setState((current) => {
+          if (!current) return null
+          return withBudgetEdit({
             ...current,
             accounts: withExclusiveRole(current.accounts, id, role),
-          }),
-        )
+          })
+        })
       },
       removeAccount(id) {
-        setState((current) =>
-          withBudgetEdit({
+        setState((current) => {
+          if (!current) return null
+          return withBudgetEdit({
             ...current,
             accounts: current.accounts.filter((account) => account.id !== id),
-          }),
-        )
+          })
+        })
       },
       addExpense(input) {
-        setState((current) =>
-          withLinkedExpenses(current, [
+        setState((current) => {
+          if (!current) return null
+          return withLinkedExpenses(current, [
             ...current.expenses,
             { ...input, id: crypto.randomUUID() },
-          ]),
-        )
+          ])
+        })
       },
       updateExpense(id, patch) {
-        setState((current) =>
-          withLinkedExpenses(
+        setState((current) => {
+          if (!current) return null
+          return withLinkedExpenses(
             current,
             current.expenses.map((item) =>
               item.id === id ? { ...item, ...patch } : item,
             ),
-          ),
-        )
+          )
+        })
       },
       removeExpense(id) {
-        setState((current) =>
-          withLinkedExpenses(
+        setState((current) => {
+          if (!current) return null
+          return withLinkedExpenses(
             current,
             current.expenses.map((item) =>
               item.id === id ? endExpenseFromNow(item) : item,
             ),
-          ),
-        )
+          )
+        })
       },
       replaceExpenses(expenses) {
         setState((current) => {
+          if (!current) return null
           const incomingIds = new Set(expenses.map((item) => item.id))
           const keptEnded = current.expenses.filter(
             (item) => isEndedExpense(item) && !incomingIds.has(item.id),
@@ -244,30 +252,39 @@ export function BudgetProvider({ children }: { children: ReactNode }) {
         })
       },
       replaceCategories(categories) {
-        setState((current) => withBudgetEdit({ ...current, categories }))
+        setState((current) => {
+          if (!current) return null
+          return withBudgetEdit({ ...current, categories })
+        })
       },
       replaceAccounts(accounts) {
-        setState((current) => withBudgetEdit({ ...current, accounts }))
+        setState((current) => {
+          if (!current) return null
+          return withBudgetEdit({ ...current, accounts })
+        })
       },
       addDebt(input) {
-        setState((current) =>
-          withLinkedDebts(current, [
+        setState((current) => {
+          if (!current) return null
+          return withLinkedDebts(current, [
             ...current.debts,
             { ...input, id: crypto.randomUUID() },
-          ]),
-        )
+          ])
+        })
       },
       removeDebt(id) {
         if (id === AFFIRM_DEBT_ID) return
-        setState((current) =>
-          withLinkedDebts(
+        setState((current) => {
+          if (!current) return null
+          return withLinkedDebts(
             current,
             current.debts.filter((item) => item.id !== id),
-          ),
-        )
+          )
+        })
       },
       replaceDebts(debts) {
         setState((current) => {
+          if (!current) return null
           const storedAffirm = current.debts.find(
             (item) => item.id === AFFIRM_DEBT_ID,
           )
