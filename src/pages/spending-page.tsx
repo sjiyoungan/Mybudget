@@ -20,6 +20,7 @@ import {
   Card,
   CardAction,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
@@ -1413,10 +1414,13 @@ function WeekdaySpending({
   const peak = Math.max(...days.map((day) => day.average))
   const summary = weekdayPatternCopy(days)
 
+  const periodLabel = ytd ? 'Year to date' : month == null ? '' : monthName(month)
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>By weekday</CardTitle>
+        <CardTitle>Spending habits</CardTitle>
+        {periodLabel ? <CardDescription>{periodLabel}</CardDescription> : null}
       </CardHeader>
       <CardContent className="grid gap-5">
         <p className="max-w-3xl text-sm">{summary}</p>
