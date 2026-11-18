@@ -36,9 +36,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectSeparator,
   SelectTrigger,
   SelectValue,
@@ -2796,13 +2794,14 @@ function AccountField({
   const debit = accounts.filter((account) => account.kind === 'debit')
   const cards = accounts.filter((account) => account.kind === 'credit')
   const affirm = accounts.filter((account) => account.kind === 'affirm')
+  const bank = [...checking, ...debit]
+  const cardsAndAffirm = [...cards, ...affirm]
   const options = (items: PaymentAccount[]) =>
     items.map((account) => (
       <SelectItem key={account.id} value={account.id}>
         {account.name}
       </SelectItem>
     ))
-  const grouped = debit.length > 0 || cards.length > 0 || affirm.length > 0
   return (
     <div className="grid gap-1.5">
       {bare ? null : (
@@ -2810,40 +2809,17 @@ function AccountField({
       )}
       <Select value={accountId || undefined} onValueChange={onChange}>
         <SelectTrigger className="w-full" aria-label="Account">
-          <SelectValue placeholder="Account" />
+          <SelectValue placeholder="Select an account" />
         </SelectTrigger>
         <SelectContent>
           {accountId && !known ? (
             <SelectItem value={accountId}>Unknown</SelectItem>
           ) : null}
-          {grouped ? (
-            <>
-              <SelectGroup>
-                <SelectLabel>Checking</SelectLabel>
-                {options(checking)}
-              </SelectGroup>
-              {debit.length > 0 ? (
-                <SelectGroup>
-                  <SelectLabel>Debit</SelectLabel>
-                  {options(debit)}
-                </SelectGroup>
-              ) : null}
-              {cards.length > 0 ? (
-                <SelectGroup>
-                  <SelectLabel>Credit card</SelectLabel>
-                  {options(cards)}
-                </SelectGroup>
-              ) : null}
-              {affirm.length > 0 ? (
-                <SelectGroup>
-                  <SelectLabel>Affirm</SelectLabel>
-                  {options(affirm)}
-                </SelectGroup>
-              ) : null}
-            </>
-          ) : (
-            options(checking)
-          )}
+          {options(bank)}
+          {bank.length > 0 && cardsAndAffirm.length > 0 ? (
+            <SelectSeparator className="bg-neutral-300" />
+          ) : null}
+          {options(cardsAndAffirm)}
         </SelectContent>
       </Select>
     </div>
