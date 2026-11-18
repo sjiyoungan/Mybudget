@@ -858,6 +858,7 @@ export function SpendingPage() {
           </CardContent>
         </Card>
 
+        <div className="grid min-w-0 gap-4">
         <Card>
           <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
             <CardTitle>Total expense</CardTitle>
@@ -908,17 +909,18 @@ export function SpendingPage() {
             </div>
           </CardContent>
         </Card>
-      </section>
 
-      <WeekdaySpending
-        year={selectedYear}
-        month={activeMonth}
-        ytd={ytd}
-        periodEnd={periodEnd}
-        transactions={spentTxns}
-        history={variableTxns}
-        now={now}
-      />
+        <WeekdaySpending
+          year={selectedYear}
+          month={activeMonth}
+          ytd={ytd}
+          periodEnd={periodEnd}
+          transactions={spentTxns}
+          history={variableTxns}
+          now={now}
+        />
+        </div>
+      </section>
 
       {calendarMonths.length > 0 ? (
         <SpendingCalendar
@@ -1405,10 +1407,11 @@ function weekdayPatternCopy(days: WeekdayStat[]) {
   return `${lead} ${biggest}`
 }
 
-type DayPoint = {
-  date: string
-  weekday: number
+type ScatterPoint = {
+  id: string
+  column: number
   amount: number
+  title: string
 }
 
 type MonthHabit = {
@@ -1417,13 +1420,20 @@ type MonthHabit = {
   years: number
 }
 
+type MonthPoint = {
+  id: string
+  column: number
+  year: number
+  amount: number
+}
+
 function dayPoints(
   year: number,
   month: number | null,
   ytd: boolean,
   periodEnd: string,
   transactions: SpendingTxn[],
-) {
+): ScatterPoint[] {
   const { start, end } = spendingPeriodBounds(year, month, ytd, periodEnd)
   const spentOn = new Map<string, number>()
   for (const txn of transactions) {
@@ -1431,10 +1441,12 @@ function dayPoints(
   }
   return datesFrom(start, end).map((date) => {
     const [dateYear, dateMonth, dateDay] = date.split('-').map(Number)
+    const amount = spentOn.get(date) ?? 0
     return {
-      date,
-      weekday: new Date(dateYear, dateMonth - 1, dateDay).getDay(),
-      amount: spentOn.get(date) ?? 0,
+      id: date,
+      column: new Date(dateYear, dateMonth - 1, dateDay).getDay(),
+      amount,
+      title: `${formatDateWithoutYear(date, 'short')}, ${formatUsd(amount)}`,
     }
   })
 }
@@ -1451,7 +1463,7 @@ function monthHasStarted(year: number, month: number, now: Date) {
   return year < now.getFullYear() || (year === now.getFullYear() && month <= now.getMonth())
 }
 
-function monthHabits(transactions: SpendingTxn[], now: Date) {
+function monthTotals(transactions: SpendingTxn[]) {
   const totals = new Map<string, number>()
   const years = new Set<number>()
   for (const txn of transactions) {
@@ -1462,8 +1474,13 @@ function monthHabits(transactions: SpendingTxn[], now: Date) {
     totals.set(key, (totals.get(key) ?? 0) + txn.amount)
   }
   const yearList = [...years].sort((left, right) => left - right)
+  return { totals, years: yearList }
+}
+
+function monthHabits(transactions: SpendingTxn[], now: Date) {
+  const { totals, years } = monthTotals(transactions)
   const rows: MonthHabit[] = SHORT_MONTHS.map((label, month) => {
-    const included = yearList
+    const included = years
       .filter((year) => monthHasStarted(year, month, now))
       .map((year) => totals.get(`${year}-${month}`) ?? 0)
     const average = included.length
@@ -1471,7 +1488,24 @@ function monthHabits(transactions: SpendingTxn[], now: Date) {
       : 0
     return { label, average, years: included.length }
   })
-  return { rows, years: yearList }
+  return { rows, years }
+}
+
+function monthPoints(transactions: SpendingTxn[], now: Date): MonthPoint[] {
+  const { totals, years } = monthTotals(transactions)
+  const points: MonthPoint[] = []
+  for (const year of years) {
+    for (let month = 0; month < 12; month += 1) {
+      if (!monthHasStarted(year, month, now)) continue
+      points.push({
+        id: `${year}-${month}`,
+        column: month,
+        year,
+        amount: totals.get(`${year}-${month}`) ?? 0,
+      })
+    }
+  }
+  return points
 }
 
 function monthHabitCopy(habits: { rows: MonthHabit[]; years: number[] }) {
@@ -1496,11 +1530,23 @@ function monthHabitCopy(habits: { rows: MonthHabit[]; years: number[] }) {
   return `Each bar averages that month across ${span}. ${biggest}`
 }
 
-function dayScatterCopy(points: DayPoint[]) {
+function dayScatterCopy(points: ScatterPoint[]) {
   if (points.length === 0) return 'Nothing to compare for this period yet.'
   const peak = points.reduce((best, point) => (point.amount > best.amount ? point : best), points[0])
   if (peak.amount < 0.005) return 'No spending in this period yet.'
-  return `Each dot is one day. The highest is ${formatDateWithoutYear(peak.date, 'short')}, at ${formatUsdWhole(peak.amount)}.`
+  return `Each dot is one day. The highest is ${formatDateWithoutYear(peak.id, 'short')}, at ${formatUsdWhole(peak.amount)}.`
+}
+
+function monthScatterCopy(points: MonthPoint[], years: number[]) {
+  if (points.length === 0 || points.every((point) => point.amount < 0.005)) {
+    return 'No monthly spending yet.'
+  }
+  const peak = points.reduce((best, point) => (point.amount > best.amount ? point : best), points[0])
+  const name = monthName(peak.column)
+  if (years.length < 2) {
+    return `Each dot is one month in ${years[0] ?? peak.year}. The highest is ${name}, at ${formatUsdWhole(peak.amount)}.`
+  }
+  return `Each dot is one year of that month. The highest is ${name} ${peak.year}, at ${formatUsdWhole(peak.amount)}.`
 }
 
 function WeekdayBars({ days }: { days: WeekdayStat[] }) {
@@ -1512,10 +1558,10 @@ function WeekdayBars({ days }: { days: WeekdayStat[] }) {
         const height = peak > 0 ? Math.max(day.average > 0 ? 4 : 0, (day.average / peak) * 100) : 0
         return (
           <div key={day.label} className="grid justify-items-center gap-2">
-            <div className="flex h-32 w-full items-end justify-center">
+            <div className="flex h-20 w-full items-end justify-center">
               <div
                 className={cn(
-                  'w-full max-w-10 rounded-sm',
+                  'w-full max-w-8 rounded-sm',
                   top ? 'bg-[#F94BA4]' : day.weekend ? 'bg-[#F8C4DE]' : 'bg-neutral-200',
                 )}
                 style={{ height: `${height}%` }}
@@ -1535,27 +1581,30 @@ function WeekdayBars({ days }: { days: WeekdayStat[] }) {
   )
 }
 
-function DayScatter({ points }: { points: DayPoint[] }) {
+function ScatterChart({
+  points,
+  labels,
+  ariaLabel,
+}: {
+  points: ScatterPoint[]
+  labels: readonly string[]
+  ariaLabel: string
+}) {
   const max = Math.max(...points.map((point) => point.amount), 0)
   if (max < 0.005) {
     return <p className="text-muted-foreground text-sm">No spending in this period yet.</p>
   }
   const width = 640
-  const height = 220
+  const height = 168
   const pad = { top: 10, right: 8, bottom: 28, left: 64 }
   const plotW = width - pad.left - pad.right
   const plotH = height - pad.top - pad.bottom
   const ticks = [0, max / 2, max]
   const yFor = (amount: number) => pad.top + plotH - (amount / max) * plotH
-  const column = plotW / 7
+  const column = plotW / labels.length
   const ordered = [...points].sort((left, right) => left.amount - right.amount)
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="w-full"
-      role="img"
-      aria-label="Each day plotted by weekday and amount spent"
-    >
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={ariaLabel}>
       {ticks.map((tick) => (
         <g key={tick}>
           <line
@@ -1577,7 +1626,7 @@ function DayScatter({ points }: { points: DayPoint[] }) {
           </text>
         </g>
       ))}
-      {WEEKDAY_SHORT.map((label, index) => (
+      {labels.map((label, index) => (
         <text
           key={label}
           x={pad.left + (index + 0.5) * column}
@@ -1593,14 +1642,14 @@ function DayScatter({ points }: { points: DayPoint[] }) {
         const spent = point.amount > 0.005
         return (
           <circle
-            key={point.date}
-            cx={pad.left + (point.weekday + 0.5) * column + dayJitter(point.date) * column * 0.34}
+            key={point.id}
+            cx={pad.left + (point.column + 0.5) * column + dayJitter(point.id) * column * 0.34}
             cy={yFor(point.amount)}
             r={spent ? 4 : 2.25}
             fill={spent ? '#F94BA4' : '#d4d4d4'}
             fillOpacity={spent ? 0.85 : 1}
           >
-            <title>{`${formatDateWithoutYear(point.date, 'short')}, ${formatUsd(point.amount)}`}</title>
+            <title>{point.title}</title>
           </circle>
         )
       })}
@@ -1608,40 +1657,51 @@ function DayScatter({ points }: { points: DayPoint[] }) {
   )
 }
 
-function MonthBars({ rows }: { rows: MonthHabit[] }) {
+function MonthColumnBars({ rows }: { rows: MonthHabit[] }) {
   const counted = rows.filter((row) => row.years > 0)
   const peak = Math.max(...counted.map((row) => row.average), 0)
   return (
-    <div className="grid gap-1.5" role="img" aria-label="Spending by month">
-      {rows.map((row) => {
-        const open = row.years > 0
-        const top = open && peak > 0 && peak - row.average < 0.005 && row.average > 0.005
-        const width = peak > 0 && open ? (row.average / peak) * 100 : 0
-        return (
-          <div
-            key={row.label}
-            className="grid grid-cols-[2.25rem_minmax(0,1fr)_4.75rem] items-center gap-2"
-          >
-            <span className="text-muted-foreground text-xs">{row.label}</span>
-            <div className="bg-neutral-100 h-2 overflow-hidden rounded-sm">
-              {open ? (
+    <div
+      className="grid grid-cols-12 gap-1"
+      role="img"
+      aria-label="Average spent in each month"
+    >
+        {rows.map((row) => {
+          const open = row.years > 0
+          const top =
+            open && peak > 0 && peak - row.average < 0.005 && row.average > 0.005
+          const height =
+            peak > 0 && open
+              ? Math.max(row.average > 0 ? 4 : 0, (row.average / peak) * 100)
+              : 0
+          return (
+            <div key={row.label} className="grid justify-items-center gap-2">
+              <div className="flex h-20 w-full items-end justify-center">
+                {open ? (
+                  <div
+                    className={cn(
+                      'w-full max-w-6 rounded-sm',
+                      top ? 'bg-[#F94BA4]' : 'bg-[#F8C4DE]',
+                    )}
+                    style={{ height: `${height}%` }}
+                    title={`${row.label}, ${formatUsd(row.average)} average across ${row.years} ${row.years === 1 ? 'year' : 'years'}`}
+                  />
+                ) : null}
+              </div>
+              <div className="text-center">
+                <div className="text-muted-foreground text-[10px] leading-tight">{row.label}</div>
                 <div
-                  className={cn('h-full rounded-sm', top ? 'bg-[#F94BA4]' : 'bg-[#F8C4DE]')}
-                  style={{ width: `${width}%` }}
-                />
-              ) : null}
+                  className={cn(
+                    'hidden text-[10px] leading-tight tabular-nums sm:block',
+                    (!open || row.average < 0.005) && 'text-muted-foreground',
+                  )}
+                >
+                  {open ? formatUsdWhole(row.average) : '—'}
+                </div>
+              </div>
             </div>
-            <span
-              className={cn(
-                'text-right text-xs tabular-nums',
-                (!open || row.average < 0.005) && 'text-muted-foreground',
-              )}
-            >
-              {open ? formatUsdWhole(row.average) : '—'}
-            </span>
-          </div>
-        )
-      })}
+          )
+        })}
     </div>
   )
 }
@@ -1663,6 +1723,8 @@ function WeekdaySpending({
   history: SpendingTxn[]
   now: Date
 }) {
+  const [chart, setChart] = useState<'bar' | 'dot'>('bar')
+  const byMonth = !ytd
   const days = useMemo(
     () => weekdayStats(year, month, ytd, periodEnd, transactions),
     [month, periodEnd, transactions, year, ytd],
@@ -1672,28 +1734,66 @@ function WeekdaySpending({
     [month, periodEnd, transactions, year, ytd],
   )
   const habits = useMemo(() => monthHabits(history, now), [history, now])
+  const months = useMemo(() => monthPoints(history, now), [history, now])
+  const monthDots: ScatterPoint[] = months.map((point) => ({
+    id: point.id,
+    column: point.column,
+    amount: point.amount,
+    title: `${monthName(point.column)} ${point.year}, ${formatUsd(point.amount)}`,
+  }))
+  const summary = byMonth
+    ? chart === 'bar'
+      ? monthHabitCopy(habits)
+      : monthScatterCopy(months, habits.years)
+    : chart === 'bar'
+      ? weekdayPatternCopy(days)
+      : dayScatterCopy(points)
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Spending habits</CardTitle>
+        <CardAction>
+          <div role="tablist" aria-label="Chart" className="flex gap-1">
+            {(['bar', 'dot'] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={chart === id}
+                onClick={() => setChart(id)}
+                className={cn(
+                  'hover-fill rounded-lg px-2.5 py-1 text-sm',
+                  chart === id && 'hover-fill-active font-medium',
+                )}
+              >
+                {id === 'bar' ? 'Bar' : 'Dot'}
+              </button>
+            ))}
+          </div>
+        </CardAction>
       </CardHeader>
-      <CardContent className="grid gap-8">
-        <section className="grid gap-3">
-          <h3 className="text-sm font-medium">Week</h3>
-          <p className="max-w-3xl text-sm">{weekdayPatternCopy(days)}</p>
+      <CardContent className="grid gap-4">
+        <p className="max-w-3xl text-sm">{summary}</p>
+        {byMonth ? (
+          chart === 'bar' ? (
+            <MonthColumnBars rows={habits.rows} />
+          ) : (
+            <ScatterChart
+              points={monthDots}
+              labels={SHORT_MONTHS}
+              ariaLabel="Each year plotted by month and amount spent"
+            />
+          )
+        ) : chart === 'bar' ? (
           <WeekdayBars days={days} />
-        </section>
-        <section className="grid gap-3">
-          <h3 className="text-sm font-medium">Days</h3>
-          <p className="max-w-3xl text-sm">{dayScatterCopy(points)}</p>
-          <DayScatter points={points} />
-        </section>
-        <section className="grid gap-3">
-          <h3 className="text-sm font-medium">Months</h3>
-          <p className="max-w-3xl text-sm">{monthHabitCopy(habits)}</p>
-          <MonthBars rows={habits.rows} />
-        </section>
+        ) : (
+          <ScatterChart
+            points={points}
+            labels={WEEKDAY_SHORT}
+            ariaLabel="Each day plotted by weekday and amount spent"
+          />
+        )}
       </CardContent>
     </Card>
   )
