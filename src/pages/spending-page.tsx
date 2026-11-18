@@ -55,7 +55,7 @@ import { useBudget } from '@/lib/budget-context'
 import { useDebtPlan } from '@/lib/debt-plan-context'
 import type { AffirmLoan } from '@/lib/debt-plan'
 import { sortAffirmLoans } from '@/lib/debt-plan'
-import { formatDateWithoutYear, formatLongDate, formatUsd } from '@/lib/format'
+import { formatDateWithoutYear, formatLongDate, formatUsd, formatUsdWholeUp } from '@/lib/format'
 import { monthName } from '@/lib/income'
 import {
   ADD_TRANSACTION_EVENT,
@@ -1540,7 +1540,7 @@ function CalendarMonth({
           const past = date < today
           const isToday = date.getTime() === today.getTime()
           const openable = !future && spent > 0.005
-          const amount = formatUsd(spent)
+          const amount = formatUsdWholeUp(spent)
           const body = (
             <>
               <span
