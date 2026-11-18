@@ -596,6 +596,10 @@ export function SpendingPage() {
         : monthName(row.month),
     }))
   }, [transactions, uploads])
+  const variableTxns = useMemo(
+    () => transactions.filter(countsAsVariable),
+    [countsAsVariable, transactions],
+  )
   const spentTxns = useMemo(
     () => periodTxns.filter(countsAsVariable),
     [countsAsVariable, periodTxns],
@@ -913,6 +917,8 @@ export function SpendingPage() {
         ytd={ytd}
         periodEnd={periodEnd}
         transactions={spentTxns}
+        history={variableTxns}
+        now={now}
       />
 
       {calendarMonths.length > 0 ? (
@@ -1394,75 +1400,325 @@ function weekdayPatternCopy(days: WeekdayStat[]) {
   return `${lead} ${biggest}`
 }
 
+type DayPoint = {
+  date: string
+  weekday: number
+  amount: number
+}
+
+type MonthHabit = {
+  label: string
+  average: number
+  years: number
+}
+
+type HabitView = 'weekday' | 'days' | 'months'
+
+function dayPoints(
+  year: number,
+  month: number | null,
+  ytd: boolean,
+  periodEnd: string,
+  transactions: SpendingTxn[],
+) {
+  const { start, end } = spendingPeriodBounds(year, month, ytd, periodEnd)
+  const spentOn = new Map<string, number>()
+  for (const txn of transactions) {
+    spentOn.set(txn.date, (spentOn.get(txn.date) ?? 0) + txn.amount)
+  }
+  return datesFrom(start, end).map((date) => {
+    const [dateYear, dateMonth, dateDay] = date.split('-').map(Number)
+    return {
+      date,
+      weekday: new Date(dateYear, dateMonth - 1, dateDay).getDay(),
+      amount: spentOn.get(date) ?? 0,
+    }
+  })
+}
+
+function dayJitter(date: string) {
+  let hash = 0
+  for (let index = 0; index < date.length; index += 1) {
+    hash = (hash * 33 + date.charCodeAt(index)) >>> 0
+  }
+  return ((hash % 1000) / 1000 - 0.5) * 0.7
+}
+
+function monthHasStarted(year: number, month: number, now: Date) {
+  return year < now.getFullYear() || (year === now.getFullYear() && month <= now.getMonth())
+}
+
+function monthHabits(transactions: SpendingTxn[], now: Date) {
+  const totals = new Map<string, number>()
+  const years = new Set<number>()
+  for (const txn of transactions) {
+    const [year, month] = txn.date.split('-').map(Number)
+    if (!year || !month) continue
+    years.add(year)
+    const key = `${year}-${month - 1}`
+    totals.set(key, (totals.get(key) ?? 0) + txn.amount)
+  }
+  const yearList = [...years].sort((left, right) => left - right)
+  const rows: MonthHabit[] = SHORT_MONTHS.map((label, month) => {
+    const included = yearList
+      .filter((year) => monthHasStarted(year, month, now))
+      .map((year) => totals.get(`${year}-${month}`) ?? 0)
+    const average = included.length
+      ? included.reduce((sum, amount) => sum + amount, 0) / included.length
+      : 0
+    return { label, average, years: included.length }
+  })
+  return { rows, years: yearList }
+}
+
+function monthHabitCopy(habits: { rows: MonthHabit[]; years: number[] }) {
+  const counted = habits.rows.filter((row) => row.years > 0)
+  if (counted.length === 0 || counted.every((row) => row.average < 0.005)) {
+    return 'No monthly spending yet.'
+  }
+  const peak = Math.max(...counted.map((row) => row.average))
+  const leaders = counted.filter((row) => peak - row.average < 0.005)
+  const biggest =
+    leaders.length === 1
+      ? `${leaders[0].label} is the biggest month, at ${formatUsdWhole(peak)}.`
+      : `${leaders.map((row) => row.label).join(' and ')} tie for the biggest month, at ${formatUsdWhole(peak)}.`
+  if (habits.years.length < 2) {
+    const year = habits.years[0]
+    return `${biggest} This is ${year} so far. A second year will make a month habit easier to see.`
+  }
+  const span =
+    habits.years.length === 2
+      ? `${habits.years[0]} and ${habits.years[1]}`
+      : `${habits.years[0]}–${habits.years[habits.years.length - 1]}`
+  return `Each bar averages that month across ${span}. ${biggest}`
+}
+
+function dayScatterCopy(points: DayPoint[]) {
+  if (points.length === 0) return 'Nothing to compare for this period yet.'
+  const peak = points.reduce((best, point) => (point.amount > best.amount ? point : best), points[0])
+  if (peak.amount < 0.005) return 'No spending in this period yet.'
+  return `Each dot is one day. The highest is ${formatDateWithoutYear(peak.date, 'short')}, at ${formatUsdWhole(peak.amount)}.`
+}
+
+function WeekdayBars({ days }: { days: WeekdayStat[] }) {
+  const peak = Math.max(...days.map((day) => day.average))
+  return (
+    <div className="grid grid-cols-7 gap-2" role="img" aria-label="Average spent on each weekday">
+      {days.map((day) => {
+        const top = peak > 0 && peak - day.average < 0.005
+        const height = peak > 0 ? Math.max(day.average > 0 ? 4 : 0, (day.average / peak) * 100) : 0
+        return (
+          <div key={day.label} className="grid justify-items-center gap-2">
+            <div className="flex h-32 w-full items-end justify-center">
+              <div
+                className={cn(
+                  'w-full max-w-10 rounded-sm',
+                  top ? 'bg-[#F94BA4]' : day.weekend ? 'bg-[#F8C4DE]' : 'bg-neutral-200',
+                )}
+                style={{ height: `${height}%` }}
+                title={`${day.label}, ${formatUsd(day.average)} average across ${day.count} ${day.count === 1 ? 'day' : 'days'}`}
+              />
+            </div>
+            <div className="text-center">
+              <div className="text-muted-foreground text-xs">{day.short}</div>
+              <div className={cn('text-xs tabular-nums', day.average < 0.005 && 'text-muted-foreground')}>
+                {formatUsdWhole(day.average)}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DayScatter({ points }: { points: DayPoint[] }) {
+  const max = Math.max(...points.map((point) => point.amount), 0)
+  if (max < 0.005) {
+    return <p className="text-muted-foreground text-sm">No spending in this period yet.</p>
+  }
+  const width = 640
+  const height = 220
+  const pad = { top: 10, right: 8, bottom: 28, left: 64 }
+  const plotW = width - pad.left - pad.right
+  const plotH = height - pad.top - pad.bottom
+  const ticks = [0, max / 2, max]
+  const yFor = (amount: number) => pad.top + plotH - (amount / max) * plotH
+  const column = plotW / 7
+  const ordered = [...points].sort((left, right) => left.amount - right.amount)
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full"
+      role="img"
+      aria-label="Each day plotted by weekday and amount spent"
+    >
+      {ticks.map((tick) => (
+        <g key={tick}>
+          <line
+            x1={pad.left}
+            x2={width - pad.right}
+            y1={yFor(tick)}
+            y2={yFor(tick)}
+            stroke="#e5e5e5"
+          />
+          <text
+            x={pad.left - 8}
+            y={yFor(tick)}
+            textAnchor="end"
+            dominantBaseline="middle"
+            fill="#737373"
+            fontSize="11"
+          >
+            {formatUsdWhole(tick)}
+          </text>
+        </g>
+      ))}
+      {WEEKDAY_SHORT.map((label, index) => (
+        <text
+          key={label}
+          x={pad.left + (index + 0.5) * column}
+          y={height - 8}
+          textAnchor="middle"
+          fill="#737373"
+          fontSize="11"
+        >
+          {label}
+        </text>
+      ))}
+      {ordered.map((point) => {
+        const spent = point.amount > 0.005
+        return (
+          <circle
+            key={point.date}
+            cx={pad.left + (point.weekday + 0.5) * column + dayJitter(point.date) * column * 0.34}
+            cy={yFor(point.amount)}
+            r={spent ? 4 : 2.25}
+            fill={spent ? '#F94BA4' : '#d4d4d4'}
+            fillOpacity={spent ? 0.85 : 1}
+          >
+            <title>{`${formatDateWithoutYear(point.date, 'short')}, ${formatUsd(point.amount)}`}</title>
+          </circle>
+        )
+      })}
+    </svg>
+  )
+}
+
+function MonthBars({ rows }: { rows: MonthHabit[] }) {
+  const counted = rows.filter((row) => row.years > 0)
+  const peak = Math.max(...counted.map((row) => row.average), 0)
+  return (
+    <div className="grid gap-1.5" role="img" aria-label="Spending by month">
+      {rows.map((row) => {
+        const open = row.years > 0
+        const top = open && peak > 0 && peak - row.average < 0.005 && row.average > 0.005
+        const width = peak > 0 && open ? (row.average / peak) * 100 : 0
+        return (
+          <div
+            key={row.label}
+            className="grid grid-cols-[2.25rem_minmax(0,1fr)_4.75rem] items-center gap-2"
+          >
+            <span className="text-muted-foreground text-xs">{row.label}</span>
+            <div className="bg-neutral-100 h-2 overflow-hidden rounded-sm">
+              {open ? (
+                <div
+                  className={cn('h-full rounded-sm', top ? 'bg-[#F94BA4]' : 'bg-[#F8C4DE]')}
+                  style={{ width: `${width}%` }}
+                />
+              ) : null}
+            </div>
+            <span
+              className={cn(
+                'text-right text-xs tabular-nums',
+                (!open || row.average < 0.005) && 'text-muted-foreground',
+              )}
+            >
+              {open ? formatUsdWhole(row.average) : '—'}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function WeekdaySpending({
   year,
   month,
   ytd,
   periodEnd,
   transactions,
+  history,
+  now,
 }: {
   year: number
   month: number | null
   ytd: boolean
   periodEnd: string
   transactions: SpendingTxn[]
+  history: SpendingTxn[]
+  now: Date
 }) {
+  const [view, setView] = useState<HabitView>('weekday')
   const days = useMemo(
     () => weekdayStats(year, month, ytd, periodEnd, transactions),
     [month, periodEnd, transactions, year, ytd],
   )
-  const peak = Math.max(...days.map((day) => day.average))
-  const summary = weekdayPatternCopy(days)
-
+  const points = useMemo(
+    () => dayPoints(year, month, ytd, periodEnd, transactions),
+    [month, periodEnd, transactions, year, ytd],
+  )
+  const habits = useMemo(() => monthHabits(history, now), [history, now])
   const periodLabel = ytd ? 'Year to date' : month == null ? '' : monthName(month)
+  const summary =
+    view === 'weekday'
+      ? weekdayPatternCopy(days)
+      : view === 'days'
+        ? dayScatterCopy(points)
+        : monthHabitCopy(habits)
+  const scope =
+    view === 'months'
+      ? habits.years.length > 1
+        ? `${habits.years[0]}–${habits.years[habits.years.length - 1]}`
+        : habits.years.length === 1
+          ? String(habits.years[0])
+          : ''
+      : periodLabel
+  const tabs: { id: HabitView; label: string }[] = [
+    { id: 'weekday', label: 'Weekday' },
+    { id: 'days', label: 'Each day' },
+    { id: 'months', label: 'Months' },
+  ]
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Spending habits</CardTitle>
-        {periodLabel ? <CardDescription>{periodLabel}</CardDescription> : null}
+        {scope ? <CardDescription>{scope}</CardDescription> : null}
       </CardHeader>
       <CardContent className="grid gap-5">
-        <p className="max-w-3xl text-sm">{summary}</p>
-        <div
-          className="grid grid-cols-7 gap-2"
-          role="img"
-          aria-label={summary}
-        >
-          {days.map((day) => {
-            const top = peak > 0 && peak - day.average < 0.005
-            const height = peak > 0 ? Math.max(day.average > 0 ? 4 : 0, (day.average / peak) * 100) : 0
-            return (
-              <div key={day.label} className="grid justify-items-center gap-2">
-                <div className="flex h-32 w-full items-end justify-center">
-                  <div
-                    className={cn(
-                      'w-full max-w-10 rounded-sm',
-                      top
-                        ? 'bg-[#F94BA4]'
-                        : day.weekend
-                          ? 'bg-[#F8C4DE]'
-                          : 'bg-neutral-200',
-                    )}
-                    style={{ height: `${height}%` }}
-                    title={`${day.label}, ${formatUsd(day.average)} average across ${day.count} ${day.count === 1 ? 'day' : 'days'}`}
-                  />
-                </div>
-                <div className="text-center">
-                  <div className="text-muted-foreground text-xs">{day.short}</div>
-                  <div
-                    className={cn(
-                      'text-xs tabular-nums',
-                      day.average < 0.005 && 'text-muted-foreground',
-                    )}
-                  >
-                    {formatUsdWhole(day.average)}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+        <div role="tablist" aria-label="Spending habits" className="flex flex-wrap gap-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={view === tab.id}
+              onClick={() => setView(tab.id)}
+              className={cn(
+                'hover-fill rounded-lg px-2.5 py-1 text-sm',
+                view === tab.id && 'hover-fill-active font-medium',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
+        <p className="max-w-3xl text-sm">{summary}</p>
+        {view === 'weekday' ? <WeekdayBars days={days} /> : null}
+        {view === 'days' ? <DayScatter points={points} /> : null}
+        {view === 'months' ? <MonthBars rows={habits.rows} /> : null}
       </CardContent>
     </Card>
   )
