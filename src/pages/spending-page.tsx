@@ -1366,19 +1366,36 @@ function SpendingCalendar({
         </div>
       </CardHeader>
       <CardContent>
-        <div className={cn(spread && 'grid gap-x-4 gap-y-5 sm:grid-cols-2')}>
-          {months.map((shown) => (
-            <CalendarMonth
-              key={shown}
-              year={year}
-              month={shown}
-              compact={spread}
-              spentByDay={spentByDay}
-              today={today}
-              selected={selected}
-              onSelect={onSelect}
-            />
-          ))}
+        <div className={cn(spread && 'grid sm:grid-cols-2')}>
+          {months.map((shown, index) => {
+            const last = months.length - 1
+            const lastRowStart = last - (last % 2)
+            const left = index % 2 === 0
+            return (
+              <div
+                key={shown}
+                className={cn(
+                  spread && 'border-neutral-300',
+                  spread && index > 0 && 'max-sm:border-t max-sm:pt-12',
+                  spread && index < last && 'max-sm:pb-12',
+                  spread && left && index !== last && 'sm:border-r sm:pr-12',
+                  spread && !left && 'sm:pl-12',
+                  spread && index >= 2 && 'sm:pt-12',
+                  spread && index < lastRowStart && 'sm:border-b sm:pb-12',
+                )}
+              >
+                <CalendarMonth
+                  year={year}
+                  month={shown}
+                  compact={spread}
+                  spentByDay={spentByDay}
+                  today={today}
+                  selected={selected}
+                  onSelect={onSelect}
+                />
+              </div>
+            )
+          })}
         </div>
       </CardContent>
     </Card>
