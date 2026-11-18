@@ -27,12 +27,6 @@ import {
   type DebtPlanState,
 } from '@/lib/debt-plan'
 import {
-  APP_STATE_PAY_DATE,
-  fetchPaystubDataByDate,
-  type Paystub,
-} from '@/lib/paystub'
-import {
-  emptySpending,
   loadSpending,
   parseSpendingState,
   saveSpending,
@@ -88,6 +82,13 @@ async function currentUserId() {
 /**
  * Read from cloud (user_app_state table), with one-time fallback to paystubs migration.
  */
+/**
+ * Read from cloud (user_app_state table only).
+ * 
+ * IMPORTANT: Paystubs migration is handled server-side by SQL migration.
+ * Client MUST NOT read or write paystubs __app_state__ row.
+ * The migration SQL already copied data to user_app_state for the owner.
+ */
 async function readCloudState(): Promise<CloudState | null> {
   if (!supabase) return null
   
@@ -95,7 +96,7 @@ async function readCloudState(): Promise<CloudState | null> {
   if (!userId) return null
 
   try {
-    // Try user_app_state table first
+    // Read ONLY from user_app_state table
     const { data, error } = await supabase
       .from('user_app_state')
       .select('*')
@@ -103,71 +104,37 @@ async function readCloudState(): Promise<CloudState | null> {
       .maybeSingle()
 
     if (error) {
-      // Table might not exist yet, or other error
-      if (error.code === 'PGRST116' || error.code === '42P01') {
-        console.warn('user_app_state table not found, checking paystubs migration')
+      // Table might not exist yet, or RLS denies access
+      if (error.code === 'PGRST116' || error.code === '42P01' || error.code === 'PGRST204') {
+        console.warn('user_app_state table not accessible:', error.message)
       } else {
         console.error('Error reading user_app_state:', error.message)
       }
+      return null
     }
 
-    if (data) {
-      const row = data as UserAppStateRow
-      const budget = parseBudgetState(row.budget)
-      const plan = parseDebtPlan(row.plan)
-      const spending = parseSpendingState(row.spending)
-
-      if (!budget || !plan || !spending) {
-        console.error('Invalid data in user_app_state')
-        return null
-      }
-
-      return {
-        budget,
-        plan,
-        spending,
-        syncVersion: row.sync_version,
-        updatedAt: row.updated_at,
-      }
+    if (!data) {
+      // No row exists yet - will be created on first write via RPC
+      return null
     }
 
-    // If no row in user_app_state, try one-time migration from paystubs
-    const paystubData = await fetchPaystubDataByDate(APP_STATE_PAY_DATE)
-    if (paystubData && typeof paystubData === 'object') {
-      const record = paystubData as {
-        budget?: unknown
-        plan?: unknown
-        spending?: unknown
-        fileName?: string
-        appState?: boolean
-      }
+    const row = data as UserAppStateRow
+    const budget = parseBudgetState(row.budget)
+    const plan = parseDebtPlan(row.plan)
+    const spending = parseSpendingState(row.spending)
 
-      if (record.fileName === '__app_state__' || record.appState === true) {
-        const budget = parseBudgetState(record.budget)
-        const plan = parseDebtPlan(record.plan)
-        const spending = parseSpendingState(record.spending)
-
-        if (budget && plan && spending) {
-          console.info('Migrating app state from paystubs to user_app_state')
-          // Write to user_app_state (version will be 1)
-          const writeResult = await writeCloudState({ budget, plan, spending }, null)
-          if (writeResult) {
-            return writeResult
-          }
-          // If write failed, return the migrated data anyway (client will retry push)
-          return {
-            budget,
-            plan,
-            spending,
-            syncVersion: 0, // Unknown version, will be set on first write
-            updatedAt: new Date().toISOString(),
-          }
-        }
-      }
+    if (!budget || !plan || !spending) {
+      console.error('Invalid data in user_app_state')
+      return null
     }
 
-    // No data in cloud or paystubs, return null (will use empty defaults)
-    return null
+    return {
+      budget,
+      plan,
+      spending,
+      syncVersion: row.sync_version,
+      updatedAt: row.updated_at,
+    }
   } catch (err) {
     console.error('Error reading cloud state:', err)
     return null
