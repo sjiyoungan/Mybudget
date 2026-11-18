@@ -26,14 +26,13 @@ import {
 } from '@/lib/spending'
 import { supabase } from '@/lib/supabase'
 import {
+  initialSync,
   markCloudReady,
   rememberSpending,
-  suppressNextPush,
-  resetUserAppStateSync,
-  scheduleUserAppStatePush,
+  resetSync,
+  schedulePush,
   startPeriodicSync,
-  syncUserAppStateFromCloud,
-} from '@/lib/user-app-state'
+} from '@/lib/user-app-state-v2'
 
 export const ADD_TRANSACTION_EVENT = 'mybudget:add-transaction'
 
@@ -113,7 +112,7 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
     const next = skipStamp ? state : touchSpending(state)
     const stored = saveSpending(next)
     rememberSpending(stored)
-    scheduleUserAppStatePush()
+    schedulePush()
     if (
       stored.transactions.length !== state.transactions.length ||
       stored.categories.length !== state.categories.length ||
@@ -129,22 +128,24 @@ export function SpendingProvider({ children }: { children: ReactNode }) {
     if (loading) return
     if (!supabase || !user) {
       if (!supabase) markCloudReady()
-      else resetUserAppStateSync()
+      else resetSync()
       return
     }
     let cancelled = false
     void (async () => {
-      const synced = await syncUserAppStateFromCloud()
+      const cloudState = await initialSync()
       if (cancelled) return
       markCloudReady()
-      startPeriodicSync() // Start pulling changes from other devices
-      if (!synced.fromCloud) return
-      applyingCloud.current = true
-      const spending = synced.state.spending
-      setState({
-        ...spending,
-        transactions: applySpendingRules(spending.transactions, spending.rules),
-      })
+      startPeriodicSync()
+      
+      if (cloudState) {
+        applyingCloud.current = true
+        const spending = cloudState.spending
+        setState({
+          ...spending,
+          transactions: applySpendingRules(spending.transactions, spending.rules),
+        })
+      }
     })()
     return () => {
       cancelled = true

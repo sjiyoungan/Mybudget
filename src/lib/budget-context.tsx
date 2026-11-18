@@ -28,12 +28,13 @@ import { AFFIRM_DEBT_ID, debtsWithAffirmPlan, loadDebtPlan } from '@/lib/debt-pl
 import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
 import {
+  initialSync,
   markCloudReady,
   rememberBudget,
-  resetUserAppStateSync,
-  scheduleUserAppStatePush,
-  syncUserAppStateFromCloud,
-} from '@/lib/user-app-state'
+  resetSync,
+  schedulePush,
+  startPeriodicSync,
+} from '@/lib/user-app-state-v2'
 
 function withLinkedExpenses(current: BudgetState, expenses: RecurringExpense[]) {
   return withBudgetEdit({
@@ -99,40 +100,51 @@ function withExclusiveRole(
 
 export function BudgetProvider({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
-  const [state, setState] = useState<BudgetState>(() => loadBudget())
+  const [state, setState] = useState<BudgetState | null>(null)
 
   useEffect(() => {
-    saveBudget(state)
-    rememberBudget(state)
-    scheduleUserAppStatePush()
+    if (state) {
+      saveBudget(state)
+      rememberBudget(state)
+      schedulePush()
+    }
   }, [state])
 
   useEffect(() => {
     if (loading) return
     if (!supabase || !user) {
+      setState(loadBudget())
       if (!supabase) markCloudReady()
-      else resetUserAppStateSync()
+      else resetSync()
       return
     }
     let cancelled = false
     void (async () => {
-      const synced = await syncUserAppStateFromCloud()
+      const cloudState = await initialSync()
       if (cancelled) return
+      
+      if (cloudState) {
+        setState(cloudState.budget)
+      } else {
+        setState(loadBudget())
+      }
+      
       markCloudReady()
-      if (!synced.fromCloud) return
-      setState(synced.state.budget)
+      startPeriodicSync()
     })()
     return () => {
       cancelled = true
     }
   }, [loading, user])
 
+  const currentState = state || loadBudget()
+  
   const value = useMemo<BudgetContextValue>(
     () => ({
-      accounts: state.accounts,
-      categories: state.categories,
-      expenses: state.expenses,
-      debts: debtsWithAffirmPlan(state.debts, loadDebtPlan().affirmLoans),
+      accounts: currentState.accounts,
+      categories: currentState.categories,
+      expenses: currentState.expenses,
+      debts: debtsWithAffirmPlan(currentState.debts, loadDebtPlan().affirmLoans),
       addAccount({ name, kind, role }) {
         const id = crypto.randomUUID()
         setState((current) => {
