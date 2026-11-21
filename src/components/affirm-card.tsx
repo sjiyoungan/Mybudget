@@ -42,12 +42,46 @@ import { formatUsd } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const AFFIRM_MONTH_COL = 88
-const AFFIRM_ID_COLS = [
-  { key: 'name', label: 'Name', width: 124, align: 'left' as const },
-  { key: 'last', label: 'Last payment', width: 88, align: 'left' as const },
-  { key: 'balance', label: 'Balance', width: 96, align: 'right' as const },
-] as const
-const AFFIRM_ID_WIDTH = AFFIRM_ID_COLS.reduce((sum, col) => sum + col.width, 0)
+const AFFIRM_BALANCE_COL = 96
+
+type AffirmColKey = 'name' | 'last' | 'balance'
+type AffirmIdCol = {
+  key: AffirmColKey
+  label: string
+  width: number
+  align: 'left' | 'right'
+}
+
+const AFFIRM_ID_COLS: AffirmIdCol[] = [
+  { key: 'name', label: 'Name', width: 124, align: 'left' },
+  { key: 'last', label: 'Last payment', width: 112, align: 'left' },
+  { key: 'balance', label: 'Balance', width: 96, align: 'right' },
+]
+
+function columnsForViewport(clientWidth: number): AffirmIdCol[] {
+  const month = AFFIRM_MONTH_COL
+  const desktop = AFFIRM_ID_COLS.reduce((sum, col) => sum + col.width, 0)
+  if (clientWidth <= 0 || clientWidth >= desktop + month) return AFFIRM_ID_COLS
+  const budget = clientWidth - month
+  const last = Math.min(112, Math.max(96, budget - 64))
+  const rest = budget - last
+  if (rest >= 68 + 76) {
+    return [
+      { key: 'name', label: 'Name', width: rest - 76, align: 'left' },
+      { key: 'last', label: 'Last payment', width: last, align: 'left' },
+      { key: 'balance', label: 'Balance', width: 76, align: 'right' },
+    ]
+  }
+  const nameWidth = Math.min(Math.max(56, rest), Math.max(56, budget - last))
+  return [
+    { key: 'name', label: 'Name', width: nameWidth, align: 'left' },
+    { key: 'last', label: 'Last payment', width: Math.min(last, budget - nameWidth), align: 'left' },
+  ]
+}
+
+function columnWidth(cols: AffirmIdCol[]) {
+  return cols.reduce((sum, col) => sum + col.width, 0)
+}
 
 type AffirmSortKey = 'monthly' | 'last' | 'name'
 type AffirmSortDir = 'asc' | 'desc'
@@ -88,8 +122,8 @@ function roundCents(value: number) {
   return Math.round(value * 100) / 100
 }
 
-function stickyLeft(index: number) {
-  return AFFIRM_ID_COLS.slice(0, index).reduce((sum, col) => sum + col.width, 0)
+function stickyLeft(cols: AffirmIdCol[], index: number) {
+  return cols.slice(0, index).reduce((sum, col) => sum + col.width, 0)
 }
 
 function draftFromLoan(loan: AffirmLoan): AffirmDraft {
@@ -113,36 +147,37 @@ function emptyDraft(now: Date): AffirmDraft {
 }
 
 function FreezeCell({
-  index,
+  col,
+  left,
   header = false,
   className,
   title,
   onClick,
   children,
 }: {
-  index: number
+  col: AffirmIdCol
+  left: number
   header?: boolean
   className?: string
   title?: string
   onClick?: () => void
   children?: ReactNode
 }) {
-  const col = AFFIRM_ID_COLS[index]
   const Tag = header ? 'th' : 'td'
   return (
     <Tag
       title={title}
       onClick={onClick}
       className={cn(
-        'sticky overflow-hidden bg-card',
+        'sticky overflow-hidden bg-card whitespace-nowrap',
         header ? 'z-20' : 'z-10',
-        index === 0 ? 'pl-4 pr-3' : 'px-3',
+        col.key === 'name' ? 'pl-4 pr-3' : col.width >= 110 ? 'px-3' : 'px-2',
         col.align === 'right' ? 'text-right' : 'text-left',
         onClick && !header && 'affirm-loan-hit hover-fill',
         className,
       )}
       style={{
-        left: stickyLeft(index),
+        left,
         width: col.width,
         minWidth: col.width,
         maxWidth: col.width,
@@ -154,22 +189,23 @@ function FreezeCell({
 }
 
 function FooterFreeze({
-  index,
+  col,
+  last = false,
   scrolled,
   children,
 }: {
-  index: number
+  col: AffirmIdCol
+  last?: boolean
   scrolled: boolean
   children?: ReactNode
 }) {
-  const col = AFFIRM_ID_COLS[index]
   return (
     <div
       className={cn(
-        'shrink-0 py-3 text-sm font-medium tabular-nums',
-        index === 0 ? 'pl-4 pr-3' : 'px-3',
+        'shrink-0 overflow-hidden py-3 text-sm font-medium whitespace-nowrap tabular-nums',
+        col.key === 'name' ? 'pl-4 pr-3' : col.width >= 110 ? 'px-3' : 'px-2',
         col.align === 'right' ? 'text-right' : 'text-left',
-        index === AFFIRM_ID_COLS.length - 1 && !scrolled && 'border-border border-r',
+        last && !scrolled && 'border-border border-r',
       )}
       style={{ width: col.width }}
     >
@@ -228,6 +264,9 @@ export function AffirmCard({
   const [scrollLeft, setScrollLeft] = useState(0)
   const [stuck, setStuck] = useState(false)
   const [canDrag, setCanDrag] = useState(false)
+  const [idCols, setIdCols] = useState<AffirmIdCol[]>(() =>
+    columnsForViewport(typeof window === 'undefined' ? 1200 : window.innerWidth),
+  )
   const [drawerLoanId, setDrawerLoanId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const drag = useRef({
@@ -255,6 +294,15 @@ export function AffirmCard({
     setScrollLeft(node.scrollLeft)
     setScrolled(node.scrollLeft > 0)
     setCanDrag(node.scrollWidth > node.clientWidth + 1)
+    const next = columnsForViewport(node.clientWidth)
+    setIdCols((current) =>
+      current.length === next.length &&
+      current.every(
+        (col, index) => col.key === next[index].key && col.width === next[index].width,
+      )
+        ? current
+        : next,
+    )
   }
 
   useLayoutEffect(() => {
@@ -332,7 +380,12 @@ export function AffirmCard({
     setDrawerLoanId(next.id)
   }
 
-  const tableWidth = AFFIRM_ID_WIDTH + months.length * AFFIRM_MONTH_COL
+  const balanceFrozen = idCols.some((col) => col.key === 'balance')
+  const idWidth = columnWidth(idCols)
+  const tableWidth =
+    idWidth +
+    (balanceFrozen ? 0 : AFFIRM_BALANCE_COL) +
+    months.length * AFFIRM_MONTH_COL
   const sortLabel =
     AFFIRM_SORTS.find((item) => item.key === sortKey)?.label ?? 'Monthly'
 
@@ -390,7 +443,7 @@ export function AffirmCard({
         <div className="relative isolate min-w-0">
           <div
             ref={scrollerRef}
-            className="drag-scroll min-w-0"
+            className="drag-scroll affirm-scroll min-w-0"
             data-can-drag={canDrag ? '' : undefined}
             onScroll={updateScroll}
             onPointerDown={onPointerDown}
@@ -403,16 +456,19 @@ export function AffirmCard({
               style={{ width: tableWidth, tableLayout: 'fixed' }}
             >
               <colgroup>
-                {AFFIRM_ID_COLS.map((col) => (
+                {idCols.map((col) => (
                   <col key={col.key} style={{ width: col.width }} />
                 ))}
+                {balanceFrozen ? null : (
+                  <col style={{ width: AFFIRM_BALANCE_COL }} />
+                )}
                 {months.map((ym) => (
                   <col key={ym} style={{ width: AFFIRM_MONTH_COL }} />
                 ))}
               </colgroup>
               <thead>
                 <tr className="text-muted-foreground text-xs">
-                  {AFFIRM_ID_COLS.map((col, index) => {
+                  {idCols.map((col, index) => {
                     const headerSort =
                       col.key === 'name'
                         ? 'name'
@@ -422,7 +478,8 @@ export function AffirmCard({
                     return (
                       <FreezeCell
                         key={col.key}
-                        index={index}
+                        col={col}
+                        left={stickyLeft(idCols, index)}
                         header
                         className={cn(
                           'border-border border-b py-2 leading-tight font-medium',
@@ -447,6 +504,11 @@ export function AffirmCard({
                       </FreezeCell>
                     )
                   })}
+                  {balanceFrozen ? null : (
+                    <th className="border-border relative z-0 border-b px-3 py-2 text-right font-medium whitespace-nowrap">
+                      Balance
+                    </th>
+                  )}
                   {months.map((ym) => (
                     <th
                       key={ym}
@@ -466,35 +528,43 @@ export function AffirmCard({
                   }
                   return (
                     <tr key={loan.id}>
-                      <FreezeCell
-                        index={0}
-                        className={cn(
-                          'truncate py-2 whitespace-nowrap',
-                          !lastRow && 'border-border border-b',
-                        )}
-                        title={name}
-                        onClick={openLoan}
-                      >
-                        {name}
-                      </FreezeCell>
-                      <FreezeCell
-                        index={1}
-                        className={cn(
-                          'py-2 whitespace-nowrap',
-                          !lastRow && 'border-border border-b',
-                        )}
-                      >
-                        {loan.lastPayment ? formatYm(loan.lastPayment) : ''}
-                      </FreezeCell>
-                      <FreezeCell
-                        index={2}
-                        className={cn(
-                          'py-2 tabular-nums',
-                          !lastRow && 'border-border border-b',
-                        )}
-                      >
-                        {formatUsd(loan.remaining)}
-                      </FreezeCell>
+                      {idCols.map((col, index) => {
+                        const text =
+                          col.key === 'name'
+                            ? name
+                            : col.key === 'last'
+                              ? loan.lastPayment
+                                ? formatYm(loan.lastPayment)
+                                : ''
+                              : formatUsd(loan.remaining)
+                        return (
+                          <FreezeCell
+                            key={col.key}
+                            col={col}
+                            left={stickyLeft(idCols, index)}
+                            className={cn(
+                              'py-2',
+                              col.key === 'name' && 'truncate',
+                              col.key === 'balance' && 'tabular-nums',
+                              !lastRow && 'border-border border-b',
+                            )}
+                            title={col.key === 'name' ? name : undefined}
+                            onClick={col.key === 'name' ? openLoan : undefined}
+                          >
+                            {text}
+                          </FreezeCell>
+                        )
+                      })}
+                      {balanceFrozen ? null : (
+                        <td
+                          className={cn(
+                            'relative z-0 px-3 py-2 text-right tabular-nums whitespace-nowrap',
+                            !lastRow && 'border-border border-b',
+                          )}
+                        >
+                          {formatUsd(loan.remaining)}
+                        </td>
+                      )}
                       {months.map((ym) => {
                         const amount = payments[ym]
                         const paid =
@@ -525,12 +595,12 @@ export function AffirmCard({
           <div
             className="sticky-edge"
             data-scrolled={scrolled ? '' : undefined}
-            style={{ width: AFFIRM_ID_WIDTH }}
+            style={{ width: idWidth }}
           />
           <div
             className="sticky-shadow"
             data-scrolled={scrolled ? '' : undefined}
-            style={{ left: AFFIRM_ID_WIDTH }}
+            style={{ left: idWidth }}
           />
           <div
             ref={endSentinelRef}
@@ -542,15 +612,24 @@ export function AffirmCard({
           className="affirm-totals sticky bottom-0 z-30 flex w-full min-w-0 border-t border-border bg-card"
           data-more={stuck ? '' : undefined}
         >
-          <FooterFreeze index={0} scrolled={scrolled}>
-            {currentLoans.length || ''}
-          </FooterFreeze>
-          <FooterFreeze index={1} scrolled={scrolled}>
-            {currentLoans.length > 0 ? formatUsd(allMonthly) : ''}
-          </FooterFreeze>
-          <FooterFreeze index={2} scrolled={scrolled}>
-            {currentLoans.length > 0 ? formatUsd(remaining) : ''}
-          </FooterFreeze>
+          {idCols.map((col, index) => (
+            <FooterFreeze
+              key={col.key}
+              col={col}
+              last={index === idCols.length - 1}
+              scrolled={scrolled}
+            >
+              {col.key === 'name'
+                ? currentLoans.length || ''
+                : col.key === 'last'
+                  ? currentLoans.length > 0
+                    ? formatUsd(allMonthly)
+                    : ''
+                  : currentLoans.length > 0
+                    ? formatUsd(remaining)
+                    : ''}
+            </FooterFreeze>
+          ))}
           <div className="relative min-w-0 flex-1 overflow-hidden">
             {scrolled ? (
               <div
@@ -564,10 +643,20 @@ export function AffirmCard({
             <div
               className="flex"
               style={{
-                width: months.length * AFFIRM_MONTH_COL,
+                width:
+                  (balanceFrozen ? 0 : AFFIRM_BALANCE_COL) +
+                  months.length * AFFIRM_MONTH_COL,
                 transform: `translateX(-${scrollLeft}px)`,
               }}
             >
+              {balanceFrozen ? null : (
+                <div
+                  className="shrink-0 px-3 py-3 text-right text-sm font-medium whitespace-nowrap tabular-nums"
+                  style={{ width: AFFIRM_BALANCE_COL }}
+                >
+                  {currentLoans.length > 0 ? formatUsd(remaining) : ''}
+                </div>
+              )}
               {months.map((ym) => (
                 <div
                   key={ym}
@@ -603,11 +692,67 @@ export function AffirmCard({
 }
 
 const AFFIRM_EDIT_GHOST =
-  'edit-ghost-field border-transparent bg-transparent shadow-none transition-colors hover:bg-transparent focus-visible:ring-0 focus-visible:ring-transparent dark:bg-transparent dark:hover:bg-transparent'
+  'edit-ghost-field border-transparent bg-transparent px-1.5 text-sm shadow-none transition-colors hover:bg-transparent focus-visible:ring-0 focus-visible:ring-transparent sm:px-2.5 dark:bg-transparent dark:hover:bg-transparent'
 const AFFIRM_EDIT_BOX =
   'edit-ghost-box rounded-lg border border-transparent transition-colors'
 const AFFIRM_EDIT_ROW =
-  'grid-cols-[7rem_6.75rem_9rem_7.25rem_6.5rem_6.5rem_7rem_28px]'
+  'grid-cols-[4.5rem_5.25rem_6.75rem_8.5rem_8rem_5.5rem_8rem_28px] gap-1 sm:grid-cols-[7rem_7rem_9rem_8rem_7rem_7.5rem_7.75rem_28px] sm:gap-3'
+
+const EDIT_ORDER = {
+  name: 'order-1',
+  loanId: 'order-2',
+  startDate: 'order-4 sm:order-3',
+  startingBalance: 'order-5 sm:order-4',
+  monthly: 'order-6 sm:order-5',
+  lastPayment: 'order-3 sm:order-6',
+  balance: 'order-7',
+  remove: 'order-8',
+} as const
+
+type AffirmEditSortKey =
+  | 'name'
+  | 'loanId'
+  | 'startDate'
+  | 'startingBalance'
+  | 'monthly'
+  | 'lastPayment'
+  | 'balance'
+
+function editSortValue(
+  draft: AffirmEditDraft,
+  key: AffirmEditSortKey,
+  now: Date,
+): number | string | null {
+  if (key === 'name') return draft.name.trim().toLowerCase() || null
+  if (key === 'loanId') return draft.loanId.trim().toLowerCase() || null
+  if (key === 'startDate') return draft.startDate || draft.startMonth || null
+  if (key === 'startingBalance') return parseUsdInput(draft.startingBalance)
+  if (key === 'monthly') return parseUsdInput(draft.monthly)
+  const preview = previewAffirmDraft(draft, now)
+  if (key === 'lastPayment') return preview?.lastPayment || null
+  return preview ? preview.remaining : null
+}
+
+function compareEditDrafts(
+  left: AffirmEditDraft,
+  right: AffirmEditDraft,
+  key: AffirmEditSortKey,
+  dir: AffirmSortDir,
+  now: Date,
+) {
+  const a = editSortValue(left, key, now)
+  const b = editSortValue(right, key, now)
+  const emptyA = a == null || a === ''
+  const emptyB = b == null || b === ''
+  if (emptyA && emptyB) return left.id.localeCompare(right.id)
+  if (emptyA) return 1
+  if (emptyB) return -1
+  let cmp = 0
+  if (typeof a === 'number' && typeof b === 'number') cmp = a - b
+  else cmp = String(a).localeCompare(String(b))
+  if (cmp === 0) return left.id.localeCompare(right.id)
+  return dir === 'desc' ? -cmp : cmp
+}
 
 type AffirmEditDraft = {
   id: string
@@ -693,6 +838,8 @@ function EditAffirmDialog({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
+  const [sortKey, setSortKey] = useState<AffirmEditSortKey | null>(null)
+  const [sortDir, setSortDir] = useState<AffirmSortDir>('desc')
   const opened = useRef(false)
 
   useLayoutEffect(() => {
@@ -708,7 +855,25 @@ function EditAffirmDialog({
     setConfirmOpen(false)
     setRemoveId(null)
     setFocusId(null)
+    setSortKey(null)
+    setSortDir('desc')
   }, [open, loans, now])
+
+  const sortedDrafts = useMemo(() => {
+    if (!sortKey) return drafts
+    return [...drafts].sort((left, right) =>
+      compareEditDrafts(left, right, sortKey, sortDir, now),
+    )
+  }, [drafts, sortKey, sortDir, now])
+
+  function toggleEditSort(key: AffirmEditSortKey) {
+    if (sortKey !== key) {
+      setSortKey(key)
+      setSortDir('desc')
+      return
+    }
+    setSortDir((current) => (current === 'desc' ? 'asc' : 'desc'))
+  }
 
   const dirty = JSON.stringify(drafts) !== baseline
   const existingIds = useMemo(() => new Set(loans.map((loan) => loan.id)), [loans])
@@ -830,28 +995,77 @@ function EditAffirmDialog({
           <div className="mt-5 max-h-[min(70vh,40rem)] overflow-x-auto overflow-y-auto">
             <div
               className={cn(
-                'grid items-center gap-3 py-1 text-xs font-medium text-muted-foreground',
+                'sticky top-0 z-20 grid items-center border-b bg-popover py-2 text-xs font-medium text-muted-foreground',
                 AFFIRM_EDIT_ROW,
               )}
             >
-              <span className="pl-2.5">Name</span>
-              <span className="pl-2.5">Loan ID</span>
-              <span className="pl-2.5">Starting date</span>
-              <span className="pr-2.5 text-right">Starting balance</span>
-              <span className="pr-2.5 text-right">Monthly</span>
-              <span className="pr-2.5 text-right">Last payment</span>
-              <span className="pr-2.5 text-right">Current balance</span>
-              <span />
+              <EditSortLabel
+                label="Name"
+                align="left"
+                className={EDIT_ORDER.name}
+                active={sortKey === 'name'}
+                dir={sortDir}
+                onClick={() => toggleEditSort('name')}
+              />
+              <EditSortLabel
+                label="Loan ID"
+                align="left"
+                className={EDIT_ORDER.loanId}
+                active={sortKey === 'loanId'}
+                dir={sortDir}
+                onClick={() => toggleEditSort('loanId')}
+              />
+              <EditSortLabel
+                label="Starting date"
+                align="left"
+                className={EDIT_ORDER.startDate}
+                active={sortKey === 'startDate'}
+                dir={sortDir}
+                onClick={() => toggleEditSort('startDate')}
+              />
+              <EditSortLabel
+                label="Starting balance"
+                align="right"
+                className={EDIT_ORDER.startingBalance}
+                active={sortKey === 'startingBalance'}
+                dir={sortDir}
+                onClick={() => toggleEditSort('startingBalance')}
+              />
+              <EditSortLabel
+                label="Monthly"
+                align="right"
+                className={EDIT_ORDER.monthly}
+                active={sortKey === 'monthly'}
+                dir={sortDir}
+                onClick={() => toggleEditSort('monthly')}
+              />
+              <EditSortLabel
+                label="Last payment"
+                align="right"
+                className={EDIT_ORDER.lastPayment}
+                active={sortKey === 'lastPayment'}
+                dir={sortDir}
+                onClick={() => toggleEditSort('lastPayment')}
+              />
+              <EditSortLabel
+                label="Current balance"
+                align="right"
+                className={EDIT_ORDER.balance}
+                active={sortKey === 'balance'}
+                dir={sortDir}
+                onClick={() => toggleEditSort('balance')}
+              />
+              <span className={EDIT_ORDER.remove} />
             </div>
-            {drafts.map((draft) => {
+            {sortedDrafts.map((draft) => {
               const preview = previewAffirmDraft(draft, now)
               return (
                 <div
                   key={draft.id}
-                  className={cn('grid items-center gap-3 py-1', AFFIRM_EDIT_ROW)}
+                  className={cn('grid items-center py-1', AFFIRM_EDIT_ROW)}
                 >
                   <Input
-                    className={cn('h-8', AFFIRM_EDIT_GHOST)}
+                    className={cn('h-8', EDIT_ORDER.name, AFFIRM_EDIT_GHOST)}
                     value={draft.name}
                     onChange={(event) =>
                       updateDraft(draft.id, { name: event.target.value })
@@ -861,7 +1075,7 @@ function EditAffirmDialog({
                     autoFocus={focusId === draft.id}
                   />
                   <Input
-                    className={cn('h-8', AFFIRM_EDIT_GHOST)}
+                    className={cn('h-8 min-w-0', EDIT_ORDER.loanId, AFFIRM_EDIT_GHOST)}
                     value={draft.loanId}
                     onChange={(event) =>
                       updateDraft(draft.id, { loanId: event.target.value })
@@ -871,7 +1085,7 @@ function EditAffirmDialog({
                   />
                   <Input
                     type="date"
-                    className={cn('h-8', AFFIRM_EDIT_GHOST)}
+                    className={cn('h-8 min-w-0', EDIT_ORDER.startDate, AFFIRM_EDIT_GHOST)}
                     value={draft.startDate}
                     onChange={(event) =>
                       updateDraft(draft.id, { startDate: event.target.value })
@@ -879,6 +1093,7 @@ function EditAffirmDialog({
                     aria-label="Starting date"
                   />
                   <AffirmGhostMoney
+                    className={EDIT_ORDER.startingBalance}
                     value={draft.startingBalance}
                     onChange={(startingBalance) =>
                       updateDraft(draft.id, { startingBalance })
@@ -886,21 +1101,35 @@ function EditAffirmDialog({
                     ariaLabel="Starting balance"
                   />
                   <AffirmGhostMoney
+                    className={EDIT_ORDER.monthly}
                     value={draft.monthly}
                     onChange={(monthly) => updateDraft(draft.id, { monthly })}
                     ariaLabel="Monthly payment"
                   />
-                  <p className="pr-2.5 text-right text-sm tabular-nums">
+                  <p
+                    className={cn(
+                      'pr-2.5 text-right text-sm tabular-nums',
+                      EDIT_ORDER.lastPayment,
+                    )}
+                  >
                     {preview?.lastPayment ? formatYm(preview.lastPayment) : '—'}
                   </p>
-                  <p className="pr-2.5 text-right text-sm tabular-nums">
+                  <p
+                    className={cn(
+                      'pr-2.5 text-right text-sm tabular-nums',
+                      EDIT_ORDER.balance,
+                    )}
+                  >
                     {preview ? formatUsd(preview.remaining) : '—'}
                   </p>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    className="text-muted-foreground justify-self-end hover:bg-transparent"
+                    className={cn(
+                      'text-muted-foreground justify-self-end hover:bg-transparent',
+                      EDIT_ORDER.remove,
+                    )}
                     onClick={() => requestRemove(draft.id)}
                     title="Remove loan"
                   >
@@ -995,17 +1224,55 @@ function EditAffirmDialog({
   )
 }
 
+function EditSortLabel({
+  label,
+  align,
+  active,
+  dir,
+  className,
+  onClick,
+}: {
+  label: string
+  align: 'left' | 'right'
+  active: boolean
+  dir: AffirmSortDir
+  className?: string
+  onClick: () => void
+}) {
+  const down = !active || dir === 'desc'
+  return (
+    <button
+      type="button"
+      className={cn(
+        'flex min-w-0 items-center gap-1 whitespace-nowrap text-xs font-medium text-muted-foreground',
+        align === 'right' ? 'justify-end pr-2.5' : 'pl-2.5',
+        className,
+      )}
+      onClick={onClick}
+    >
+      <span className="truncate">{label}</span>
+      {down ? (
+        <ArrowDown className={cn('size-3 shrink-0', !active && 'opacity-40')} />
+      ) : (
+        <ArrowUp className="size-3 shrink-0" />
+      )}
+    </button>
+  )
+}
+
 function AffirmGhostMoney({
   value,
   onChange,
   ariaLabel,
+  className,
 }: {
   value: string
   onChange: (value: string) => void
   ariaLabel: string
+  className?: string
 }) {
   return (
-    <div className={cn('flex h-8 items-center justify-end px-2.5', AFFIRM_EDIT_BOX)}>
+    <div className={cn('flex h-8 min-w-0 items-center justify-end px-2.5', AFFIRM_EDIT_BOX, className)}>
       <span className="shrink-0 pr-0.5 text-sm text-neutral-400">$</span>
       <input
         className="placeholder:text-muted-foreground h-full w-full min-w-0 bg-transparent text-right text-sm tabular-nums outline-none"

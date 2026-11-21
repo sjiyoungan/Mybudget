@@ -147,6 +147,21 @@
 .drag-scroll::-webkit-scrollbar {
   display: none;
 }
+@media (max-width: 639px) {
+  .affirm-scroll.drag-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(0 0 0 / 0.28) transparent;
+  }
+  .affirm-scroll.drag-scroll::-webkit-scrollbar {
+    display: block;
+    height: 8px;
+    width: 0;
+  }
+  .affirm-scroll.drag-scroll::-webkit-scrollbar-thumb {
+    background: rgb(0 0 0 / 0.28);
+    border-radius: 999px;
+  }
+}
 .drag-scroll .sticky {
   cursor: default;
 }
