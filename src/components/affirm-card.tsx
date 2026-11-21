@@ -83,18 +83,36 @@ function columnWidth(cols: AffirmIdCol[]) {
   return cols.reduce((sum, col) => sum + col.width, 0)
 }
 
-type AffirmSortKey = 'monthly' | 'last' | 'name'
+type AffirmSortKey = 'monthly' | 'last' | 'name' | 'start'
 type AffirmSortDir = 'asc' | 'desc'
 
 const AFFIRM_SORTS: { key: AffirmSortKey; label: string }[] = [
   { key: 'monthly', label: 'Monthly' },
+  { key: 'start', label: 'Starting date' },
   { key: 'last', label: 'Last payment' },
   { key: 'name', label: 'Name' },
 ]
 
+function loanStartKey(loan: AffirmLoan) {
+  if (loan.startDate) return loan.startDate
+  if (loan.startMonth) return `${loan.startMonth}-01`
+  return ''
+}
+
 function sortLoans(loans: AffirmLoan[], key: AffirmSortKey, dir: AffirmSortDir) {
   const sign = dir === 'asc' ? 1 : -1
   return [...loans].sort((left, right) => {
+    if (key === 'start') {
+      const leftKey = loanStartKey(left)
+      const rightKey = loanStartKey(right)
+      if (!leftKey || !rightKey) {
+        if (leftKey === rightKey) return left.loanId.localeCompare(right.loanId)
+        return leftKey ? -1 : 1
+      }
+      const cmp = leftKey.localeCompare(rightKey)
+      if (cmp === 0) return left.loanId.localeCompare(right.loanId)
+      return cmp * sign
+    }
     let cmp = 0
     if (key === 'monthly') cmp = left.monthly - right.monthly
     else if (key === 'last') cmp = left.lastPayment.localeCompare(right.lastPayment)
