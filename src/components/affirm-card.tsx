@@ -287,6 +287,7 @@ export function AffirmCard({
   )
   const [drawerLoanId, setDrawerLoanId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
   const drag = useRef({
     active: false,
     moved: false,
@@ -398,6 +399,10 @@ export function AffirmCard({
     setDrawerLoanId(next.id)
   }
 
+  function addLoan(next: AffirmLoan) {
+    onLoansChange(sortAffirmLoans([...loans, next]))
+  }
+
   const balanceFrozen = idCols.some((col) => col.key === 'balance')
   const idWidth = columnWidth(idCols)
   const tableWidth =
@@ -417,6 +422,16 @@ export function AffirmCard({
               label="Edit Affirm loans"
               onClick={() => setEditOpen(true)}
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="bg-white ml-1.5 gap-1"
+              onClick={() => setAddOpen(true)}
+            >
+              <Plus className="size-3.5" />
+              Add
+            </Button>
           </div>
           <div className="flex items-center gap-1">
             <DropdownMenu>
@@ -704,6 +719,12 @@ export function AffirmCard({
         now={now}
         onOpenChange={setEditOpen}
         onSave={onLoansChange}
+      />
+      <AddAffirmDialog
+        open={addOpen}
+        now={now}
+        onOpenChange={setAddOpen}
+        onAdd={addLoan}
       />
     </Card>
   )
@@ -1301,6 +1322,146 @@ function AffirmGhostMoney({
         aria-label={ariaLabel}
       />
     </div>
+  )
+}
+
+function AddAffirmDialog({
+  open,
+  now,
+  onOpenChange,
+  onAdd,
+}: {
+  open: boolean
+  now: Date
+  onOpenChange: (open: boolean) => void
+  onAdd: (loan: AffirmLoan) => void
+}) {
+  const [draft, setDraft] = useState<AffirmDraft>(() => emptyDraft(now))
+  const opened = useRef(false)
+
+  useLayoutEffect(() => {
+    if (!open) {
+      opened.current = false
+      return
+    }
+    if (opened.current) return
+    opened.current = true
+    setDraft(emptyDraft(now))
+  }, [open, now])
+
+  const startingBalance = parseUsdInput(draft.startingBalance)
+  const monthly = parseUsdInput(draft.monthly)
+  const canAdd =
+    startingBalance != null && monthly != null && draft.startDate !== ''
+  const preview = useMemo(() => {
+    if (!canAdd || startingBalance == null || monthly == null) return null
+    return completeAffirmLoan(
+      {
+        name: draft.name,
+        loanId: draft.loanId,
+        startDate: draft.startDate,
+        startingBalance,
+        monthly,
+        needsSpending: true,
+      },
+      now,
+    )
+  }, [canAdd, draft.loanId, draft.name, draft.startDate, monthly, now, startingBalance])
+
+  function addLoan() {
+    if (!preview) return
+    onAdd(preview)
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="p-6 sm:max-w-sm"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle>Add loan</DialogTitle>
+        </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            addLoan()
+          }}
+        >
+          <AffirmDetailField
+            label="Name"
+            editing
+            value={draft.name}
+            display=""
+            onChange={(name) => setDraft((current) => ({ ...current, name }))}
+          />
+          <AffirmDetailField
+            label="Loan ID"
+            editing
+            value={draft.loanId}
+            display=""
+            onChange={(loanId) => setDraft((current) => ({ ...current, loanId }))}
+          />
+          <AffirmDetailField
+            label="Starting date"
+            editing
+            value={draft.startDate}
+            display=""
+            type="date"
+            onChange={(startDate) =>
+              setDraft((current) => ({ ...current, startDate }))
+            }
+          />
+          <AffirmDetailField
+            label="Starting balance"
+            editing
+            value={draft.startingBalance}
+            display=""
+            money
+            onChange={(startingBalance) =>
+              setDraft((current) => ({ ...current, startingBalance }))
+            }
+          />
+          <AffirmDetailField
+            label="Monthly payment"
+            editing
+            value={draft.monthly}
+            display=""
+            money
+            onChange={(monthly) => setDraft((current) => ({ ...current, monthly }))}
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <p className="text-muted-foreground text-xs font-medium">Last payment</p>
+              <p className="text-sm">
+                {preview?.lastPayment ? formatYm(preview.lastPayment) : '—'}
+              </p>
+            </div>
+            <div className="grid gap-1.5">
+              <p className="text-muted-foreground text-xs font-medium">Balance</p>
+              <p className="text-sm tabular-nums">
+                {preview ? formatUsd(preview.remaining) : '—'}
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="mt-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canAdd}>
+              Add
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
